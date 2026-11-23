@@ -210,6 +210,11 @@ export function fightsInPromo(w: World, f: Fighter, promo: PromoId): number {
   return n;
 }
 
+/** Fights on a promotion's stage: in this world, plus a real fighter's before it began. */
+export function stageFights(w: World, f: Fighter, promo: PromoId): number {
+  return fightsInPromo(w, f, promo) + (f.prior?.promo === promo ? f.prior.n : 0);
+}
+
 /** Ring rust: nothing for nine months, then it builds and is complete at about two years. */
 export function ringRust(days: number): number {
   if (days < 270) return 0;

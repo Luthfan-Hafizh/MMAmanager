@@ -3,10 +3,10 @@
 
 import { useSyncExternalStore } from "react";
 import type { World } from "../model/types";
-import type { RosterFile } from "../world/real";
 import { createWorld, type NewGameOptions } from "../world/create";
 import { advance, type AdvanceResult } from "../sim/advance";
 import { saveWorld } from "./persist";
+import { loadRoster } from "./roster";
 
 type Listener = () => void;
 
@@ -72,14 +72,7 @@ export function toast(text: string, kind: "info" | "good" | "bad" = "info"): voi
   }, 3800);
 }
 
-let roster: RosterFile | null = null;
-export async function loadRoster(): Promise<RosterFile> {
-  if (roster) return roster;
-  const r = await fetch(`${import.meta.env.BASE_URL}data/roster.json`);
-  if (!r.ok) throw new Error("Could not load the roster.");
-  roster = (await r.json()) as RosterFile;
-  return roster;
-}
+export { loadRoster };
 
 export async function newGame(o: NewGameOptions): Promise<World> {
   state.busy = "Building the world…";

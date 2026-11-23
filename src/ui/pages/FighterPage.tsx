@@ -129,7 +129,7 @@ function Overview({ w, f }: { w: World; f: Fighter }) {
           <hr className="sep" />
           <div className="small">
             <div className="spread"><span className="label">Rating</span><span className="row tight"><Stars v={ovr(f.attrs)} /> {ovrBand(ovr(f.attrs))}</span></div>
-            <div className="spread" style={{ marginTop: 6 }}><span className="label">Outlook</span><span>{f.ctrl ? potentialText(f, 1) : potentialText(f, 0.5)}</span></div>
+            <div className="spread" style={{ marginTop: 6 }}><span className="label">Outlook</span><span>{potentialText(f, w.day, f.ctrl ? 1 : 0.5)}</span></div>
             <div className="spread" style={{ marginTop: 6 }}><span className="label">Career stage</span><span>{primeText(f, w.day)}</span></div>
             <div className="spread" style={{ marginTop: 6 }}><span className="label">Popularity</span><span>{Math.round(f.pop)}/100</span></div>
           </div>

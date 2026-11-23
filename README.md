@@ -13,7 +13,7 @@ A browser MMA career and management simulator. Take a fighter from the amateur c
 - **Fighter.** Create a fighter (country, weight class, body, martial arts background, talent; start as an amateur, a pro debutant or a regional prospect) or take over any real fighter on the UFC or PFL roster. Plan the training week, drill techniques, accept or turn down fights, run the camp and the weight cut, negotiate contracts, corner yourself live, and chase the belt.
 - **Manager.** Run an MMA management company. Sign clients at every level (your reputation, your cut and the stable you already have decide who says yes), take 10-20% of their purses and 20% of their sponsorship, negotiate their deals, plan their camps and build a stable.
 
-**A world of real promotions.** The UFC and the PFL with their real rosters, rankings and champions; the Contender Series every August; and in each of eight regions a regional promotion (LFA, Jungle Fight, Cage Warriors, KSW, Pancrase, EFC, Brave CF, Eternal MMA), a local show and an IMMAF amateur circuit. About 3,700 fighters; promotions sign the best from the level below, release fighters on losing runs, and fighters develop, age, get hurt and retire.
+**A world of real promotions.** The UFC and the PFL with their real rosters, rankings and champions; the Contender Series every August; and in each of eight regions a regional promotion (LFA, Jungle Fight, Cage Warriors, KSW, Pancrase, EFC, Brave CF, Eternal MMA), a local show and an IMMAF amateur circuit. About 3,700 fighters; promotions sign the best from the level below (the UFC and the PFL want a winning record as well as the talent), release fighters on losing runs, and fighters develop, age, get hurt and retire. Real fighters are scouted like prospects: the young ones with an unbeaten record, finishes, a ranking already or a fast rise to the top level have the most room to grow, so the real prospects of 2026 can become the contenders of 2029.
 
 **The fight engine.** Fights are played exchange by exchange: range and footwork, the fence, combinations and counters, the clinch, takedowns and sprawls, ground positions from guard to back control, submissions, ground and pound. Damage is tracked for the head, body and legs; stamina drains with work and body shots; knockdowns, referee stoppages, cuts and doctor stoppages end fights; three judges score every round on the ten-point must system, with 10-8 rounds and split decisions. Calibrated against the UFC:
 
@@ -35,7 +35,7 @@ Lower levels are sloppier: more finishes on the local shows and in the regional 
 
 **Money as the sport pays it (2026).** UFC newcomers on $12,000 to show and $12,000 to win, rising with each win; fight-week compliance pay; $100,000 Fight and Performance of the Night bonuses and $25,000 for every finish (the bonuses introduced with the Paramount deal in 2026). Out of the purse: the gym and head coach, the manager, licences and medicals, travel, and tax.
 
-**Rankings.** A rating model in the spirit of the one the UFC launched in October 2026: who you beat counts most, finishes add a little, activity helps, and after eighteen months out the score decays exponentially. A winner always moves above the fighter beaten. Champions sit above the list; interim champions head it.
+**Rankings.** A rating model in the spirit of the one the UFC launched in October 2026: who you beat counts most, finishes add a little, activity helps, and after eighteen months out the score decays exponentially. A winner always moves above the fighter beaten. Champions sit above the list; interim champions head it. Newcomers start among the unranked however good they are, and a newcomer's rating moves faster until it settles. Matchmakers step fighters on a run up against better opposition, and notice a prospect who has outgrown the record before the results catch up, while a fading veteran is still booked on the name.
 
 **Odds and previews.** Every fight gets a betting line from what a bookmaker weighs: ratings, form, the style matchup, reach, layoffs and age, with the bookmaker's margin in the moneylines (-175 / +145). Click a fight on any card for the tale of the tape, the keys to victory for each side and their history; upsets make the news.
 
@@ -77,6 +77,7 @@ npm run check                   # all of the above, quick versions
 - The UFC roster, rankings and official statistics: a snapshot of ufc.com taken on 1 October 2026.
 - The PFL roster: Wikipedia's List of current PFL fighters (CC BY-SA 4.0), 15 November 2026.
 - Records, physicals, rankings and statistics are sourced; the 1-20 attributes are derived from them; everything after the first day is simulated.
+- Saves from the previous save format are brought up to date when loaded (real fighters are re-scouted).
 
 ## Project layout
 

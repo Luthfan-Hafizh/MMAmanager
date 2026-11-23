@@ -9,8 +9,8 @@ import { DIVISIONS, type DivisionId } from "../data/divisions";
 import { PROMOTIONS, roundsFor, type PromoId } from "../data/promotions";
 import { ovrOf } from "../model/attributes";
 import type { Bout, BoutKind, FightOffer, Fighter, MMAEvent, World } from "../model/types";
-import { addNews, availableFrom, daysSinceFight, fightsInPromo, fullName, isControlled, nextId, rankOf, rosterOf } from "./core";
-import { lostToRecently } from "./rankings";
+import { addNews, availableFrom, daysSinceFight, fullName, isControlled, nextId, rankOf, rosterOf, stageFights } from "./core";
+import { lostToRecently, ratingFor } from "./rankings";
 import { setOdds } from "./odds";
 import { calloutFor } from "../career/fightweek";
 import { notify } from "../career/inbox";
@@ -53,9 +53,34 @@ function metRecently(w: World, a: Fighter, b: Fighter, days: number): boolean {
   return false;
 }
 
+/**
+ * A fighter on a run is matched up: the matchmaker looks higher for the next
+ * opponent, about twenty rating points a win at the top level. Only wins on
+ * this stage count in full, so a regional record buys a newcomer one step.
+ */
+export function stepUp(f: Fighter, inPromo: number, tier: string): number {
+  const run = Math.min(f.streak, inPromo + 2, 6);
+  if (run < 2) return 0;
+  return run * (tier === "major" || tier === "league" ? 22 : 15);
+}
+
+/**
+ * The rating a matchmaker books a fighter at. Rising talent gets noticed in the
+ * gym and on tape before the results catch up, so a prospect who has outgrown
+ * the rating is matched up sooner; a fading veteran is still booked on the
+ * name until the losses show it.
+ */
+export function bookedAt(f: Fighter, tier: string): number {
+  return f.elo + Math.max(0, ratingFor(tier, ovrOf(f.attrs)) - f.elo) * 0.5;
+}
+
 export function pairCost(w: World, a: Fighter, b: Fighter, promo: PromoId, rng?: Rng): number {
   if (teammates(a, b)) return 999;
-  let c = Math.abs(a.elo - b.elo) / 28;
+  const tier = PROMOTIONS[promo].tier;
+  const na = stageFights(w, a, promo);
+  const nb = stageFights(w, b, promo);
+  // The ideal opponent for a fighter on a run is rated a little higher.
+  let c = Math.abs(bookedAt(a, tier) - bookedAt(b, tier) + stepUp(a, na, tier) - stepUp(b, nb, tier)) / 28;
   const ra = rankOf(w, a);
   const rb = rankOf(w, b);
   if (ra !== null && rb !== null && ra > 0 && rb > 0) c += Math.max(0, Math.abs(ra - rb) - 4) * 1.6;
@@ -63,18 +88,17 @@ export function pairCost(w: World, a: Fighter, b: Fighter, promo: PromoId, rng?:
     const r = (ra ?? rb)!;
     const other = ra === null ? a : b;
     if (r > 0 && r <= 10 && other.streak < 3) c += 7;
-    else if (r > 0) c += 3;
+    else if (r > 0) c += other.streak >= 3 ? 1.5 : 3;
   }
   if (metRecently(w, a, b, 900)) c += 30;
   else if (metRecently(w, a, b, 3650)) c += 6;
-  const newA = fightsInPromo(w, a, promo) < 2;
-  const newB = fightsInPromo(w, b, promo) < 2;
+  const newA = na < 2;
+  const newB = nb < 2;
   if (newA !== newB) c += 2;
   // Experience: a debutant meets someone with a handful of fights, not a veteran.
   const ea = a.rec.w + a.rec.l + a.rec.d;
   const eb = b.rec.w + b.rec.l + b.rec.d;
   const expGap = Math.abs(Math.log1p(ea) - Math.log1p(eb));
-  const tier = PROMOTIONS[promo].tier;
   c += expGap * (tier === "local" || tier === "amateur" ? 7 : tier === "regional" ? 4 : 1.5);
   if (a.streak >= 3 && b.streak <= -2) c += 3;
   if (b.streak >= 3 && a.streak <= -2) c += 3;

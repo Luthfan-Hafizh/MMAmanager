@@ -176,6 +176,8 @@ export interface Fighter {
   peakRank?: number;
   legacy?: number;
   bestStreak?: number;
+  /** Fights on a promotion's stage before the world began (real fighters). */
+  prior?: { promo: PromoId; n: number };
 }
 
 export type BoutKind = "title" | "interim" | "vacant" | "eliminator" | "regular" | "tryout" | "amateur";

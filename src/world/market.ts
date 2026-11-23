@@ -114,7 +114,14 @@ function rosterTarget(promo: PromoId, d: DivisionId): number {
 }
 
 function candidateScore(w: World, f: Fighter): number {
-  return ovrOf(f.attrs) + Math.max(0, f.streak) * 1.2 + (isChampion(w, f) ? 4 : 0) - (f.streak < 0 ? 3 : 0);
+  // Scouts look at the record as well as the tape.
+  const record = clamp((f.rec.w - f.rec.l * 2) * 0.25, -3, 3);
+  return ovrOf(f.attrs) + Math.max(0, f.streak) * 1.2 + (isChampion(w, f) ? 4 : 0) - (f.streak < 0 ? 3 : 0) + record;
+}
+
+/** A record a big promotion signs: enough wins, and far more of them than losses. */
+function signable(f: Fighter, wins: number, ratio: number): boolean {
+  return f.rec.w >= wins && f.rec.w >= f.rec.l * ratio;
 }
 
 /** Promotions fill their divisions from the level below and from free agents. */
@@ -157,12 +164,15 @@ function candidatesFor(w: World, promo: PromoId, d: DivisionId): Fighter[] {
     if (promo === "ufc") {
       if (o < 65 || age > 34) return;
       if (f.promo && PROMOTIONS[f.promo].tier === "league" && f.contract && f.contract.left > 0) return;
-      if (f.promo && PROMOTIONS[f.promo].tier === "regional" && !(isChampion(w, f) || f.streak >= 3 || (f.rec.w >= 9 && f.rec.w >= f.rec.l * 3 && o >= 68))) return;
-      if (!f.promo && o < 68) return;
+      // From the regional scene: a champion, a fighter on a run, or a proven record and the talent.
+      if (f.promo && PROMOTIONS[f.promo].tier === "regional" && !(isChampion(w, f) || (f.streak >= 2 && signable(f, 5, 1.5)) || (f.streak >= 0 && signable(f, 7, 2.5) && o >= 66))) return;
+      // Free agents: a winning record, or a proven veteran of real quality.
+      if (!f.promo && !((o >= 68 && signable(f, 6, 2)) || (o >= 72 && signable(f, 5, 1.3)))) return;
     } else if (promo === "pfl") {
       if (o < 62 || age > 36) return;
       if (f.promo === "ufc") return;
-      if (f.promo && PROMOTIONS[f.promo].tier === "regional" && !(isChampion(w, f) || f.streak >= 3)) return;
+      if (f.promo && PROMOTIONS[f.promo].tier === "regional" && !(isChampion(w, f) || (f.streak >= 3 && signable(f, 4, 1.3)))) return;
+      if (!f.promo && !signable(f, 5, 1.5)) return;
     } else if (p.tier === "regional") {
       if (o < 55 || age > 36) return;
       if (f.promo && TIER_RANK[PROMOTIONS[f.promo].tier] >= TIER_RANK.regional) return;

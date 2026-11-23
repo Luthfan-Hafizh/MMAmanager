@@ -7,7 +7,7 @@ import { clamp } from "../core/util";
 import { ymd } from "../core/time";
 import { PROMOTIONS, type PromoId } from "../data/promotions";
 import type { Bout, Fighter, LedgerEntry, Purse, World } from "../model/types";
-import { fightsInPromo, fullName } from "../world/core";
+import { fullName, stageFights } from "../world/core";
 
 export const UFC_BONUS = 100000;
 export const UFC_FINISH_BONUS = 25000;
@@ -16,7 +16,7 @@ export function compliancePay(w: World, f: Fighter, b: Bout): number {
   if (b.promo !== "ufc") return 0;
   const champ = w.promos.ufc.champs[b.div] === f.id;
   if (b.kind === "title" || b.kind === "vacant") return champ ? 42000 : 32000;
-  const n = fightsInPromo(w, f, "ufc") + 1;
+  const n = stageFights(w, f, "ufc") + 1;
   if (n <= 3) return 4000;
   if (n <= 5) return 5000;
   if (n <= 10) return 10000;

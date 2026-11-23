@@ -32,6 +32,10 @@ export interface RealFighter {
   m: [number, number, number, number, number, number];
   ws: number;
   ls: number;
+  /** Best win streak. */
+  bs?: number;
+  /** Record on this stage (the UFC, or the PFL league). */
+  pr?: [number, number, number];
   rt: [number, number, number, number, number, number];
   t: number[];
   ps: number[];
@@ -85,6 +89,67 @@ function guessArt(rf: RealFighter): BaseArt {
     return "boxing";
   }
   return "mma";
+}
+
+/** What a scout reads from a fighter's record and standing. */
+export interface ScoutView {
+  age: number;
+  w: number;
+  l: number;
+  d: number;
+  /** Wins by knockout or submission. */
+  finishes: number;
+  pop: number;
+  /** 0 is the champion. */
+  rank: number | null;
+  /** On the UFC or the PFL's main roster: the top level. */
+  top: boolean;
+  /** How fast the fighter develops, from the snapshot (1 is usual). */
+  growth?: number;
+}
+
+/**
+ * Room left to grow for a real fighter. The snapshot's own potential sits
+ * barely above today's level, which froze every young fighter where they stood
+ * while the world's generated prospects grew past them. Real fighters get the
+ * room anyone their age has, plus what scouts look for in a prospect: an
+ * unbeaten record, finishes, a ranking already, the hype, and a fast rise (few
+ * fights for the level). The signals count for less with age, there is less to
+ * add close to the top of the sport, and nothing is left to find after 33.
+ */
+export function prospectRoom(v: ScoutView, cur: number, noise: number): number {
+  const youth = clamp((27 - v.age) / 8, 0, 1.2);
+  const fights = v.w + v.l + v.d;
+  let s = 0;
+  if (v.l === 0 && v.w >= 4) s += 2.5 + Math.min(v.w - 4, 10) * 0.2;
+  else if (v.l === 1 && v.w >= 8) s += 1.5;
+  else s += clamp((v.w / Math.max(1, fights) - 0.75) * 6, -1.5, 0.9);
+  s += clamp((v.finishes / Math.max(1, v.w) - 0.5) * 3, -0.9, 1.2);
+  if (v.rank !== null) s += v.rank === 0 ? 3 : v.rank <= 5 ? 2.4 : 1.6;
+  s += clamp((v.pop - 24) / 8, 0, 2);
+  s += clamp((13 - fights) / 3, 0, v.top ? 2 : 1.2);
+  let room = 3 + youth * 9 + clamp(s, -2, 6) * clamp((30 - v.age) / 6, 0, 1);
+  room += clamp(noise, -2, 2) * (1 + 1.5 * youth);
+  room *= 0.75 + 0.25 * clamp(v.growth ?? 1, 0.4, 1.8);
+  room *= clamp((94 - cur) / 20, 0.15, 1);
+  room *= clamp((33 - v.age) / 3, 0, 1);
+  return Math.max(0, room);
+}
+
+/**
+ * The current streak. The snapshot's own streak is missing for most fighters,
+ * so it is read from the record: an unbeaten fighter's every win counts, and
+ * so do the wins of a fighter still unbeaten on this stage.
+ */
+export function currentStreak(rf: RealFighter): number {
+  if (rf.r[1] === 0) return rf.r[0];
+  if (rf.ls > 0) return -rf.ls;
+  return Math.max(rf.ws, rf.pr && rf.pr[1] === 0 ? rf.pr[0] : 0);
+}
+
+/** The scout's margin of error for one fighter in one world: the same on every load. */
+export function potentialNoise(id: string, seed: number): number {
+  return new Rng(hashString(`${id}:pot`) ^ seed).normal(0, 1);
 }
 
 export interface RealContext {
@@ -180,8 +245,9 @@ export function realFighter(rf: RealFighter, ctx: RealContext, seed: number): Fi
   const decline = rf.dv[2];
   let aging: AgingType = decline > 1.12 ? "early" : decline < 0.92 ? "late" : "normal";
   if (rf.a >= 34 && rank !== null) aging = "late";
-  const youth = clamp((27 - rf.a) / 7, 0, 1);
-  const pot = Math.round(clamp(Math.max(cur, cur + youth * rng.range(2, 9) + (rf.a < 31 ? rng.range(0, 2) : 0)), cur, 96));
+  const view: ScoutView = { age: rf.a, w: rf.r[0], l: rf.r[1], d: rf.r[2], finishes: koW + subW, pop: rf.pop, rank, top: rf.p === "ufc" || (rf.lg !== "africa" && rf.lg !== "mena"), growth: rf.dv[1] };
+  // The snapshot's own estimate is the floor.
+  const pot = Math.round(clamp(Math.max(cur + prospectRoom(view, cur, potentialNoise(rf.id, seed)), rf.pot ?? 0), cur, 94));
   const ps = rf.ps;
   const art = guessArt(rf);
   const rec = blankRecord();
@@ -233,7 +299,7 @@ export function realFighter(rf: RealFighter, ctx: RealContext, seed: number): Fi
     elo: 1500,
     bouts: [],
     lastFight: null,
-    streak: rf.ws > 0 ? rf.ws : -rf.ls,
+    streak: currentStreak(rf),
     injury: null,
     susp: 0,
     booked: null,
@@ -248,11 +314,12 @@ export function realFighter(rf: RealFighter, ctx: RealContext, seed: number): Fi
     morale: 65,
     joined: 0,
     best: Math.round(cur),
+    prior: rf.pr ? { promo: rf.p as PromoId, n: rf.pr[0] + rf.pr[1] + rf.pr[2] } : undefined,
   };
   const known = KNOWN_TITLES[rf.id];
   if (known) f.reigns = Math.max(f.reigns, known[0]);
   f.legacy = startingLegacy(f, known ? known[1] : rf.td);
-  f.bestStreak = Math.max(rf.ws, 0);
+  f.bestStreak = Math.max(rf.bs ?? 0, f.streak, 0);
   return f;
 }
 

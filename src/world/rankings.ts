@@ -7,7 +7,7 @@ import { clamp } from "../core/util";
 import { DIVISIONS, type DivisionId } from "../data/divisions";
 import { PROMOTIONS, type PromoId } from "../data/promotions";
 import type { Bout, Fighter, World } from "../model/types";
-import { addNews, fightsInPromo, fullName, rosterOf } from "./core";
+import { addNews, fightsInPromo, fullName, rosterOf, stageFights } from "./core";
 
 const INACTIVE_FROM = 548; // eighteen months
 
@@ -49,9 +49,10 @@ export function eloUpdate(w: World, b: Bout, winner: Fighter | null, a: Fighter,
   }
 }
 
+/** A rating moves faster while it is still settling: a newcomer's first fights at a level count more. */
 function kFactor(w: World, f: Fighter, b: Bout): number {
-  const n = f.promo ? fightsInPromo(w, f, f.promo) : 5;
-  let k = n < 3 ? 40 : 30;
+  const n = f.promo ? stageFights(w, f, f.promo) : 6;
+  let k = 30 + 20 * clamp(1 - n / 6, 0, 1);
   if (b.kind === "title" || b.kind === "interim" || b.kind === "vacant") k *= 1.25;
   return k;
 }
@@ -161,14 +162,25 @@ export function lostToRecently(w: World, f: Fighter, otherId: string, days = 730
   return false;
 }
 
-/** Entry rating when a fighter signs with a promotion: the level of the pool there. */
+/**
+ * Entry rating when a fighter signs with a promotion: the level of the pool
+ * there. At the UFC and the PFL a newcomer starts among the unranked, however
+ * good, and has to win a way into the rankings like everyone already there.
+ */
 export function entryElo(promo: PromoId, ovr: number, elo: number): number {
   const tier = PROMOTIONS[promo].tier;
-  const base: Record<string, number> = { major: 1480, league: 1420, tryout: 1400, regional: 1250, local: 1150, amateur: 1000 };
-  const slope: Record<string, number> = { major: 12, league: 11, tryout: 10, regional: 10, local: 9, amateur: 8 };
-  const centre: Record<string, number> = { major: 72, league: 68, tryout: 68, regional: 61, local: 54, amateur: 46 };
-  const fresh = base[tier] + (ovr - centre[tier]) * slope[tier];
-  return Math.round(clamp(0.7 * fresh + 0.3 * Math.min(elo, fresh + 60), base[tier] - 150, base[tier] + 320));
+  const top = tier === "major" ? 10 : tier === "league" ? 30 : 320;
+  const fresh = ratingFor(tier, ovr);
+  return Math.round(clamp(0.7 * fresh + 0.3 * Math.min(elo, fresh + 60), BASE[tier] - 150, BASE[tier] + top));
+}
+
+const BASE: Record<string, number> = { major: 1480, league: 1420, tryout: 1400, regional: 1250, local: 1150, amateur: 1000 };
+const SLOPE: Record<string, number> = { major: 12, league: 11, tryout: 10, regional: 10, local: 9, amateur: 8 };
+const CENTRE: Record<string, number> = { major: 72, league: 68, tryout: 68, regional: 61, local: 54, amateur: 46 };
+
+/** The rating that a fighter of this quality usually holds at this level. */
+export function ratingFor(tier: string, ovr: number): number {
+  return BASE[tier] + (ovr - CENTRE[tier]) * SLOPE[tier];
 }
 
 export function rankingNews(w: World, promo: PromoId, d: DivisionId): void {

@@ -101,14 +101,24 @@ export function monthlyDevelopment(w: World, rng: Rng): void {
   }
 }
 
-export function potentialText(f: Fighter, scouted = 0.7): string {
-  const cur = ovrOf(f.attrs);
-  const room = f.hid.pot - cur;
+/**
+ * The growth a fighter can still expect: the room to the potential, times the
+ * share of it left to fill at this age (the world's fighters stop growing at
+ * about 31; the player's keep learning from their training a little longer).
+ */
+export function outlookRoom(f: Fighter, day: number): number {
+  const age = ageAt(f.birth, day);
+  const left = clamp((f.ctrl ? 34 : 31) - age, 0, 8) / 8;
+  return Math.max(0, f.hid.pot - ovrOf(f.attrs)) * left;
+}
+
+export function potentialText(f: Fighter, day: number, scouted = 0.7): string {
+  const room = outlookRoom(f, day);
   const fuzz = Math.round((1 - scouted) * 6);
-  if (room > 14) return fuzz > 2 ? "Huge potential" : "Could be special";
-  if (room > 8) return "Plenty of room to grow";
-  if (room > 3) return "Still improving";
-  return "At or near the ceiling";
+  if (room > 11) return fuzz > 2 ? "Huge potential" : "Could be special";
+  if (room > 6) return "Plenty of room to grow";
+  if (room > 2) return "Still improving";
+  return ageAt(f.birth, day) >= 31 ? "Fully developed" : "At or near the ceiling";
 }
 
 export function primeText(f: Fighter, day: number): string {

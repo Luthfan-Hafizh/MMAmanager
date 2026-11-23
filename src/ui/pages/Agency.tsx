@@ -6,7 +6,7 @@ import { ovr } from "../../model/attributes";
 import type { Fighter } from "../../model/types";
 import { clientCapacity, dropClient, hireStaff, pitch, pitchChance } from "../../career/agency";
 import { fullName, recordText, withRng } from "../../world/core";
-import { potentialText } from "../../world/development";
+import { outlookRoom, potentialText } from "../../world/development";
 import { changed, toast, useWorld } from "../../state/store";
 import { go } from "../router";
 import { Empty, FighterLink, Form, Modal, Ovr, Panel, PromoBadge, Table, type Col } from "../components";
@@ -73,7 +73,7 @@ export function Scouting() {
     { key: "d", label: "Div", render: (f) => DIVISIONS[f.div].short },
     { key: "r", label: "Record", render: (f) => recordText(f), align: "r", sort: (f) => f.rec.w - f.rec.l },
     { key: "a", label: "Age", render: (f) => ageYears(f.birth, w.day), align: "r", sort: (f) => -f.birth },
-    { key: "pot", label: "Outlook", render: (f) => <span className="small">{potentialText(f, 0.6)}</span>, sort: (f) => f.hid.pot - ovr(f.attrs) },
+    { key: "pot", label: "Outlook", render: (f) => <span className="small">{potentialText(f, w.day, 0.6)}</span>, sort: (f) => outlookRoom(f, w.day) },
     { key: "o", label: "Ovr", render: (f) => <Ovr v={ovr(f.attrs)} sm />, align: "c", sort: (f) => ovr(f.attrs) },
     { key: "c", label: "Interest", render: (f) => `${Math.round(pitchChance(w, f, a.cut).p * 100)}%`, align: "r", sort: (f) => pitchChance(w, f, a.cut).p },
   ];

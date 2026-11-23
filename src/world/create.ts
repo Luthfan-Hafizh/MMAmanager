@@ -3,6 +3,7 @@
 // country, a calendar, and the player's career.
 
 import { Rng, hashString } from "../core/rng";
+import { ageAt } from "../core/time";
 import { clamp } from "../core/util";
 import { COUNTRY_LIST, countriesIn, countryOf, REGION_IDS, type RegionId } from "../data/countries";
 import { DIVISIONS, type DivisionId, type Sex } from "../data/divisions";
@@ -13,12 +14,49 @@ import { ovrOf } from "../model/attributes";
 import type { Career, Contract, Fighter, Gym, PromoState, Stance, World } from "../model/types";
 import { defaultTraining } from "../career/training";
 import { ensureSchedule } from "./calendar";
-import { addNews, fullName, nextId, touch, withRng } from "./core";
+import { addNews, fullName, nextId, rankOf, touch, withRng } from "./core";
 import { generateFighter, makeRecord, pickCountry } from "./generate";
-import { realFighter, realGym, type RosterFile } from "./real";
+import { currentStreak, potentialNoise, prospectRoom, realFighter, realGym, type RosterFile } from "./real";
 import { entryElo, updateP4P, updateRankings } from "./rankings";
 
-export const SAVE_VERSION = 1;
+export const SAVE_VERSION = 2;
+/** The oldest save format this version can bring up to date. */
+export const OLDEST_SAVE = 1;
+
+/** Bring a save from an older format up to date (the roster fills in what it did not keep). */
+export function migrate(w: World, roster: RosterFile | null): World {
+  if (w.v < 2) {
+    // Format 2: real fighters are scouted as prospects. Their potential used
+    // to sit barely above their level, so young real fighters never grew.
+    // Their fights on the big stage before the world began, and the streaks
+    // the snapshot was missing, come from the roster.
+    const byId = new Map((roster?.fighters ?? []).map((rf) => [rf.id, rf] as const));
+    for (const f of Object.values(w.fighters)) {
+      if (!f.real) continue;
+      const rf = byId.get(f.id);
+      if (rf?.pr && !f.prior) f.prior = { promo: rf.p as PromoId, n: rf.pr[0] + rf.pr[1] + rf.pr[2] };
+      if (rf && !f.bouts.some((id) => w.bouts[id]?.status === "done")) f.streak = currentStreak(rf);
+      if (rf) f.bestStreak = Math.max(f.bestStreak ?? 0, rf.bs ?? 0, f.streak);
+      if (f.status !== "active") continue;
+      const cur = ovrOf(f.attrs);
+      const view = {
+        age: ageAt(f.birth, w.day),
+        w: f.rec.w,
+        l: f.rec.l,
+        d: f.rec.d,
+        finishes: f.rec.koW + f.rec.subW,
+        pop: f.pop,
+        rank: rankOf(w, f),
+        top: f.promo === "ufc" || f.promo === "pfl",
+        growth: rf?.dv[1],
+      };
+      const pot = Math.round(clamp(cur + prospectRoom(view, cur, potentialNoise(f.id, w.seed)), cur, 94));
+      if (pot > f.hid.pot) f.hid.pot = pot;
+    }
+    w.v = 2;
+  }
+  return w;
+}
 
 export type StartLevel = "amateur" | "debut" | "regional";
 export type Talent = "average" | "prospect" | "phenom";
@@ -306,7 +344,7 @@ export function createWorld(roster: RosterFile, o: NewGameOptions): World {
     ups.ranks[d]!.forEach((id, i) => (w.fighters[id].elo = 1800 - i * 9));
   }
   for (const f of Object.values(w.fighters)) {
-    if (f.promo === "ufc" && !ufcRank.has(f.id)) f.elo = Math.round(clamp(1480 + (ovrOf(f.attrs) - 72) * 13 + f.streak * 6, 1380, 1665));
+    if (f.promo === "ufc" && !ufcRank.has(f.id)) f.elo = Math.round(clamp(1480 + (ovrOf(f.attrs) - 72) * 13 + clamp(f.streak, -3, 8) * 6, 1380, 1665));
   }
   const pps = w.promos.pfl;
   for (const d of PROMOTIONS.pfl.divisions) {
@@ -323,7 +361,7 @@ export function createWorld(roster: RosterFile, o: NewGameOptions): World {
     pps.ranks[d]!.forEach((id, i) => (w.fighters[id].elo = 1650 - i * 11));
   }
   for (const f of Object.values(w.fighters)) {
-    if (f.promo === "pfl" && !pflRank.has(f.id) && pps.interim[f.div] !== f.id) f.elo = Math.round(clamp(1390 + (ovrOf(f.attrs) - 66) * 11, 1250, 1600));
+    if (f.promo === "pfl" && !pflRank.has(f.id) && pps.interim[f.div] !== f.id) f.elo = Math.round(clamp(1390 + (ovrOf(f.attrs) - 66) * 11 + clamp(f.streak, -3, 8) * 5, 1250, 1600));
   }
   w.p4p = roster.ufc.p4p.filter((id) => w.fighters[id]?.promo === "ufc");
 

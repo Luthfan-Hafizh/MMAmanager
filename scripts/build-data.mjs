@@ -37,6 +37,12 @@ function compact(f, promo) {
     m: [m.koWins ?? 0, m.subWins ?? 0, m.decWins ?? 0, m.koLosses ?? 0, m.subLosses ?? 0, m.decLosses ?? 0],
     ws: f.winStreak ?? 0,
     ls: f.lossStreak ?? 0,
+    bs: f.bestStreak ?? 0,
+    // The record on this stage: the UFC's for UFC fighters, the league's for the PFL's.
+    pr: (() => {
+      const r = promo === "ufc" ? f.majorRecord : f.leagueRecord;
+      return r ? [r.w ?? 0, r.l ?? 0, r.d ?? 0] : undefined;
+    })(),
     rt: [f.ratings.striking, f.ratings.grappling, f.ratings.wrestling, f.ratings.submissions, f.ratings.cardio, f.ratings.durability],
     t: T_KEYS.map((k) => round(f.tendencies?.[k] ?? 0.5)),
     ps: P_KEYS.map((k) => f.personality?.[k] ?? 50),

@@ -7,6 +7,7 @@ import { ovr } from "../../model/attributes";
 import type { Stance, World } from "../../model/types";
 import { createWorld, starterClients, addControlled, type CreatedFighter, type NewGameOptions, type StartLevel, type Talent } from "../../world/create";
 import { realFighter, type RosterFile } from "../../world/real";
+import { potentialText } from "../../world/development";
 import { loadRoster, newGame, setBusy, setWorld, toast } from "../../state/store";
 import { saveWorld } from "../../state/persist";
 import { heightText } from "../../core/util";
@@ -61,8 +62,10 @@ export function NewGame() {
   const steps: Step[] = mode === "fighter" ? ["mode", "origin", takeover !== null || step === "real" ? "real" : "create", "review"] : ["mode", "agency", "clients"];
   const stepName: Record<Step, string> = { mode: "Career", origin: "Fighter", create: "Create", real: "Real fighter", review: "Start", agency: "Agency", clients: "Clients" };
 
+  // Chosen up front so the real-fighter list shows the potential this world will have.
+  const [seed] = useState(() => Math.floor(Math.random() * 2 ** 31));
+
   const start = async () => {
-    const seed = Math.floor(Math.random() * 2 ** 31);
     if (mode === "fighter") {
       if (takeover) {
         await newGame({ name: "Career", seed, mode, difficulty, takeover });
@@ -160,7 +163,7 @@ export function NewGame() {
       {step === "create" && <CreateForm cf={cf} setCf={setCf} onBack={() => setStep("origin")} onNext={() => setStep("review")} />}
 
       {step === "real" && roster && (
-        <RealPicker roster={roster} value={takeover} onPick={setTakeover} onBack={() => { setTakeover(null); setStep("origin"); }} onNext={() => takeover && setStep("review")} />
+        <RealPicker roster={roster} seed={seed} value={takeover} onPick={setTakeover} onBack={() => { setTakeover(null); setStep("origin"); }} onNext={() => takeover && setStep("review")} />
       )}
 
       {step === "review" && (
@@ -331,7 +334,7 @@ function CreateForm({ cf, setCf, onBack, onNext }: { cf: CreatedFighter; setCf: 
   );
 }
 
-function RealPicker({ roster, value, onPick, onBack, onNext }: { roster: RosterFile; value: string | null; onPick: (id: string) => void; onBack: () => void; onNext: () => void }) {
+function RealPicker({ roster, seed, value, onPick, onBack, onNext }: { roster: RosterFile; seed: number; value: string | null; onPick: (id: string) => void; onBack: () => void; onNext: () => void }) {
   const [promo, setPromo] = useState<"ufc" | "pfl">("ufc");
   const [div, setDiv] = useState<DivisionId | "all">("all");
   const [q, setQ] = useState("");
@@ -344,12 +347,13 @@ function RealPicker({ roster, value, onPick, onBack, onNext }: { roster: RosterF
     }
     for (const id of Object.values(roster.pfl.champs)) if (id) rank.set(id, 0);
     for (const l of Object.values(roster.pfl.ranks)) l?.forEach((id, i) => rank.set(id, i + 1));
-    const ctx = { rankOf: (id: string) => rank.get(id) ?? null, p4p: () => null, day: 0 };
+    const p4p = new Map(roster.ufc.p4p.map((id, i) => [id, i + 1] as const));
+    const ctx = { rankOf: (id: string) => rank.get(id) ?? null, p4p: (id: string) => p4p.get(id) ?? null, day: 0 };
     return roster.fighters
       .filter((f) => f.p === promo && (div === "all" || f.d === div) && (!q || f.n.toLowerCase().includes(q.toLowerCase())))
-      .map((rf) => ({ rf, f: realFighter(rf, ctx, 1), rank: rank.get(rf.id) ?? null }))
+      .map((rf) => ({ rf, f: realFighter(rf, ctx, seed), rank: rank.get(rf.id) ?? null }))
       .sort((a, b) => (a.rank ?? 99) - (b.rank ?? 99) || ovr(b.f.attrs) - ovr(a.f.attrs));
-  }, [roster, promo, div, q]);
+  }, [roster, seed, promo, div, q]);
   return (
     <Panel title="Pick a real fighter" hint={`${rows.length} fighters`} acts={<button className="btn sm" onClick={onBack}>Back</button>}>
       <div className="row" style={{ marginBottom: 12 }}>
@@ -365,7 +369,7 @@ function RealPicker({ roster, value, onPick, onBack, onNext }: { roster: RosterF
       <div style={{ maxHeight: 520, overflowY: "auto" }}>
         <table className="tbl compact">
           <thead>
-            <tr><th>Rank</th><th>Fighter</th><th>Division</th><th className="r">Record</th><th className="r">Age</th><th className="c">Overall</th></tr>
+            <tr><th>Rank</th><th>Fighter</th><th>Division</th><th className="r">Record</th><th className="r">Age</th><th className="c">Overall</th><th>Outlook</th></tr>
           </thead>
           <tbody>
             {rows.slice(0, 300).map(({ rf, f, rank }) => (
@@ -376,6 +380,7 @@ function RealPicker({ roster, value, onPick, onBack, onNext }: { roster: RosterF
                 <td className="r">{rf.r[0]}-{rf.r[1]}{rf.r[2] ? `-${rf.r[2]}` : ""}</td>
                 <td className="r">{rf.a}</td>
                 <td className="c"><Ovr v={ovr(f.attrs)} sm /></td>
+                <td className="small">{potentialText(f, 0, 0.7)}</td>
               </tr>
             ))}
           </tbody>
@@ -403,7 +408,7 @@ function ClientPicker({ w, picks, setPicks }: { w: World; picks: string[]; setPi
             <td className="r">{recordText(f)}</td>
             <td className="r">{Math.floor((w.day - f.birth) / 365.25)}</td>
             <td className="c"><Ovr v={ovr(f.attrs)} sm /></td>
-            <td className="small">{f.hid.pot - ovr(f.attrs) > 12 ? "Could be special" : f.hid.pot - ovr(f.attrs) > 6 ? "Room to grow" : "Near the ceiling"}</td>
+            <td className="small">{potentialText(f, w.day, 0.7)}</td>
           </tr>
         ))}
       </tbody>

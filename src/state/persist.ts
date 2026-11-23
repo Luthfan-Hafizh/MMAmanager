@@ -1,7 +1,8 @@
 // Saves: compressed JSON in IndexedDB, one record per career, plus export and import.
 
 import type { World } from "../model/types";
-import { SAVE_VERSION } from "../world/create";
+import { migrate, OLDEST_SAVE, SAVE_VERSION } from "../world/create";
+import { loadRoster } from "./roster";
 
 export interface SaveMeta {
   id: string;
@@ -93,8 +94,13 @@ export async function loadWorld(id: string): Promise<World | null> {
   const data = await tx<Uint8Array | string | undefined>(db, STORE, "readonly", (s) => s.get(id) as IDBRequest<Uint8Array | string | undefined>);
   db.close();
   if (!data) return null;
-  const w = JSON.parse(await gunzip(data)) as World;
-  return w;
+  return upToDate(JSON.parse(await gunzip(data)) as World);
+}
+
+/** Bring an older save up to date; the roster file fills in what old saves did not keep. */
+async function upToDate(w: World): Promise<World> {
+  if (w.v >= SAVE_VERSION) return w;
+  return migrate(w, await loadRoster().catch(() => null));
 }
 
 export async function deleteSave(id: string): Promise<void> {
@@ -105,7 +111,8 @@ export async function deleteSave(id: string): Promise<void> {
 }
 
 export function compatible(m: SaveMeta | World): boolean {
-  return ("version" in m ? m.version : m.v) === SAVE_VERSION;
+  const v = "version" in m ? m.version : m.v;
+  return v >= OLDEST_SAVE && v <= SAVE_VERSION;
 }
 
 export function exportWorld(w: World): void {
@@ -126,6 +133,6 @@ export async function importFile(file: File): Promise<World> {
   else text = await file.text();
   const w = JSON.parse(text) as World;
   if (!w || !w.fighters || !w.career) throw new Error("That file is not an MMA Manager save.");
-  if (w.v !== SAVE_VERSION) throw new Error(`This save is from another version of the game (format ${w.v}).`);
-  return w;
+  if (!compatible(w)) throw new Error(`This save is from another version of the game (format ${w.v}).`);
+  return upToDate(w);
 }

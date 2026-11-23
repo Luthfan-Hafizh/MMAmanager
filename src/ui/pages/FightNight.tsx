@@ -11,6 +11,7 @@ import { boutRng, fightNight, openFightNight, quickSim, resolvePlayerBout } from
 import { changed, save, toast, useWorld } from "../../state/store";
 import { go, Link } from "../router";
 import { Bar, Empty, FighterLink, Panel, Seg } from "../components";
+import { Band } from "../art";
 import { PlanEditor } from "./NextFight";
 
 export function FightNight() {
@@ -31,20 +32,28 @@ export function FightNight() {
     if (finished) {
       const e = w.events[finished];
       return (
-        <Panel title="The night is over">
-          <p>{e?.name} is in the books.</p>
-          <div className="row">
-            <Link to={`/event/${finished}`} className="btn">See the results</Link>
-            <button className="btn primary" onClick={() => go("/home")}>Back to work</button>
+        <>
+          <Band eyebrow="Fight night" title="In the books" sub={`${e?.name} is over. The results, the bonuses and the new rankings are in.`} />
+          <div className="wrap page-body">
+            <div className="row">
+              <Link to={`/event/${finished}`} className="btn">See the results</Link>
+              <button className="btn primary" onClick={() => go("/home")}>Back to work</button>
+            </div>
           </div>
-        </Panel>
+        </>
       );
     }
-    return <Empty title="No fight tonight">Fight nights appear here on the day.</Empty>;
+    return (
+      <>
+        <Band eyebrow="Fight night" title="No fight tonight" sub="Fight nights open here on the day of the event." />
+        <div className="wrap page-body" />
+      </>
+    );
   }
   const awaiting = ev.bouts.map((id) => w.bouts[id]).filter((b) => b.awaiting);
   if (live) {
     return (
+      <div className="wrap page-body">
       <LiveFight
         w={w}
         b={live}
@@ -56,16 +65,15 @@ export function FightNight() {
           changed();
         }}
       />
+      </div>
     );
   }
   const done = ev.bouts.map((id) => w.bouts[id]).filter((b) => b.status === "done");
   return (
+    <>
+    <Band eyebrow={<><span className="tag red">Live</span><span>{fmtDate(ev.day, { dow: true })}</span></>} title={ev.name} sub={`${ev.venue}, ${ev.city}. The undercard is under way; your fight is waiting.`} />
+    <div className="wrap page-body">
     <div className="grid">
-      <div className="c12">
-        <div className="hero">
-          <div className="name"><small>{fmtDate(ev.day, { dow: true })} · {ev.venue}, {ev.city}</small>{ev.name}</div>
-        </div>
-      </div>
       <div className="c6 stack">
         {awaiting.map((b) => {
           const a = w.fighters[b.a];
@@ -116,6 +124,8 @@ export function FightNight() {
         </Panel>
       </div>
     </div>
+    </div>
+    </>
   );
 }
 
@@ -173,25 +183,43 @@ function LiveFight({ w, b, onDone }: { w: World; b: Bout; onDone: (o: FightOutco
     tick();
   };
   const roundLead = sim.cards.length ? sim.scoreDiff(me) : 0;
+  const A = st(0);
+  const B = st(1);
+  const stat = (k: string, a: number, b: number, fa = String(a), fb = String(b)) => {
+    const t = a + b || 1;
+    return (
+      <div className="bc-stat">
+        <div className="k">{k}</div>
+        <div className="v"><span>{fa}</span><span>{fb}</span></div>
+        <div className="vbar"><div className="a" style={{ width: `${(a / t) * 100}%` }} /><div className="b" style={{ width: `${(b / t) * 100}%` }} /></div>
+      </div>
+    );
+  };
   return (
     <div className="stack">
-      <div className="arena">
-        <FighterMeters sim={sim} i={0} />
-        <div className="center-col stack">
-          <div className="panel clock-box">
+      <section className="broadcast" aria-label="Live fight">
+        <div className="scorebug">
+          <FighterMeters sim={sim} i={0} />
+          <div className="mid">
             <div className="rd">Round {sim.round} of {sim.rounds}</div>
             <div className="clock">{clock(Math.max(0, sim.roundSec - sim.t))}</div>
             <div className="pos">{sim.over ? "Fight over" : sim.between ? "Between rounds" : posText}</div>
-            <div className="row" style={{ justifyContent: "center", marginTop: 12 }}>
-              <Seg value={speed} onChange={setSpeed} options={SPEEDS} />
-              <button className="btn sm" onClick={() => setPaused((p) => !p)} disabled={sim.over || sim.between}>{paused ? "Resume" : "Pause"}</button>
-              <button className="btn sm" disabled={sim.over || sim.between} onClick={() => { let g = 0; while (!sim.over && !sim.between && g++ < 5000) sim.step(); tick(); }}>End of round</button>
-            </div>
           </div>
-          <StatsBox a={st(0)} b={st(1)} names={[sim.s[0].name, sim.s[1].name]} />
+          <FighterMeters sim={sim} i={1} />
         </div>
-        <FighterMeters sim={sim} i={1} />
-      </div>
+        <div className="bc-stats">
+          {stat("Sig. strikes", A.sigL, B.sigL, `${A.sigL}/${A.sigA}`, `${B.sigL}/${B.sigA}`)}
+          {stat("Takedowns", A.tdL, B.tdL, `${A.tdL}/${A.tdA}`, `${B.tdL}/${B.tdA}`)}
+          {stat("Knockdowns", A.kd, B.kd)}
+          {stat("Sub attempts", A.subA, B.subA)}
+          {stat("Control", A.ctrl, B.ctrl, clock(A.ctrl), clock(B.ctrl))}
+        </div>
+        <div className="bc-ctrl">
+          <Seg value={speed} onChange={setSpeed} options={SPEEDS} />
+          <button className="btn sm" onClick={() => setPaused((p) => !p)} disabled={sim.over || sim.between}>{paused ? "Resume" : "Pause"}</button>
+          <button className="btn sm" disabled={sim.over || sim.between} onClick={() => { let g = 0; while (!sim.over && !sim.between && g++ < 5000) sim.step(); tick(); }}>End of round</button>
+        </div>
+      </section>
 
       {!sim.over && !sim.between && (
         <Panel title="Corner" hint="Shouts last until the end of the round. Discipline decides if they're heard.">
@@ -272,32 +300,21 @@ function FighterMeters({ sim, i }: { sim: FightSim; i: 0 | 1 }) {
       <Bar v={v} kind={kind} />
     </div>
   );
+  const kd = s.rs.reduce((a, r) => a + r.kd, 0);
   return (
-    <div className={`panel fighter-live ${i === 0 ? "a" : "b"}`}>
+    <div className={`side ${i === 0 ? "a" : "b"}`}>
       <div className="nm">{s.name}</div>
-      <div className="small dim" style={{ textAlign: i === 1 ? "right" : "left" }}>{recordText(s.f)}{s.stun > 0 ? " · HURT" : ""}{s.cut ? ` · cut ${s.cut}` : ""}</div>
-      {m("Gas tank", s.sta, s.sta < 35 ? "red" : s.sta < 55 ? "warn" : undefined)}
-      {m("Head", s.head, s.head < 40 ? "red" : s.head < 65 ? "warn" : "info")}
-      <div className="body-map">
-        <div>Body<b>{Math.round(s.body)}</b></div>
-        <div>Legs<b>{Math.round(s.legs)}</b></div>
-        <div>KD<b>{s.rs.reduce((a, r) => a + r.kd, 0)}</b></div>
+      <div className="rec">{recordText(s.f)} {s.stun > 0 && <span className="hurt">Hurt</span>}</div>
+      <div className="meters">
+        {m("Gas tank", s.sta, s.sta < 35 ? "red" : s.sta < 55 ? "warn" : undefined)}
+        {m("Head", s.head, s.head < 40 ? "red" : s.head < 65 ? "warn" : "info")}
+      </div>
+      <div className="bodymap">
+        <span>Body {Math.round(s.body)}</span>
+        <span>Legs {Math.round(s.legs)}</span>
+        {kd > 0 && <span>KD {kd}</span>}
+        {s.cut > 0 && <span>Cut {s.cut}</span>}
       </div>
     </div>
-  );
-}
-
-function StatsBox({ a, b, names }: { a: Record<string, number>; b: Record<string, number>; names: [string, string] }) {
-  const row = (label: string, x: string, y: string) => (
-    <div className="versus"><div className="l">{x}</div><div className="m">{label}</div><div className="r">{y}</div></div>
-  );
-  return (
-    <Panel title="Live stats" hint={`${names[0]} · ${names[1]}`}>
-      {row("Sig. strikes", `${a.sigL}/${a.sigA}`, `${b.sigL}/${b.sigA}`)}
-      {row("Takedowns", `${a.tdL}/${a.tdA}`, `${b.tdL}/${b.tdA}`)}
-      {row("Knockdowns", String(a.kd), String(b.kd))}
-      {row("Sub attempts", String(a.subA), String(b.subA))}
-      {row("Control", clock(a.ctrl), clock(b.ctrl))}
-    </Panel>
   );
 }

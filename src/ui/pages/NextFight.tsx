@@ -18,67 +18,83 @@ import { Link } from "../router";
 import { Empty, FighterLink, Flag, Ovr, Panel, Seg, Versus } from "../components";
 import { FighterSwitch } from "./Training";
 import { NextFightCard } from "./Home";
+import { Band } from "../art";
+import { BoutPreview } from "./Events";
+import { oddsOf } from "../../world/odds";
 
 export function NextFight({ id }: { id?: string }) {
   const w = useWorld();
   const fid = id && w.career.fc[id] ? id : w.career.fighters[0];
   const f = w.fighters[fid];
   const fc = w.career.fc[fid];
-  if (!f || !fc) return <Empty title="No fighter" />;
+  if (!f || !fc) return <div className="wrap page-body"><Empty title="No fighter" /></div>;
   const b = f.booked ? w.bouts[f.booked] : null;
   if (!b || b.status !== "booked" || b.pending) {
     return (
-      <div className="grid">
-        <div className="c12"><FighterSwitch w={w} id={fid} base="/fight" /></div>
-        <div className="c6"><NextFightCard w={w} f={f} /></div>
-      </div>
+      <>
+        <Band eyebrow="Fight camp" title="Next fight" sub="When a fight is signed, the camp starts here: the opponent, the cut, the partners and the game plan." />
+        <div className="wrap page-body">
+          <div className="row" style={{ marginBottom: 16 }}><FighterSwitch w={w} id={fid} base="/fight" /></div>
+          <div className="grid"><div className="c8"><NextFightCard w={w} f={f} /></div></div>
+        </div>
+      </>
     );
   }
   if (!fc.camp || fc.camp.bout !== b.id) startCamp(w, f, b);
   const camp = fc.camp!;
   const opp = w.fighters[b.a === f.id ? b.b : b.a];
   return (
-    <div className="grid">
-      <div className="c12"><FighterSwitch w={w} id={fid} base="/fight" /></div>
-      <div className="c12"><FightHeader w={w} b={b} f={f} opp={opp} /></div>
-      <div className="c5 stack">
-        <TaleOfTheTape w={w} f={f} opp={opp} b={b} />
-        <Scouting w={w} opp={opp} me={f} />
+    <>
+      <FightHeader w={w} b={b} f={f} opp={opp} />
+      <div className="wrap page-body">
+        <div className="row" style={{ marginBottom: 16 }}><FighterSwitch w={w} id={fid} base="/fight" /></div>
+        <div className="panel" style={{ marginBottom: 18 }}><BoutPreview w={w} b={b} /></div>
+        <div className="grid">
+          <div className="c5 stack">
+            <TaleOfTheTape w={w} f={f} opp={opp} b={b} />
+            <Scouting w={w} opp={opp} me={f} />
+          </div>
+          <div className="c7 stack">
+            <CampPanel w={w} f={f} b={b} camp={camp} />
+            <PlanEditor plan={camp.plan} onChange={(p) => { camp.plan = p; changed(); }} suggest={() => suggestPlan(f.attrs, opp.attrs, f.reach - opp.reach)} me={f} opp={opp} />
+            <Odds w={w} b={b} f={f} />
+          </div>
+        </div>
       </div>
-      <div className="c7 stack">
-        <CampPanel w={w} f={f} b={b} camp={camp} />
-        <PlanEditor plan={camp.plan} onChange={(p) => { camp.plan = p; changed(); }} suggest={() => suggestPlan(f.attrs, opp.attrs, f.reach - opp.reach)} me={f} opp={opp} />
-        <Odds w={w} b={b} f={f} />
-      </div>
-    </div>
+    </>
   );
 }
 
 function FightHeader({ w, b, f, opp }: { w: World; b: Bout; f: Fighter; opp: Fighter }) {
   const ev = w.events[b.ev];
   const title = b.kind === "title" || b.kind === "vacant" || b.kind === "interim";
+  const days = b.day - w.day;
+  const odds = oddsOf(b);
+  const mine = b.a === f.id ? "a" : "b";
+  const myP = b.odds === undefined ? 0.5 : mine === "a" ? b.odds : 1 - b.odds;
   return (
-    <div className="hero">
-      <div className="vs-card">
-        <div>
-          <div className="tiny dim up disp">{rankLabel(w, f) || "Unranked"} · {recordText(f)}</div>
-          <div className="who" style={{ fontSize: 36 }}>{fullName(f)}</div>
-        </div>
-        <div className="center">
-          <div className="vs" style={{ fontSize: 30 }}>VS</div>
-          {title && <div className="badge gold" style={{ marginTop: 6 }}>{b.kind === "interim" ? "Interim title" : "Title fight"}</div>}
-        </div>
-        <div className="r2">
-          <div className="tiny dim up disp">{rankLabel(w, opp) || "Unranked"} · {recordText(opp)}</div>
-          <div className="who" style={{ fontSize: 36 }}><Link to={`/fighter/${opp.id}`}>{fullName(opp)}</Link></div>
-        </div>
+    <Band
+      eyebrow={<>{title && <span className="tag gold">{b.kind === "interim" ? "Interim title" : "Title fight"}</span>}<span>{ev?.name}</span><span className="dim">·</span><span>{fmtDate(b.day, { dow: true })}</span></>}
+      first={`${f.surname} vs`}
+      title={opp.surname}
+      sub={`${ev?.venue}, ${ev?.city} · ${b.rounds} × ${b.roundSec / 60} min · ${DIVISIONS[b.div].name} (${DIVISIONS[b.div].limit} lb)${b.shortNotice ? " · short notice" : ""}`}
+      word={opp.surname}
+      right={
+        odds ? (
+          <div className="duo">
+            <div><div className={`odds ${myP >= 0.5 ? "fav" : "dog"}`}>{mine === "a" ? odds.a : odds.b}</div><div className="k">{f.surname}</div></div>
+            <div className="vs">VS</div>
+            <div><div className={`odds ${myP < 0.5 ? "fav" : "dog"}`}>{mine === "a" ? odds.b : odds.a}</div><div className="k">{opp.surname}</div></div>
+          </div>
+        ) : undefined
+      }
+    >
+      <div className="bignums">
+        <div><div className="n">{days}</div><div className="k">{days === 1 ? "Day to go" : "Days to go"}</div></div>
+        <div><div className="n">{recordText(f)}</div><div className="k">{rankLabel(w, f) || "Unranked"} · you</div></div>
+        <div><div className="n">{recordText(opp)}</div><div className="k">{rankLabel(w, opp) || "Unranked"} · <Link to={`/fighter/${opp.id}`} className="link">profile</Link></div></div>
       </div>
-      <div className="spread small" style={{ marginTop: 12, flexWrap: "wrap" }}>
-        <span><Link to={`/event/${b.ev}`}><b>{ev?.name}</b></Link> · {ev?.venue}, {ev?.city} · {fmtDate(b.day, { dow: true })}</span>
-        <span>{b.rounds} × {b.roundSec / 60} min · {DIVISIONS[b.div].name} ({DIVISIONS[b.div].limit} lb){b.shortNotice ? " · short notice" : ""}</span>
-        <span className="gold-t disp up" style={{ fontSize: 16 }}>{weeksText(b.day - w.day)}</span>
-      </div>
-    </div>
+    </Band>
   );
 }
 

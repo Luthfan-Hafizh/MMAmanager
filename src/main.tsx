@@ -10,7 +10,7 @@ const theme = (() => {
     return null;
   }
 })();
-if (theme === "light" || theme === "dark") document.documentElement.dataset.theme = theme;
+if (theme === "dark") document.documentElement.dataset.theme = theme;
 
 createRoot(document.getElementById("root")!).render(
   <StrictMode>

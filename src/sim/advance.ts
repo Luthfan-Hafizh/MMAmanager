@@ -23,6 +23,10 @@ import { trainingWeek } from "../career/training";
 import { rankAchievements } from "../career/achievements";
 import { monthlySponsors, weeklySponsors } from "../career/sponsors";
 import { monthlyAgency } from "../career/agency";
+import { fightWeekDaily } from "../career/fightweek";
+import { walkMonthly } from "../career/moves";
+import { legacyMonthly } from "../world/legacy";
+import { retirementTalk } from "../career/retire";
 
 export interface Stop {
   kind: "decision" | "fight" | "week" | "message" | "retired";
@@ -51,7 +55,8 @@ function weekly(w: World, rng: Rng): void {
     if (!f || !fc || f.status !== "active") continue;
     const plan = { ...fc.plan, week: [...fc.plan.week] };
     if (fc.dayJob) for (let k = 6; k < 10; k++) plan.week[k] = "rest";
-    const r = trainingWeek(w, f, plan, rng, true);
+    const r = trainingWeek(w, f, plan, rng, true, fc.adapt ? 0.75 : 1);
+    if (fc.adapt) fc.adapt--;
     fc.week = { growth: r.growth, fatigue: r.fatigue, injury: r.injury?.name };
     // Technique drilling.
     if (r.drilled) {
@@ -100,6 +105,9 @@ function monthly(w: World, rng: Rng): void {
   monthlySponsors(w, rng);
   if (w.career.mode === "manager") monthlyAgency(w, rng);
   rankAchievements(w);
+  walkMonthly(w);
+  legacyMonthly(w);
+  retirementTalk(w, rng);
   for (const id of w.career.fighters) {
     const fc = w.career.fc[id];
     const f = w.fighters[id];
@@ -156,6 +164,7 @@ export function advanceDay(w: World): Stop[] {
     campInjuries(w, rng);
     bookingPass(w, rng);
     if (w.day % 3 === 0) fillGaps(w, rng);
+    fightWeekDaily(w, rng);
     if (isMonday(w.day)) weekly(w, rng);
     if (isFirstOfMonth(w.day)) monthly(w, rng);
     for (const ev of eventsOn(w, w.day)) {
@@ -197,7 +206,7 @@ export function advance(w: World, max = 7, onDay?: (w: World) => void): AdvanceR
     if (block.length) return { days, stop: { kind: "decision", text: block[0].subject, ref: block[0].id } };
     const fn = fightNight(w);
     if (fn) return { days, stop: { kind: "fight", text: `Fight night: ${fn.name}`, ref: fn.id } };
-    if (!w.career.fighters.some((id) => w.fighters[id]?.status === "active")) return { days, stop: { kind: "retired", text: "No active fighters." } };
+    if (!w.career.fighters.some((id) => w.fighters[id]?.status === "active") && !w.career.retiredAt) return { days, stop: { kind: "retired", text: "No active fighters." } };
     const stops = advanceDay(w);
     days++;
     onDay?.(w);

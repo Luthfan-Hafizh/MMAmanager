@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { ageYears, fmtDate, clock } from "../../core/time";
-import { cmOf, heightText, kgOf, money } from "../../core/util";
+import { cmOf, heightText } from "../../core/util";
 import { countryOf } from "../../data/countries";
 import { DIVISIONS } from "../../data/divisions";
 import { PROMOTIONS } from "../../data/promotions";
@@ -9,11 +9,15 @@ import { MASTERY_NAMES, TECHNIQUES, TECH_IDS, type TechId } from "../../data/tec
 import { groupScore, ovr, ovrBand, styleOf } from "../../model/attributes";
 import type { Bout, Fighter, World } from "../../model/types";
 import { methodText } from "../../engine/sim";
-import { boutsOf, fullName, rankLabel, recordText, resultFor, amRecordText } from "../../world/core";
+import { boutsOf, isChampion, rankLabel, recordText, resultFor, amRecordText } from "../../world/core";
 import { potentialText, primeText } from "../../world/development";
-import { useWorld } from "../../state/store";
-import { Link } from "../router";
-import { AttrGrid, Empty, FighterLink, Flag, Form, Ovr, Panel, PromoBadge, Stars, Tabs } from "../components";
+import { changed, toast, useWorld } from "../../state/store";
+import { retirePlayer } from "../../career/retire";
+import { go, Link } from "../router";
+import { AttrGrid, Empty, FighterLink, Flag, Form, Panel, Stars, Tabs } from "../components";
+import { Band, BodyTarget, Donut, Mark } from "../art";
+import { goatRank, legacyText } from "../../world/legacy";
+import { headToHead } from "../../world/odds";
 
 type Tab = "overview" | "fights" | "stats" | "techniques";
 
@@ -21,146 +25,186 @@ export function FighterPage({ id, tab }: { id: string; tab?: string }) {
   const w = useWorld();
   const f = w.fighters[id];
   const [t, setT] = useState<Tab>((tab as Tab) ?? "overview");
-  if (!f) return <Empty title="Fighter not found" />;
+  if (!f) return <div className="wrap page-body"><Empty title="Fighter not found" /></div>;
   return (
-    <div className="stack">
-      <Hero w={w} f={f} />
-      <Tabs<Tab> value={t} onChange={setT} tabs={[{ id: "overview", label: "Overview" }, { id: "fights", label: "Fight history" }, { id: "stats", label: "Statistics" }, { id: "techniques", label: "Techniques" }]} />
-      {t === "overview" && <Overview w={w} f={f} />}
-      {t === "fights" && <History w={w} f={f} />}
-      {t === "stats" && <Stats w={w} f={f} />}
-      {t === "techniques" && <Techniques f={f} />}
-    </div>
+    <>
+      <Hero w={w} f={f} tabs={<Tabs<Tab> value={t} onChange={setT} tabs={[{ id: "overview", label: "Overview" }, { id: "stats", label: "Stats & records" }, { id: "fights", label: "Fight history" }, { id: "techniques", label: "Techniques" }]} />} />
+      {t === "stats" ? (
+        <Stats w={w} f={f} />
+      ) : (
+        <div className="wrap page-body">
+          {t === "overview" && <Overview w={w} f={f} />}
+          {t === "fights" && <History w={w} f={f} />}
+          {t === "techniques" && <Techniques f={f} />}
+        </div>
+      )}
+    </>
   );
 }
 
-function Hero({ w, f }: { w: World; f: Fighter }) {
+function Hero({ w, f, tabs }: { w: World; f: Fighter; tabs: React.ReactNode }) {
   const o = ovr(f.attrs);
   const rank = rankLabel(w, f);
   const div = DIVISIONS[f.div];
   const r = f.rec;
-  const wins = Math.max(1, r.w);
+  const champ = isChampion(w, f);
+  const firstRound = boutsOf(w, f).filter((b) => b.res && b.res.round === 1 && b.res.method !== "DEC" && resultFor(b, f.id) === "W").length;
   return (
-    <div className="hero">
-      <div className="spread" style={{ alignItems: "flex-start", flexWrap: "wrap", gap: 18 }}>
-        <div style={{ minWidth: 0 }}>
-          <div className="name">
-            <small>
-              {rank === "C" ? `${PROMOTIONS[f.promo!].short} champion · ` : rank === "IC" ? "Interim champion · " : rank ? `${rank} · ` : ""}
-              {div.name}
-              {f.status === "retired" ? " · Retired" : ""}
-            </small>
-            {f.first}
-            {f.nick ? <span className="dim" style={{ fontSize: 22, display: "block" }}>"{f.nick}"</span> : " "}
-            {f.surname}
-          </div>
-          <div className="facts">
-            <span className="row tight"><Flag code={f.country} lg /> <b>{countryOf(f.country).name}</b></span>
-            <span>Hometown <b>{f.hometown}</b></span>
-            <span>Age <b>{ageYears(f.birth, w.day)}</b></span>
-            <span>Ht <b>{heightText(f.height)}</b> ({cmOf(f.height)} cm)</span>
-            <span>Reach <b>{f.reach}"</b></span>
-            <span>Walks around <b>{f.walk} lb</b> ({kgOf(f.walk)} kg)</span>
-            <span>Stance <b>{f.stance}</b></span>
-            <span>Base <b>{ARTS[f.base].name}</b></span>
-            <span>Team <b>{w.gyms[f.gym]?.name ?? "-"}</b></span>
-            <span className="row tight">{<PromoBadge p={f.promo} />}</span>
-          </div>
-        </div>
-        <div className="row" style={{ gap: 20, alignItems: "stretch" }}>
-          <div className="panel" style={{ padding: "12px 16px", minWidth: 200 }}>
-            <div className="tiny dim up disp">Pro record</div>
-            <div className="big">{recordText(f)}</div>
-            <div className="small" style={{ marginTop: 6, display: "grid", gridTemplateColumns: "auto 1fr 1fr", gap: "2px 10px" }}>
-              <span className="dim">(T)KO</span><b>{r.koW}-{r.koL}</b><span className="dim">{Math.round((r.koW / wins) * 100)}% of wins</span>
-              <span className="dim">Sub</span><b>{r.subW}-{r.subL}</b><span className="dim">{Math.round((r.subW / wins) * 100)}%</span>
-              <span className="dim">Dec</span><b>{r.decW}-{r.decL}</b><span className="dim">{Math.round((r.decW / wins) * 100)}%</span>
-            </div>
-            {(f.am.w + f.am.l) > 0 && <div className="tiny dim" style={{ marginTop: 6 }}>Amateur {amRecordText(f)}</div>}
-          </div>
-          <div className="panel" style={{ padding: "12px 16px", minWidth: 170 }}>
-            <div className="tiny dim up disp">Rating</div>
-            <div className="row" style={{ marginTop: 6 }}>
-              <Ovr v={o} />
-              <div>
-                <Stars v={o} />
-                <div className="small">{ovrBand(o)}</div>
-              </div>
-            </div>
-            <div className="small dim" style={{ marginTop: 8 }}>{styleOf(f.attrs)} · {primeText(f, w.day)}</div>
-            <div className="small dim">{f.ctrl ? potentialText(f, 1) : potentialText(f, 0.5)}</div>
-          </div>
-        </div>
+    <Band
+      eyebrow={
+        <>
+          {rank === "C" ? <span className="tag gold">Champion</span> : rank === "IC" ? <span className="tag gold">Interim champion</span> : rank ? <span className="tag red">{rank} {div.short}</span> : null}
+          <span className="tag">{div.name}</span>
+          <span className="tag">{f.status === "retired" ? "Retired" : f.promo ? PROMOTIONS[f.promo].short : "Free agent"}</span>
+          {f.ctrl && <span className="tag red">Your fighter</span>}
+          {f.tags?.includes("dwcs") && <span className="tag">Contender Series</span>}
+        </>
+      }
+      first={<>{f.nick ? `"${f.nick}"` : f.first}</>}
+      title={f.nick ? `${f.first} ${f.surname}` : f.surname}
+      word={f.surname}
+      right={
+        <Mark gold={champ} label={rank === "C" ? "Champion" : rank === "IC" ? "Interim champion" : rank ? `${div.name} rank` : "Overall rating"} sub={`${rank ? `Overall ${o} · ` : ""}Legacy ${Math.round(f.legacy ?? 0)}${goatRank(w, f) ? ` · #${goatRank(w, f)} all-time` : ""}`}>
+          {rank === "C" ? "C" : rank || o}
+        </Mark>
+      }
+      tabs={tabs}
+    >
+      <div className="factgrid">
+        <div><div className="k">Country</div><div className="v row tight"><Flag code={f.country} /> {countryOf(f.country).name}</div></div>
+        <div><div className="k">Hometown</div><div className="v">{f.hometown}</div></div>
+        <div><div className="k">Age</div><div className="v">{ageYears(f.birth, w.day)}</div></div>
+        <div><div className="k">Height / reach</div><div className="v">{heightText(f.height)} ({cmOf(f.height)} cm) / {f.reach}"</div></div>
+        <div><div className="k">Stance / base</div><div className="v">{f.stance.replace(/^./, (c) => c.toUpperCase())} / {ARTS[f.base].name}</div></div>
+        <div><div className="k">Team</div><div className="v ellip">{w.gyms[f.gym]?.name ?? "-"}</div></div>
       </div>
-      <div className="row" style={{ marginTop: 12 }}>
-        <Form w={w} f={f} n={10} />
-        {f.streak !== 0 && <span className={`badge ${f.streak > 0 ? "good" : "bad"}`}>{Math.abs(f.streak)} {f.streak > 0 ? "win" : "loss"}{Math.abs(f.streak) > 1 ? (f.streak > 0 ? "s" : "es") : ""} in a row</span>}
-        {f.reigns > 0 && <span className="badge gold">{f.reigns} title reign{f.reigns > 1 ? "s" : ""}</span>}
-        {f.tags?.includes("dwcs") && <span className="badge info">Contender Series</span>}
-        <span className="small dim">Popularity {Math.round(f.pop)}</span>
+      <div className="bignums">
+        <div><div className="n">{recordText(f)}</div><div className="k">Pro record (W-L-D)</div></div>
+        <div><div className="n">{r.koW}</div><div className="k">Wins by knockout</div></div>
+        <div><div className="n">{r.subW}</div><div className="k">Wins by submission</div></div>
+        <div><div className="n">{firstRound}</div><div className="k">First-round finishes here</div></div>
+        <div><div className="n">{o}</div><div className="k">{ovrBand(o)}</div></div>
       </div>
-    </div>
+    </Band>
   );
 }
 
 function Overview({ w, f }: { w: World; f: Fighter }) {
   const bouts = boutsOf(w, f).filter((b) => b.status === "done").slice(-5).reverse();
   const nextB = f.booked ? w.bouts[f.booked] : null;
+  const r = f.rec;
+  const wins = Math.max(1, r.w);
   return (
     <div className="grid">
-      <div className="c8">
-        <Panel title="Attributes" hint="1-20, the way management games rate players">
-          <AttrGrid f={f} />
-        </Panel>
+      <div className="c8 stack">
+        <section className="sec">
+          <div className="sec-h"><h2>Attributes</h2><span className="hint">1 to 20, as management games rate them</span></div>
+          <div className="panel"><div className="panel-b"><AttrGrid f={f} /></div></div>
+        </section>
+        <section className="sec">
+          <div className="sec-h"><h2>Last fights</h2><div className="acts"><span className="dim small">Record before 5 Oct 2026 not itemised</span></div></div>
+          <div className="panel">
+            {bouts.length ? bouts.map((b) => <MiniBout key={b.id} w={w} b={b} f={f} />) : <Empty title="No fights in this world yet" />}
+          </div>
+        </section>
       </div>
       <div className="c4 stack">
-        <Panel title="Strengths">
-          <Profile f={f} />
+        <Panel title="Record">
+          <div className="recbox" style={{ borderColor: "var(--line)", background: "var(--sheet-2)" }}>
+            <div style={{ borderColor: "var(--line)" }}><div className="label">W-L-D</div><div className="num" style={{ fontSize: 26 }}>{recordText(f)}</div></div>
+            <div style={{ borderColor: "var(--line)" }}><div className="label">(T)KO</div><div className="num" style={{ fontSize: 26 }}>{r.koW}-{r.koL}</div></div>
+            <div style={{ borderColor: "var(--line)" }}><div className="label">Sub</div><div className="num" style={{ fontSize: 26 }}>{r.subW}-{r.subL}</div></div>
+            <div style={{ borderColor: "var(--line)" }}><div className="label">Dec</div><div className="num" style={{ fontSize: 26 }}>{r.decW}-{r.decL}</div></div>
+          </div>
+          <div className="stack" style={{ gap: 4, marginTop: 14 }}>
+            <MethodRow label="KO/TKO" n={r.koW} total={wins} />
+            <MethodRow label="Sub" n={r.subW} total={wins} />
+            <MethodRow label="Dec" n={r.decW} total={wins} />
+          </div>
+          {(f.am.w + f.am.l) > 0 && <p className="small dim" style={{ marginTop: 10 }}>Amateur record {amRecordText(f)}</p>}
+          <div className="row" style={{ marginTop: 8 }}><Form w={w} f={f} n={8} /></div>
         </Panel>
-        {nextB && nextB.status === "booked" && !nextB.pending && (
-          <Panel title="Next fight">
-            <div className="row">
-              vs <FighterLink w={w} id={nextB.a === f.id ? nextB.b : nextB.a} rank />
-            </div>
-            <div className="small dim" style={{ marginTop: 4 }}>
-              <Link to={`/event/${nextB.ev}`}>{w.events[nextB.ev]?.name}</Link> · {fmtDate(nextB.day)}
-            </div>
+        <Panel title="Scouting">
+          <Profile f={f} />
+          <hr className="sep" />
+          <div className="small">
+            <div className="spread"><span className="label">Rating</span><span className="row tight"><Stars v={ovr(f.attrs)} /> {ovrBand(ovr(f.attrs))}</span></div>
+            <div className="spread" style={{ marginTop: 6 }}><span className="label">Outlook</span><span>{f.ctrl ? potentialText(f, 1) : potentialText(f, 0.5)}</span></div>
+            <div className="spread" style={{ marginTop: 6 }}><span className="label">Career stage</span><span>{primeText(f, w.day)}</span></div>
+            <div className="spread" style={{ marginTop: 6 }}><span className="label">Popularity</span><span>{Math.round(f.pop)}/100</span></div>
+          </div>
+        </Panel>
+        <Rivals w={w} f={f} />
+        {f.ctrl && w.career.mode === "fighter" && f.status === "active" && (
+          <Panel title="The end">
+            <p className="small muted">Retire whenever you choose. The team will say when they think it's time; nobody makes you stop.</p>
+            <button className="btn danger sm" onClick={() => { if (confirm(`Retire ${f.first} ${f.surname}? This ends the fighting career.`)) { toast(retirePlayer(w, f)); changed(); go("/home"); } }}>Retire from MMA</button>
           </Panel>
         )}
-        <Panel title="Last fights" flush>
-          {bouts.length ? bouts.map((b) => <MiniBout key={b.id} w={w} b={b} f={f} />) : <Empty title="No fights in this world yet">The record above was built before October 2026.</Empty>}
-        </Panel>
+        {nextB && nextB.status === "booked" && !nextB.pending && (
+          <Panel title="Next fight" className="accent">
+            <div className="row">vs <FighterLink w={w} id={nextB.a === f.id ? nextB.b : nextB.a} rank /></div>
+            <div className="small dim" style={{ marginTop: 4 }}><Link to={`/event/${nextB.ev}`}>{w.events[nextB.ev]?.name}</Link> · {fmtDate(nextB.day)}</div>
+          </Panel>
+        )}
       </div>
     </div>
   );
 }
 
-function Profile({ f }: { f: Fighter }) {
-  const st = groupScore(f.attrs, "striking");
-  const gr = groupScore(f.attrs, "grappling");
-  const ph = groupScore(f.attrs, "physical");
-  const me = groupScore(f.attrs, "mental");
-  const sorted = (Object.entries(f.attrs) as [string, number][]).sort((a, b) => b[1] - a[1]);
-  const best = sorted.slice(0, 3).map(([k]) => k);
-  const worst = sorted.slice(-3).map(([k]) => k);
-  const name = (k: string) => k.replace(/([A-Z])/g, " $1").toLowerCase().replace("tdd", "takedown defence").replace("sub def", "submission defence").replace("subs", "submissions");
-  const row = (label: string, v: number) => (
-    <div>
-      <div className="spread small"><span className="dim">{label}</span><b>{v.toFixed(1)}</b></div>
-      <div className="bar thin"><i style={{ width: `${(v / 20) * 100}%`, background: v >= 15 ? "var(--a-great)" : v >= 12 ? "var(--a-good)" : v >= 9 ? "var(--a-fair)" : "var(--a-weak)" }} /></div>
+function Rivals({ w, f }: { w: World; f: Fighter }) {
+  const met = new Map<string, { w: number; l: number; d: number }>();
+  for (const id of f.bouts) {
+    const b = w.bouts[id];
+    if (!b || b.status !== "done") continue;
+    const opp = b.a === f.id ? b.b : b.a;
+    const r = resultFor(b, f.id);
+    const cur = met.get(opp) ?? { w: 0, l: 0, d: 0 };
+    if (r === "W") cur.w++;
+    else if (r === "L") cur.l++;
+    else cur.d++;
+    met.set(opp, cur);
+  }
+  const rows = [...met.entries()].filter(([, v]) => v.w + v.l + v.d > 1 || v.l > 0).slice(-6).reverse();
+  if (!rows.length) return null;
+  return (
+    <Panel title="Rivals" hint="head to head" flush>
+      {rows.map(([id, v]) => (
+        <div key={id} className="list-row">
+          <div style={{ flex: 1, minWidth: 0 }}><FighterLink w={w} id={id} rank /></div>
+          <b className="num" style={{ fontSize: 18 }}>{v.w}-{v.l}{v.d ? `-${v.d}` : ""}</b>
+        </div>
+      ))}
+    </Panel>
+  );
+}
+
+function MethodRow({ label, n, total }: { label: string; n: number; total: number }) {
+  return (
+    <div className="methodrow">
+      <b>{label}</b>
+      <div className="bar"><i style={{ width: `${(n / total) * 100}%`, background: "var(--red)" }} /></div>
+      <span className="right small">{n} ({Math.round((n / total) * 100)}%)</span>
     </div>
   );
+}
+
+function Profile({ f }: { f: Fighter }) {
+  const groups: [string, number][] = [
+    ["Striking", groupScore(f.attrs, "striking")],
+    ["Grappling", groupScore(f.attrs, "grappling")],
+    ["Physical", groupScore(f.attrs, "physical")],
+    ["Mental", groupScore(f.attrs, "mental")],
+  ];
   return (
-    <div className="stack" style={{ gap: 8 }}>
-      {row("Striking", st)}
-      {row("Grappling", gr)}
-      {row("Physical", ph)}
-      {row("Mental", me)}
-      <div className="small" style={{ marginTop: 4 }}>
-        <span className="good">Best:</span> {best.map(name).join(", ")}
-        <br />
-        <span className="bad">Weakest:</span> {worst.map(name).join(", ")}
-      </div>
+    <div className="stack" style={{ gap: 10 }}>
+      <div className="spread"><span className="label">Style</span><b className="disp up" style={{ fontSize: 17 }}>{styleOf(f.attrs)}</b></div>
+      {groups.map(([k, v]) => (
+        <div key={k}>
+          <div className="spread small"><span className="label">{k}</span><b className="num" style={{ fontSize: 18 }}>{v.toFixed(1)}</b></div>
+          <div className="bar thin"><i style={{ width: `${(v / 20) * 100}%`, background: "var(--ink)" }} /></div>
+        </div>
+      ))}
     </div>
   );
 }
@@ -172,10 +216,10 @@ function MiniBout({ w, b, f }: { w: World; b: Bout; f: Fighter }) {
     <div className="list-row">
       <span className="form"><i className={r ?? "D"}>{r === "NC" ? "N" : r}</i></span>
       <div style={{ minWidth: 0, flex: 1 }}>
-        <FighterLink w={w} id={opp} />
+        <FighterLink w={w} id={opp} rank />
         <div className="tiny dim">{b.res ? `${methodText(b.res.method, b.res.detail)}${b.res.method !== "DEC" ? `, R${b.res.round} ${clock(b.res.time)}` : ""}` : ""}</div>
       </div>
-      <Link to={`/event/${b.ev}`} className="tiny dim nowrap">{fmtDate(b.day)}</Link>
+      <Link to={`/event/${b.ev}`} className="tiny dim nowrap">{w.events[b.ev]?.name} · {fmtDate(b.day)}</Link>
     </div>
   );
 }
@@ -183,119 +227,139 @@ function MiniBout({ w, b, f }: { w: World; b: Bout; f: Fighter }) {
 function History({ w, f }: { w: World; f: Fighter }) {
   const bouts = boutsOf(w, f).filter((b) => b.status === "done").reverse();
   return (
-    <Panel title="Fight history" hint={`${bouts.length} fights in this world · record before 5 Oct 2026 not itemised`} flush>
-      {bouts.length === 0 ? (
-        <Empty title="No fights yet" />
-      ) : (
-        <div className="tbl-wrap">
-          <table className="tbl">
-            <thead>
-              <tr><th>Res</th><th>Opponent</th><th>Method</th><th className="c">Rd</th><th className="c">Time</th><th>Event</th><th>Date</th></tr>
-            </thead>
-            <tbody>
-              {bouts.map((b) => {
-                const r = resultFor(b, f.id);
-                const opp = b.a === f.id ? b.b : b.a;
-                const ev = w.events[b.ev];
-                return (
-                  <tr key={b.id}>
-                    <td><span className="form"><i className={r ?? "D"}>{r === "NC" ? "N" : r}</i></span></td>
-                    <td><FighterLink w={w} id={opp} /> {b.kind === "title" || b.kind === "vacant" ? <span className="badge gold">Title</span> : b.kind === "interim" ? <span className="badge gold">Interim</span> : null}</td>
-                    <td>{b.res ? methodText(b.res.method, b.res.detail) : ""}</td>
-                    <td className="c">{b.res?.round}</td>
-                    <td className="c">{b.res ? clock(b.res.time) : ""}</td>
-                    <td><Link to={`/event/${b.ev}`}>{ev?.name}</Link> <span className="dim small">{PROMOTIONS[b.promo].short}</span></td>
-                    <td className="nowrap">{fmtDate(b.day)}</td>
-                  </tr>
-                );
-              })}
-            </tbody>
-          </table>
-        </div>
-      )}
-    </Panel>
+    <section className="sec">
+      <div className="sec-h"><h2>Fight history</h2><span className="hint">{bouts.length} fights in this world</span></div>
+      <div className="panel">
+        {bouts.length === 0 ? (
+          <Empty title="No fights yet" />
+        ) : (
+          <div className="tbl-wrap">
+            <table className="tbl">
+              <thead><tr><th>Date</th><th>Opponent</th><th>Res.</th><th>Decision</th><th className="c">Rnd</th><th className="c">Time</th><th>Event</th></tr></thead>
+              <tbody>
+                {bouts.map((b) => {
+                  const r = resultFor(b, f.id);
+                  const opp = b.a === f.id ? b.b : b.a;
+                  return (
+                    <tr key={b.id}>
+                      <td className="nowrap">{fmtDate(b.day)}</td>
+                      <td><FighterLink w={w} id={opp} /> {(b.kind === "title" || b.kind === "vacant") && <span className="badge gold">Title</span>}{b.kind === "interim" && <span className="badge gold">Interim</span>}</td>
+                      <td><span className="form"><i className={r ?? "D"}>{r === "NC" ? "N" : r}</i></span></td>
+                      <td>{b.res ? methodText(b.res.method, b.res.detail) : ""}</td>
+                      <td className="c">{b.res?.round}</td>
+                      <td className="c">{b.res ? clock(b.res.time) : ""}</td>
+                      <td><Link to={`/event/${b.ev}`}>{w.events[b.ev]?.name}</Link></td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          </div>
+        )}
+      </div>
+    </section>
   );
 }
 
 function Stats({ w, f }: { w: World; f: Fighter }) {
   const s = f.stats;
-  const mins = s.secs / 60 || 1;
-  const per15 = (v: number) => ((v / s.secs) * 900).toFixed(2);
-  const pct = (a: number, b: number) => (b ? `${Math.round((a / b) * 100)}%` : "-");
-  const landed = s.head + s.body + s.leg || 1;
-  const pos = s.dist + s.clinch + s.ground || 1;
   const o = f.official;
+  const mins = s.secs / 60;
+  const has = s.fights > 0;
+  const per15 = (v: number) => (s.secs ? ((v / s.secs) * 900).toFixed(2) : "0.00");
+  const strAcc = has && s.sigA ? s.sigL / s.sigA : o ? o.acc / 100 : 0;
+  const tdAcc = has && s.tdA ? s.tdL / s.tdA : 0;
+  const useOfficial = !has && !!o && o.stand !== undefined;
+  const P = useOfficial ? { dist: o!.stand ?? 0, clinch: o!.clinch ?? 0, ground: o!.ground ?? 0 } : { dist: s.dist, clinch: s.clinch, ground: s.ground };
+  const Tg = useOfficial ? { head: o!.head ?? 0, body: o!.body ?? 0, leg: o!.leg ?? 0 } : { head: s.head, body: s.body, leg: s.leg };
+  const pos = P.dist + P.clinch + P.ground || 1;
+  const r = f.rec;
+  const wins = Math.max(1, r.w);
   return (
-    <div className="grid">
-      <div className="c8">
-        <Panel title="In this world" hint={`${s.fights} fights · ${Math.round(mins)} minutes`}>
-          {s.fights === 0 ? (
-            <Empty title="No fights yet" />
-          ) : (
-            <div className="stat-tiles">
-              <div className="tile"><div className="k">Sig. strikes landed / min</div><div className="v">{(s.sigL / mins).toFixed(2)}</div></div>
-              <div className="tile"><div className="k">Striking accuracy</div><div className="v">{pct(s.sigL, s.sigA)}</div></div>
-              <div className="tile"><div className="k">Absorbed / min</div><div className="v">{(s.sigAbs / mins).toFixed(2)}</div></div>
-              <div className="tile"><div className="k">Striking defence</div><div className="v">{pct(s.sigAbsA - s.sigAbs, s.sigAbsA)}</div></div>
-              <div className="tile"><div className="k">Takedowns / 15 min</div><div className="v">{per15(s.tdL)}</div></div>
-              <div className="tile"><div className="k">Takedown accuracy</div><div className="v">{pct(s.tdL, s.tdA)}</div></div>
-              <div className="tile"><div className="k">Takedown defence</div><div className="v">{pct(s.tdAbsA - s.tdAbs, s.tdAbsA)}</div></div>
-              <div className="tile"><div className="k">Submissions / 15 min</div><div className="v">{per15(s.subA)}</div></div>
-              <div className="tile"><div className="k">Knockdowns</div><div className="v">{s.kd}</div><div className="s">{s.kdAbs} suffered</div></div>
-              <div className="tile"><div className="k">Control time</div><div className="v">{clock(s.ctrl)}</div><div className="s">{clock(s.ctrl / Math.max(1, s.fights))} a fight</div></div>
-              <div className="tile"><div className="k">Target</div><div className="v small" style={{ fontSize: 16 }}>{Math.round((s.head / landed) * 100)} / {Math.round((s.body / landed) * 100)} / {Math.round((s.leg / landed) * 100)}</div><div className="s">head / body / legs, %</div></div>
-              <div className="tile"><div className="k">Position</div><div className="v" style={{ fontSize: 16 }}>{Math.round((s.dist / pos) * 100)} / {Math.round((s.clinch / pos) * 100)} / {Math.round((s.ground / pos) * 100)}</div><div className="s">distance / clinch / ground, %</div></div>
+    <>
+      <div className="statsband">
+        <div className="wrap">
+          <div className="sec-h"><h2>Stats &amp; records</h2><span className="hint" style={{ color: "var(--band-ink-3)" }}>{has ? `${s.fights} fights and ${Math.round(mins)} minutes in this world` : o ? "Official UFC numbers before October 2026" : "No fights recorded yet"}</span></div>
+          <div className="grid">
+            <div className="c6 statcard">
+              <h4>Striking accuracy</h4>
+              <div className="donut-wrap">
+                <Donut value={strAcc} />
+                <div><div className="big">{Math.round(strAcc * 100)}%</div><div className="small dim">{has ? `${s.sigL} landed of ${s.sigA}` : "official"}</div></div>
+              </div>
             </div>
-          )}
-        </Panel>
+            <div className="c6 statcard">
+              <h4>Takedown accuracy</h4>
+              <div className="donut-wrap">
+                <Donut value={tdAcc} />
+                <div><div className="big">{has ? `${Math.round(tdAcc * 100)}%` : "-"}</div><div className="small dim">{has ? `${s.tdL} landed of ${s.tdA}` : "no data yet"}</div></div>
+              </div>
+            </div>
+            <div className="c6 statcard">
+              <div className="pairs">
+                <div><div className="v">{has ? (s.sigL / mins).toFixed(2) : o?.slpm ?? "-"}</div><div className="k">Sig. str. landed per min</div></div>
+                <div><div className="v">{has ? (s.sigAbs / mins).toFixed(2) : o?.sapm ?? "-"}</div><div className="k">Sig. str. absorbed per min</div></div>
+                <div><div className="v">{has ? per15(s.tdL) : o?.td ?? "-"}</div><div className="k">Takedowns per 15 min</div></div>
+                <div><div className="v">{has ? per15(s.subA) : o?.sub ?? "-"}</div><div className="k">Submissions per 15 min</div></div>
+              </div>
+            </div>
+            <div className="c6 statcard">
+              <div className="pairs">
+                <div><div className="v">{has && s.sigAbsA ? `${Math.round(((s.sigAbsA - s.sigAbs) / s.sigAbsA) * 100)}%` : o ? `${o.def}%` : "-"}</div><div className="k">Striking defence</div></div>
+                <div><div className="v">{has && s.tdAbsA ? `${Math.round(((s.tdAbsA - s.tdAbs) / s.tdAbsA) * 100)}%` : o ? `${o.tdDef}%` : "-"}</div><div className="k">Takedown defence</div></div>
+                <div><div className="v">{has ? s.kd : o?.kd ?? "-"}</div><div className="k">{has ? "Knockdowns" : "Knockdowns per 15"}</div></div>
+                <div><div className="v">{has ? clock(s.secs / Math.max(1, s.fights)) : "-"}</div><div className="k">Average fight time</div></div>
+              </div>
+            </div>
+            <div className="c4 statcard">
+              <h4>Sig. str. by position</h4>
+              {[["Standing", P.dist], ["Clinch", P.clinch], ["Ground", P.ground]].map(([k, v]) => (
+                <div key={k as string} className="methodrow"><b>{k}</b><div className="bar"><i style={{ width: `${((v as number) / pos) * 100}%`, background: "var(--red)" }} /></div><span className="right small">{useOfficial ? `${v}%` : `${v} (${Math.round(((v as number) / pos) * 100)}%)`}</span></div>
+              ))}
+            </div>
+            <div className="c4 statcard">
+              <h4>Sig. str. by target</h4>
+              <BodyTarget head={Tg.head} body={Tg.body} leg={Tg.leg} />
+              {useOfficial && <p className="tiny dim" style={{ marginTop: 8 }}>Official UFC shares, in percent</p>}
+            </div>
+            <div className="c4 statcard">
+              <h4>Win by method</h4>
+              <MethodRow label="KO/TKO" n={r.koW} total={wins} />
+              <MethodRow label="Dec" n={r.decW} total={wins} />
+              <MethodRow label="Sub" n={r.subW} total={wins} />
+            </div>
+          </div>
+        </div>
       </div>
-      <div className="c4">
-        <Panel title="Official UFC statistics" hint="before October 2026">
-          {o ? (
-            <dl className="kv">
-              <dt>Sig. strikes landed / min</dt><dd>{o.slpm}</dd>
-              <dt>Sig. strikes absorbed / min</dt><dd>{o.sapm}</dd>
-              <dt>Striking accuracy</dt><dd>{o.acc}%</dd>
-              <dt>Striking defence</dt><dd>{o.def}%</dd>
-              <dt>Takedowns / 15 min</dt><dd>{o.td}</dd>
-              <dt>Takedown defence</dt><dd>{o.tdDef}%</dd>
-              <dt>Submissions / 15 min</dt><dd>{o.sub}</dd>
-              <dt>Knockdowns / 15 min</dt><dd>{o.kd}</dd>
-            </dl>
-          ) : (
-            <Empty title="No official numbers">Only fighters on the UFC roster in October 2026 have them.</Empty>
-          )}
-        </Panel>
-      </div>
-    </div>
+      <div className="wrap" style={{ paddingBottom: 48 }} />
+    </>
   );
 }
 
 function Techniques({ f }: { f: Fighter }) {
   const known = TECH_IDS.filter((t) => (f.tech[t] ?? 0) > 0);
   return (
-    <Panel title="Signature techniques" hint={`${known.length} known`} flush>
-      {known.length === 0 ? (
-        <Empty title="No signature techniques yet">Drill them on the Training page.</Empty>
-      ) : (
-        <table className="tbl">
-          <thead>
-            <tr><th>Technique</th><th>Group</th><th>Level</th><th>What it does</th></tr>
-          </thead>
-          <tbody>
-            {known.map((t: TechId) => (
-              <tr key={t}>
-                <td><b>{TECHNIQUES[t].name}</b> {TECHNIQUES[t].exclusive && <span className="badge info">Signature</span>}</td>
-                <td>{TECHNIQUES[t].group}</td>
-                <td><span className="stars">{"★".repeat(f.tech[t] ?? 0)}<span className="off">{"★".repeat(3 - (f.tech[t] ?? 0))}</span></span> <span className="small dim">{MASTERY_NAMES[f.tech[t] ?? 0]}</span></td>
-                <td className="small muted">{TECHNIQUES[t].desc}</td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
-      )}
-    </Panel>
+    <section className="sec">
+      <div className="sec-h"><h2>Signature techniques</h2><span className="hint">{known.length} known</span></div>
+      <div className="panel">
+        {known.length === 0 ? (
+          <Empty title="No signature techniques yet">Drill them on the Training page.</Empty>
+        ) : (
+          <table className="tbl">
+            <thead><tr><th>Technique</th><th>Group</th><th>Level</th><th>What it does</th></tr></thead>
+            <tbody>
+              {known.map((t: TechId) => (
+                <tr key={t}>
+                  <td><b>{TECHNIQUES[t].name}</b> {TECHNIQUES[t].exclusive && <span className="badge info">Signature</span>}</td>
+                  <td>{TECHNIQUES[t].group}</td>
+                  <td><span className="stars">{"★".repeat(f.tech[t] ?? 0)}<span className="off">{"★".repeat(3 - (f.tech[t] ?? 0))}</span></span> <span className="small dim">{MASTERY_NAMES[f.tech[t] ?? 0]}</span></td>
+                  <td className="small muted">{TECHNIQUES[t].desc}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        )}
+      </div>
+    </section>
   );
 }
-
-export { money, fullName };

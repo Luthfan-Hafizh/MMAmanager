@@ -78,7 +78,7 @@ function makeGym(w: World, rng: Rng, country: string, rep: number): Gym {
     facilities: q(),
     coaches: { head: q(), striking: q(), grappling: q(), wrestling: q(), sc: q() },
     headCoach: `${head.first} ${head.last}`,
-    fee: 10,
+    fee: rep >= 80 ? 15 : rep >= 70 ? 12 : 10,
   };
   w.gyms[g.id] = g;
   return g;

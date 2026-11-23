@@ -8,17 +8,16 @@ import { PROMOTIONS } from "../data/promotions";
 import { ovr, ovrOf } from "../model/attributes";
 import type { Bout, BoutResult, Fighter, MMAEvent, Reign, World } from "../model/types";
 import { simulate, methodPhrase, type Condition, type FightInput, type FightOutcome } from "../engine/sim";
-import { addNews, fullName, isControlled, rankOf, touch } from "./core";
+import { addNews, fullName, isControlled, rankOf, ringRust, touch } from "./core";
 import { eloUpdate, entryElo, nameContenders, rankingNews, updateP4P, updateRankings } from "./rankings";
 import { markDone } from "./calendar";
 import { orderCard } from "./matchmaking";
 import { afterFightCareer, payControlled } from "../career/afterfight";
 import { vacate } from "./titles";
+import { mediaPrep } from "../career/fightweek";
+import { legacyAfterFight } from "./legacy";
 
-export function ringRust(days: number): number {
-  if (days < 270) return 0;
-  return clamp(Math.sqrt((days - 270) / 530), 0, 1);
-}
+export { ringRust } from "./core";
 
 /** Weight cut drain for a fighter without a camp of their own (the AI). */
 function aiCut(f: Fighter, limit: number, rng: Rng): number {
@@ -49,6 +48,7 @@ export function conditionFor(w: World, f: Fighter, b: Bout, rng: Rng): Partial<C
     // The fighter who stepped in had the short camp.
     c.shortNotice = true;
   }
+  c.prep = clamp((c.prep ?? 0) + mediaPrep(b, b.a === f.id ? "a" : "b", f), -1, 1);
   return c;
 }
 
@@ -310,8 +310,14 @@ export function applyResult(w: World, rng: Rng, b: Bout, o: FightOutcome): void 
     }
   }
 
-  // Belts.
+  // Belts, and what the result does for a legacy.
+  const champBefore = w.promos[b.promo].champs[b.div] ?? null;
   handleTitle(w, rng, b, winner, loser);
+  const champAfter = w.promos[b.promo].champs[b.div] ?? null;
+  if (winner && loser) {
+    const rankLoser = loser === A ? b.rankA ?? null : b.rankB ?? null;
+    legacyAfterFight(w, b, winner, loser, rankLoser, champAfter === winner.id && champBefore !== winner.id, champBefore === winner.id && b.kind === "title");
+  }
 
   for (const f of [A, B]) {
     const o2 = ovr(f.attrs);

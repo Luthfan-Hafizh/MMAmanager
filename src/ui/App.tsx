@@ -1,18 +1,17 @@
-// The shell: top bar with the date, the money and Continue; the sidebar; the pages.
+// The shell: a black broadcast bar (date, bank, Continue) over a white navigation
+// strip, then the page. Every page opens with a dark hero band.
 
-import { useEffect, useState, type ReactNode } from "react";
+import { useEffect, type ReactNode } from "react";
 import { fmtDate, DOW, ymd } from "../core/time";
 import { money } from "../core/util";
 import { DIVISIONS } from "../data/divisions";
-import { PROMOTIONS } from "../data/promotions";
+import { PROMOTIONS, type PromoId } from "../data/promotions";
 import { blocking, unread } from "../career/inbox";
 import { fightNight } from "../sim/advance";
 import { continueGame, getState, useStore, useVersion } from "../state/store";
 import { Icons, Logo } from "./icons";
 import { go, Link, useRoute } from "./router";
-import { Flag, Ovr } from "./components";
-import { ovr } from "../model/attributes";
-import { fullName, rankLabel } from "../world/core";
+import { Band } from "./art";
 import { Title } from "./pages/Title";
 import { NewGame } from "./pages/NewGame";
 import { Home } from "./pages/Home";
@@ -30,6 +29,8 @@ import { Fighters } from "./pages/Fighters";
 import { Promotions, PromotionPage } from "./pages/Promotions";
 import { Settings } from "./pages/Settings";
 import { Agency, Scouting } from "./pages/Agency";
+import { Legacy } from "./pages/Legacy";
+import type { World } from "../model/types";
 
 export function App() {
   const world = useStore((s) => s.world);
@@ -43,57 +44,69 @@ export function App() {
     <>
       {body}
       {busy && (
-        <div className="busy">
+        <div className="busy" role="status">
           <div>
             <span className="spinner" /> {busy}
           </div>
         </div>
       )}
-      {t && <div className={`toast ${t.kind}`}>{t.text}</div>}
+      {t && <div className={`toast ${t.kind}`} role="status">{t.text}</div>}
     </>
   );
 }
 
-function pageFor(parts: string[]): { title: string; sub?: string; el: ReactNode } {
+interface PageDef {
+  title: string;
+  eyebrow?: ReactNode;
+  sub?: ReactNode;
+  el: ReactNode;
+  /** The page draws its own hero band. */
+  custom?: boolean;
+}
+
+function pageFor(parts: string[]): PageDef {
   const w = getState().world!;
   const [p0, p1, p2] = parts;
+  const mode = w.career.mode;
   switch (p0) {
     case "inbox":
-      return { title: "Inbox", el: <Inbox id={p1} /> };
-    case "fighter": {
-      const f = w.fighters[p1 ?? w.career.fighters[0]];
-      return { title: f ? fullName(f) : "Fighter", sub: f ? `${DIVISIONS[f.div].name}${f.promo ? ` · ${PROMOTIONS[f.promo].short}` : ""}` : "", el: <FighterPage id={p1 ?? w.career.fighters[0]} tab={p2} /> };
-    }
+      return { title: "Inbox", eyebrow: "Messages and decisions", sub: "Offers, contracts, results and news from your team.", el: <Inbox id={p1} /> };
+    case "fighter":
+      return { title: "Fighter", el: <FighterPage id={p1 ?? w.career.fighters[0]} tab={p2} />, custom: true };
     case "training":
-      return { title: "Training", sub: "The week, the intensity and the technique to drill", el: <Training id={p1} /> };
+      return { title: "Training", eyebrow: "The gym", sub: "Ten sessions a week, an intensity and a technique to drill. Growth slows near the ceiling and with age.", el: <Training id={p1} /> };
     case "fight":
-      return { title: "Next fight", sub: "Camp, scouting and the game plan", el: <NextFight id={p1} /> };
+      return { title: mode === "manager" ? "Fights" : "Next fight", el: <NextFight id={p1} />, custom: true };
     case "fightnight":
-      return { title: "Fight night", el: <FightNight /> };
+      return { title: "Fight night", el: <FightNight />, custom: true };
     case "contracts":
-      return { title: "Contracts", sub: "Deals, offers and negotiation", el: <Contracts id={p1} /> };
+      return { title: "Contracts", eyebrow: "Business", sub: "Deals, offers, counter offers and the manager.", el: <Contracts id={p1} /> };
     case "finances":
-      return { title: "Finances", el: <Finances /> };
+      return { title: "Money", eyebrow: "Business", sub: "Purses, bonuses, sponsors and what comes out of them.", el: <Finances /> };
     case "events":
-      return { title: "Events", sub: "The calendar of every promotion", el: <Events promo={p1} /> };
+      return { title: "Events", eyebrow: p1 ? PROMOTIONS[p1 as PromoId]?.name : "Schedule and results", sub: "Every card of every promotion, from the IMMAF circuits to the UFC.", el: <Events promo={p1} /> };
     case "event":
-      return { title: w.events[p1]?.name ?? "Event", sub: w.events[p1] ? `${fmtDate(w.events[p1].day, { dow: true })} · ${w.events[p1].venue}, ${w.events[p1].city}` : "", el: <EventPage id={p1} /> };
+      return { title: w.events[p1]?.name ?? "Event", el: <EventPage id={p1} />, custom: true };
     case "rankings":
-      return { title: "Rankings", el: <Rankings promo={p1} div={p2} /> };
+      return { title: "Rankings", el: <Rankings promo={p1} div={p2} />, custom: true };
     case "news":
-      return { title: "News", el: <News /> };
+      return { title: "News", eyebrow: "Around the sport", sub: "Results, title changes, signings and the fights that fell through.", el: <News /> };
     case "fighters":
-      return { title: "Fighters", sub: "Search every fighter in the world", el: <Fighters /> };
+      return { title: "Athletes", eyebrow: "Every fighter in the world", sub: "Search the UFC, the PFL, eight regional scenes and the amateur circuits.", el: <Fighters /> };
     case "promotions":
-      return p1 ? { title: PROMOTIONS[p1 as keyof typeof PROMOTIONS]?.name ?? "Promotion", el: <PromotionPage id={p1} /> } : { title: "Promotions", sub: "From the amateur circuits to the UFC", el: <Promotions /> };
+      return p1
+        ? { title: PROMOTIONS[p1 as PromoId]?.name ?? "Promotion", eyebrow: PROMOTIONS[p1 as PromoId]?.short, el: <PromotionPage id={p1} /> }
+        : { title: "Promotions", eyebrow: "The ladder", sub: "Amateur circuits, local shows, regional promotions, the Contender Series, the PFL and the UFC.", el: <Promotions /> };
     case "settings":
-      return { title: "Settings", el: <Settings /> };
+      return { title: "Settings", eyebrow: "The game", el: <Settings /> };
+    case "legacy":
+      return { title: "Legacy", el: <Legacy />, custom: true };
     case "agency":
-      return { title: w.career.agency?.name ?? "Agency", sub: "Your management company", el: <Agency /> };
+      return { title: w.career.agency?.name ?? "Agency", eyebrow: "Your management company", el: <Agency /> };
     case "scouting":
-      return { title: "Scouting", sub: "Fighters you could sign", el: <Scouting /> };
+      return { title: "Scouting", eyebrow: "Fighters you could sign", sub: "Pitch to fighters at every level. Reputation, your cut and the stable you already have decide who says yes.", el: <Scouting /> };
     default:
-      return { title: "Home", sub: w.career.mode === "manager" ? w.career.agency?.name : undefined, el: <Home /> };
+      return { title: "Home", el: <Home />, custom: true };
   }
 }
 
@@ -109,8 +122,7 @@ function ContinueButton() {
     const stop = r?.stop;
     if (!stop) return;
     if (stop.kind === "fight") go("/fightnight");
-    else if (stop.kind === "decision" && stop.ref) go(`/inbox/${stop.ref}`);
-    else if (stop.kind === "message" && stop.ref) go(`/inbox/${stop.ref}`);
+    else if ((stop.kind === "decision" || stop.kind === "message") && stop.ref) go(`/inbox/${stop.ref}`);
   };
   useEffect(() => {
     const key = (e: KeyboardEvent) => {
@@ -124,20 +136,46 @@ function ContinueButton() {
   });
   if (fn)
     return (
-      <button className="continue fight" onClick={onClick}>
-        <Icons.glove /> <span>Fight night<small>{fn.name}</small></span>
+      <button className="go fight" onClick={onClick}>
+        <span>Fight night<small>{fn.name}</small></span>
+        <Icons.glove />
       </button>
     );
   if (decide.length)
     return (
-      <button className="continue decide" onClick={onClick}>
-        <Icons.alert /> <span>Decision<small>{decide.length} waiting</small></span>
+      <button className="go decide" onClick={onClick}>
+        <span>Decide<small>{decide.length} waiting</small></span>
+        <Icons.alert />
       </button>
     );
   return (
-    <button className="continue" onClick={onClick} disabled={!!busy} title="Continue (Ctrl+Space)">
-      <span>Continue</span> <Icons.arrow />
+    <button className="go" onClick={onClick} disabled={!!busy} title="Continue (Ctrl+Space)">
+      <span>Continue<small>to the next event</small></span>
+      <Icons.arrow />
     </button>
+  );
+}
+
+/** The results ticker: the latest from the UFC, the PFL and your own fighters. */
+function Ticker({ w }: { w: World }) {
+  const mine = new Set(w.career.fighters);
+  const items = w.news
+    .filter((n) => (n.kind === "result" || n.kind === "title" || n.kind === "upset" || n.kind === "signing") && (n.promo === "ufc" || n.promo === "pfl" || n.big || n.fighters?.some((id) => mine.has(id))))
+    .slice(0, 14);
+  if (items.length < 3) return null;
+  const tag = (k: string) => (k === "title" ? "Title" : k === "upset" ? "Upset" : k === "signing" ? "Signed" : "Result");
+  return (
+    <div className="ticker" aria-label="Latest results">
+      <div className="lab">Latest</div>
+      <div className="track">
+        {[...items, ...items].map((n, i) => (
+          <span key={`${n.id}-${i}`} className="it" aria-hidden={i >= items.length}>
+            <b>{tag(n.kind)}</b>
+            {n.text}
+          </span>
+        ))}
+      </div>
+    </div>
   );
 }
 
@@ -145,111 +183,85 @@ function Shell() {
   useVersion();
   const w = getState().world!;
   const route = useRoute();
-  const [open, setOpen] = useState(false);
-  const { title, sub, el } = pageFor(route.parts);
+  const page = pageFor(route.parts);
   const t = ymd(w.day);
-  useEffect(() => setOpen(false), [route.path]);
-  const mine = w.career.fighters.map((id) => w.fighters[id]).filter(Boolean);
-  const me = mine[0];
-  const u = unread(w);
-  const decide = blocking(w).length;
-  const mode = w.career.mode;
   const at = route.parts[0] ?? "home";
-  const nav = (to: string, label: string, icon: ReactNode, count?: number, soft?: boolean) => (
-    <Link to={to} className={`${at === to.split("/")[1] ? "on" : ""}`}>
-      {icon}
+  const decide = blocking(w).length;
+  const u = unread(w);
+  const mode = w.career.mode;
+  useEffect(() => {
+    document.title = `${page.title} · MMA Manager`;
+  }, [page.title]);
+  const me = w.career.fighters[0] ? w.fighters[w.career.fighters[0]] : undefined;
+  const nav = (to: string, label: string, count?: number, soft?: boolean) => (
+    <Link to={to} className={at === to.split("/")[1] ? "on" : ""}>
       {label}
-      {!!count && <span className={`count${soft ? " soft" : ""}`}>{count}</span>}
+      {!!count && <span className={`dot${soft ? " soft" : ""}`}>{count}</span>}
     </Link>
   );
-  useEffect(() => {
-    document.title = `${title} · MMA Manager`;
-  }, [title]);
   return (
-    <div className="shell">
-      <header className="topbar">
-        <div className="brand">
-          <button className="btn ghost sm burger" onClick={() => setOpen((o) => !o)} aria-label="Menu">
-            <Icons.menu />
-          </button>
-          <Logo />
-          <div className="brand-name">
-            MMA <span>Manager</span>
+    <>
+      <a className="skip" href="#main">Skip to content</a>
+      <header className="bar-top">
+        <div className="inner">
+          <Link to="/home" className="wordmark">
+            <Logo size={28} />
+            <span className="full">MMA <b>Manager</b></span>
+          </Link>
+          <div className="bar-date">
+            <div className="d">{DOW[t.dow]} {fmtDate(w.day)}</div>
+            <div className="s">
+              {mode === "manager" ? w.career.agency?.name : me ? `${me.surname} · ${DIVISIONS[me.div].short}${me.promo ? ` · ${PROMOTIONS[me.promo].short}` : ""}` : "Career"}
+            </div>
           </div>
+          <div className={`bar-money${w.career.money < 0 ? " neg" : ""}`} title="Bank balance">{money(w.career.money)}</div>
+          <ContinueButton />
         </div>
-        <div className="crumbs">
-          <h1>{title}</h1>
-          {sub && <span className="sub">{sub}</span>}
-        </div>
-        <div className="top-date">
-          <b>
-            {DOW[t.dow]} {fmtDate(w.day)}
-          </b>
-          <span>{mode === "manager" ? "Manager" : "Fighter"} career</span>
-        </div>
-        <div className={`top-money${w.career.money < 0 ? " neg" : ""}`} title="Bank balance">
-          {money(w.career.money)}
-        </div>
-        <ContinueButton />
       </header>
-      <nav className={`side${open ? " open" : ""}`}>
-        {me && mode === "fighter" && (
-          <div className="side-card" onClick={() => go(`/fighter/${me.id}`)}>
-            <Ovr v={ovr(me.attrs)} />
-            <div className="ellip">
-              <div className="nm ellip">
-                {rankLabel(w, me) && <span className="gold-t">{rankLabel(w, me)} </span>}
-                {fullName(me)}
-              </div>
-              <div className="meta row tight">
-                <Flag code={me.country} /> {DIVISIONS[me.div].short} · {me.promo ? PROMOTIONS[me.promo].short : "Free agent"} · {me.rec.w}-{me.rec.l}
-              </div>
-            </div>
-          </div>
-        )}
-        {mode === "manager" && (
-          <div className="side-card" onClick={() => go("/agency")}>
-            <div className="ovr" style={{ fontSize: 15 }}>{Math.round(w.career.agency?.rep ?? 0)}</div>
-            <div className="ellip">
-              <div className="nm ellip">{w.career.agency?.name}</div>
-              <div className="meta">{mine.length} clients · reputation</div>
-            </div>
-          </div>
-        )}
-        <div className="nav">
-          {nav("/home", "Home", <Icons.home />)}
-          {nav("/inbox", "Inbox", <Icons.inbox />, decide || u, !decide)}
+      <nav className="bar-nav" aria-label="Main">
+        <div className="inner">
+          {nav("/home", "Home")}
+          {nav("/inbox", "Inbox", decide || u, !decide)}
           {mode === "fighter" ? (
             <>
-              {nav("/fighter", "Profile", <Icons.user />)}
-              {nav("/training", "Training", <Icons.training />)}
-              {nav("/fight", "Next fight", <Icons.glove />)}
-              {nav("/contracts", "Contracts", <Icons.contract />)}
-              {nav("/finances", "Finances", <Icons.money />)}
+              {nav("/fighter", "Profile")}
+              {nav("/training", "Training")}
+              {nav("/fight", "Fight")}
+              {nav("/contracts", "Contracts")}
+              {nav("/finances", "Money")}
             </>
           ) : (
             <>
-              {nav("/agency", "Clients", <Icons.users />)}
-              {nav("/scouting", "Scouting", <Icons.binoculars />)}
-              {nav("/training", "Training", <Icons.training />)}
-              {nav("/fight", "Fights", <Icons.glove />)}
-              {nav("/contracts", "Contracts", <Icons.contract />)}
-              {nav("/finances", "Finances", <Icons.money />)}
+              {nav("/agency", "Clients")}
+              {nav("/scouting", "Scouting")}
+              {nav("/training", "Training")}
+              {nav("/fight", "Fights")}
+              {nav("/contracts", "Contracts")}
+              {nav("/finances", "Money")}
             </>
           )}
-          <div className="nav-group">World</div>
-          {nav("/events", "Events", <Icons.calendar />)}
-          {nav("/rankings", "Rankings", <Icons.trophy />)}
-          {nav("/news", "News", <Icons.news />)}
-          {nav("/fighters", "Fighters", <Icons.search />)}
-          {nav("/promotions", "Promotions", <Icons.building />)}
-          <div className="nav-group">Game</div>
-          {nav("/settings", "Settings", <Icons.settings />)}
+          <span className="sep" />
+          {nav("/events", "Events")}
+          {nav("/rankings", "Rankings")}
+          {nav("/fighters", "Athletes")}
+          {nav("/news", "News")}
+          {nav("/promotions", "Promotions")}
+          {nav("/legacy", "Legacy")}
+          <span className="sep" />
+          {nav("/settings", "Settings")}
         </div>
       </nav>
-      <main className="main">
-        <div className="page">{el}</div>
+      <Ticker w={w} />
+      <main id="main">
+        {page.custom ? (
+          page.el
+        ) : (
+          <>
+            <Band eyebrow={page.eyebrow} title={page.title} sub={page.sub} />
+            <div className="wrap page-body">{page.el}</div>
+          </>
+        )}
       </main>
-    </div>
+    </>
   );
 }

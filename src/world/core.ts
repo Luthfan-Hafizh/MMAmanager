@@ -210,6 +210,12 @@ export function fightsInPromo(w: World, f: Fighter, promo: PromoId): number {
   return n;
 }
 
+/** Ring rust: nothing for nine months, then it builds and is complete at about two years. */
+export function ringRust(days: number): number {
+  if (days < 270) return 0;
+  return Math.min(1, Math.sqrt((days - 270) / 530));
+}
+
 export function daysSinceFight(w: World, f: Fighter): number {
   return f.lastFight === null ? 9999 : w.day - f.lastFight;
 }

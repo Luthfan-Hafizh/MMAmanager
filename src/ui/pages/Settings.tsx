@@ -8,9 +8,9 @@ export function Settings() {
   const w = useWorld();
   const [theme, setTheme] = useState<string>(() => {
     try {
-      return localStorage.getItem("mmam:theme") ?? "system";
+      return localStorage.getItem("mmam:theme") ?? "light";
     } catch {
-      return "system";
+      return "light";
     }
   });
   const applyTheme = (t: string) => {
@@ -20,14 +20,14 @@ export function Settings() {
     } catch {
       /* private mode */
     }
-    if (t === "system") delete document.documentElement.dataset.theme;
+    if (t === "light") delete document.documentElement.dataset.theme;
     else document.documentElement.dataset.theme = t;
   };
   return (
     <div className="grid">
       <div className="c6 stack">
         <Panel title="Appearance">
-          <Seg value={theme} onChange={applyTheme} options={[{ v: "system", label: "System" }, { v: "dark", label: "Night" }, { v: "light", label: "Day" }]} />
+          <Seg value={theme} onChange={applyTheme} options={[{ v: "light", label: "Day" }, { v: "dark", label: "Night" }]} />
         </Panel>
         <Panel title="This career">
           <p className="muted">Careers save themselves in this browser after every Continue. Export a file to keep a copy or move to another device.</p>

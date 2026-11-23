@@ -133,7 +133,7 @@ const INJURIES: { name: string; area: string; days: [number, number]; sev: numbe
   { name: "Pulled hamstring", area: "leg", days: [14, 35], sev: 1, from: ["conditioning", "kickboxing"] },
 ];
 
-export function trainingWeek(w: World, f: Fighter, plan: TrainingPlan, rng: Rng, apply: boolean): WeekResult {
+export function trainingWeek(w: World, f: Fighter, plan: TrainingPlan, rng: Rng, apply: boolean, mul = 1): WeekResult {
   const age = ageAt(f.birth, w.day);
   const gym = w.gyms[f.gym];
   const cur = ovrOf(f.attrs);
@@ -148,7 +148,7 @@ export function trainingWeek(w: World, f: Fighter, plan: TrainingPlan, rng: Rng,
     const q = 0.55 + coachQuality(gym, sd.area) / 110;
     for (const [k, v] of Object.entries(sd.attrs) as [AttrKey, number][]) {
       const top = clamp((20.6 - f.attrs[k]) / 8, 0.05, 1.3);
-      const g = 0.0105 * v * q * fac * INT_GROWTH[plan.intensity] * ageGrowth(age) * room * pro * fatPenalty * top * (injured ? 0.35 : 1);
+      const g = 0.0105 * mul * v * q * fac * INT_GROWTH[plan.intensity] * ageGrowth(age) * room * pro * fatPenalty * top * (injured ? 0.35 : 1);
       growth[k] = (growth[k] ?? 0) + g;
     }
   }

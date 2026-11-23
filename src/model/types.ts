@@ -110,6 +110,14 @@ export interface OfficialStats {
   tdDef: number;
   sub: number;
   kd: number;
+  /** Shares of significant strikes landed, in percent. */
+  head?: number;
+  body?: number;
+  leg?: number;
+  stand?: number;
+  clinch?: number;
+  ground?: number;
+  /** Wins by method in the UFC. */
 }
 
 export interface Fighter {
@@ -166,6 +174,8 @@ export interface Fighter {
   /** Highest overall ever reached. */
   best: number;
   peakRank?: number;
+  legacy?: number;
+  bestStreak?: number;
 }
 
 export type BoutKind = "title" | "interim" | "vacant" | "eliminator" | "regular" | "tryout" | "amateur";
@@ -256,6 +266,8 @@ export interface Bout {
   pending?: string;
   /** Held for the player to watch or simulate on fight night. */
   awaiting?: boolean;
+  /** What each fighter said on media day. */
+  media?: { a?: string; b?: string };
 }
 
 export type EventKind = "numbered" | "fightnight" | "standard" | "tryout" | "amateur";
@@ -453,6 +465,9 @@ export interface FighterCareer {
   campBout?: string;
   asked?: boolean;
   morale?: number;
+  callout?: { target: string; until: number };
+  walkTarget?: number;
+  adapt?: number;
 }
 
 export interface Agency {
@@ -480,6 +495,7 @@ export interface Career {
   retiredAt?: number;
   achievements: { id: string; day: number; fighter: string }[];
   pendingUfcOffer?: string;
+  retiredFighter?: string;
 }
 
 export interface World {

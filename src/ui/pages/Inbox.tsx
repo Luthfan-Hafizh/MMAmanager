@@ -23,6 +23,11 @@ const ICON: Record<Message["kind"], () => JSX.Element> = {
   ranking: Icons.trophy,
 };
 
+const KIND: Record<Message["kind"], string> = {
+  offer: "Fight offer", contract: "Contract", info: "Message", result: "Result", injury: "Medical", training: "Training", sponsor: "Sponsor",
+  news: "News", camp: "Camp", money: "Money", client: "Client", weighin: "Weigh-in", ranking: "Rankings",
+};
+
 export function Inbox({ id }: { id?: string }) {
   const w = useWorld();
   const [filter, setFilter] = useState<"all" | "decide" | "unread">("all");
@@ -63,9 +68,9 @@ export function Inbox({ id }: { id?: string }) {
             const Ic = ICON[m.kind] ?? Icons.inbox;
             return (
               <div key={m.id} className={`msg${cur?.id === m.id ? " on" : ""}${m.read ? "" : " unread"}${m.needs && !m.done ? " need" : ""}`} onClick={() => go(`/inbox/${m.id}`)}>
-                <div className="ic"><Ic /></div>
+                <div className="k"><Ic /> {m.needs && !m.done ? "Decision" : KIND[m.kind]}</div>
                 <div style={{ minWidth: 0 }}>
-                  <div className="s ellip">{m.subject}</div>
+                  <div className="s">{m.subject}</div>
                   <div className="f ellip">{m.from}</div>
                 </div>
                 <div className="d">{fmtDate(m.day, { year: false })}</div>

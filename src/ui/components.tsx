@@ -91,6 +91,7 @@ export function AttrGrid({ f, prev }: { f: Fighter; prev?: Record<AttrKey, numbe
               <div className="attr" key={k} title={ATTR_INFO[k].desc}>
                 <span>{ATTR_INFO[k].name}</span>
                 <AttrValue v={f.attrs[k]} delta={prev ? f.attrs[k] - prev[k] : undefined} />
+                <div className="meter-s"><i className={`bg-a-${attrBand(f.attrs[k])}`} style={{ width: `${(f.attrs[k] / 20) * 100}%` }} /></div>
               </div>
             ))}
           </div>

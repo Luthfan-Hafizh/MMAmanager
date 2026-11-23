@@ -1,14 +1,18 @@
 import { useState } from "react";
 import { clock, DOW, fmtDate, MONTHS, ymd } from "../../core/time";
+import { countryOf } from "../../data/countries";
 import { DIVISIONS } from "../../data/divisions";
-import { PROMOTIONS, PROMO_IDS, TIER_NAME, type PromoId, type Tier } from "../../data/promotions";
+import { PROMOTIONS, TIER_NAME, type Tier } from "../../data/promotions";
 import type { Bout, MMAEvent, World } from "../../model/types";
 import { methodText } from "../../engine/sim";
 import { cardSection } from "../../world/calendar";
-import { recordText } from "../../world/core";
+import { rankLabel, recordText } from "../../world/core";
+import { headToHead, moneyline, oddsOf, preview } from "../../world/odds";
 import { useWorld } from "../../state/store";
 import { go, Link } from "../router";
-import { Empty, FighterLink, Panel, Seg, Tabs } from "../components";
+import { Empty, Flag, Seg, Tabs, Versus } from "../components";
+import { Band } from "../art";
+import { groupScore } from "../../model/attributes";
 
 const TIERS: (Tier | "all" | "mine")[] = ["mine", "all", "major", "league", "tryout", "regional", "local", "amateur"];
 
@@ -20,22 +24,16 @@ export function Events({ promo }: { promo?: string }) {
   const filt = (e: MMAEvent) =>
     (promo ? e.promo === promo : true) &&
     (tier === "all" ? true : tier === "mine" ? mine.has(e.promo) || e.promo === "ufc" || e.promo === "pfl" : PROMOTIONS[e.promo].tier === tier);
-  const upcoming = w.upcoming.map((id) => w.events[id]).filter(filt).slice(0, 80);
-  const results = Object.values(w.events).filter((e) => e.status === "done" && filt(e)).sort((a, b) => b.day - a.day).slice(0, 80);
+  const upcoming = w.upcoming.map((id) => w.events[id]).filter(filt).slice(0, 60);
+  const results = Object.values(w.events).filter((e) => e.status === "done" && filt(e)).sort((a, b) => b.day - a.day).slice(0, 60);
   const list = tab === "upcoming" ? upcoming : results;
   return (
     <div className="stack">
-      <div className="row">
-        <Tabs value={tab} onChange={setTab} tabs={[{ id: "upcoming", label: "Upcoming" }, { id: "results", label: "Results" }]} />
-      </div>
-      {!promo && (
-        <div className="row">
-          <Seg value={tier} onChange={setTier} options={TIERS.map((t) => ({ v: t, label: t === "mine" ? "My promotions" : t === "all" ? "All" : TIER_NAME[t as Tier] }))} />
-        </div>
-      )}
-      <Panel title={tab === "upcoming" ? "Calendar" : "Results"} hint={`${list.length} events`} flush>
+      <Tabs value={tab} onChange={setTab} tabs={[{ id: "upcoming", label: "Upcoming" }, { id: "results", label: "Past events" }]} />
+      {!promo && <Seg value={tier} onChange={setTier} options={TIERS.map((t) => ({ v: t, label: t === "mine" ? "My promotions" : t === "all" ? "All" : TIER_NAME[t as Tier] }))} />}
+      <div className="panel">
         {list.length === 0 ? <Empty title="No events" /> : list.map((e) => <EventRow key={e.id} w={w} e={e} />)}
-      </Panel>
+      </div>
     </div>
   );
 }
@@ -48,20 +46,16 @@ function EventRow({ w, e }: { w: World; e: MMAEvent }) {
     const b = w.bouts[id];
     return b.status !== "cancelled" && (w.fighters[b.a]?.ctrl || w.fighters[b.b]?.ctrl);
   });
+  const title = main && (main.kind === "title" || main.kind === "vacant" || main.kind === "interim");
   return (
-    <div className="list-row" style={{ cursor: "pointer", background: mine ? "var(--accent-soft)" : undefined }} onClick={() => go(`/event/${e.id}`)}>
-      <div className="date"><b>{t.d}</b><span>{MONTHS[t.m]} {String(t.y).slice(2)}</span></div>
-      <span className="promo-dot" style={{ background: p.color }} />
-      <div style={{ flex: 1, minWidth: 0 }}>
-        <div className="disp up" style={{ fontSize: 17, fontWeight: 700 }}>{e.name}</div>
-        <div className="small dim ellip">{DOW[t.dow]} · {e.venue}, {e.city} · {p.short}{e.status === "planned" ? " · card not announced" : ` · ${e.bouts.filter((id) => w.bouts[id].status !== "cancelled").length} fights`}</div>
+    <div className={`ev-row${mine ? " mine" : ""}`} onClick={() => go(`/event/${e.id}`)}>
+      <div className="when"><span>{DOW[t.dow]}</span><b>{t.d}</b><span>{MONTHS[t.m]} {t.y}</span></div>
+      <div style={{ minWidth: 0 }}>
+        <div className="nm">{e.name}{title ? " · Title fight" : ""}</div>
+        <div className="headline">{main && e.status !== "planned" ? `${w.fighters[main.a]?.surname} vs ${w.fighters[main.b]?.surname}` : "Card to be announced"}</div>
+        <div className="where">{e.venue}, {e.city} · {p.name}</div>
       </div>
-      {main && e.status !== "planned" && (
-        <div className="small right nowrap" style={{ minWidth: 0 }}>
-          <b>{w.fighters[main.a]?.surname}</b> vs <b>{w.fighters[main.b]?.surname}</b>
-          {(main.kind === "title" || main.kind === "vacant" || main.kind === "interim") && <div><span className="badge gold">Title</span></div>}
-        </div>
-      )}
+      <div className="acts"><span className="btn sm">{e.status === "done" ? "Results" : "Fight card"}</span></div>
     </div>
   );
 }
@@ -69,30 +63,49 @@ function EventRow({ w, e }: { w: World; e: MMAEvent }) {
 export function EventPage({ id }: { id: string }) {
   const w = useWorld();
   const e = w.events[id];
-  if (!e) return <Empty title="Event not found" />;
+  const [sec, setSec] = useState<string>("all");
+  if (!e) return <div className="wrap page-body"><Empty title="Event not found" /></div>;
   const p = PROMOTIONS[e.promo];
   const bouts = e.bouts.map((b) => w.bouts[b]);
-  let lastSection = "";
+  const main = bouts.find((b) => b.status !== "cancelled");
+  const sections = [...new Set(bouts.map((b, i) => cardSection(e, i)))];
+  const shown = bouts.map((b, i) => ({ b, s: cardSection(e, i) })).filter((x) => sec === "all" || x.s === sec);
+  const odds = main ? oddsOf(main) : null;
+  let last = "";
   return (
-    <div className="grid">
-      <div className="c12">
-        <div className="hero">
-          <div className="spread" style={{ flexWrap: "wrap" }}>
-            <div className="name">
-              <small>{p.name} · {fmtDate(e.day, { dow: true })}</small>
-              {e.name}
+    <>
+      <Band
+        word={e.city}
+        eyebrow={<><span>{p.name}</span><span className="dim">·</span><span>{fmtDate(e.day, { dow: true })}</span></>}
+        first={e.name}
+        title={main ? `${w.fighters[main.a]?.surname} vs ${w.fighters[main.b]?.surname}` : "Card to be announced"}
+        sub={`${e.venue}, ${e.city}${e.status === "done" ? " · Final results" : e.status === "planned" ? ` · The card is made about ${Math.round(p.lead / 7)} weeks out` : ""}`}
+        right={
+          main && odds && main.status !== "done" ? (
+            <div className="duo">
+              <div><div className={`odds ${main.odds! >= 0.5 ? "fav" : "dog"}`}>{odds.a}</div><div className="k">{w.fighters[main.a].surname}</div></div>
+              <div className="vs">VS</div>
+              <div><div className={`odds ${main.odds! < 0.5 ? "fav" : "dog"}`}>{odds.b}</div><div className="k">{w.fighters[main.b].surname}</div></div>
             </div>
-            <div className="small muted right">{e.venue}<br />{e.city}<br /><Link to={`/promotions/${e.promo}`}>{p.short} roster and champions</Link></div>
-          </div>
-        </div>
-      </div>
-      <div className="c12">
-        <Panel title="Fight card" flush>
+          ) : main?.res ? (
+            <div className="mark"><div className="mark-big" style={{ fontSize: 120 }}>{main.res.method === "DEC" ? "DEC" : main.res.method}</div><div className="mark-label">Main event result</div><div className="mark-sub">{w.fighters[main.res.winner === "b" ? main.b : main.a].surname} {main.res.winner ? "wins" : "draw"}{main.res.method !== "DEC" ? `, round ${main.res.round}` : ""}</div></div>
+          ) : undefined
+        }
+        tabs={
+          sections.length > 1 ? (
+            <div className="tabs" style={{ marginBottom: -34 }}>
+              <button className={sec === "all" ? "on" : ""} onClick={() => setSec("all")}>Full card</button>
+              {sections.map((s) => <button key={s} className={sec === s ? "on" : ""} onClick={() => setSec(s)}>{s}</button>)}
+            </div>
+          ) : undefined
+        }
+      />
+      <div className="wrap page-body">
+        <div className="panel">
           {e.status === "planned" && <Empty title="The card is not announced yet">Promotions book about {Math.round(p.lead / 7)} weeks ahead.</Empty>}
-          {bouts.map((b, i) => {
-            const sec = cardSection(e, i);
-            const head = sec !== lastSection ? <div className="section-h" key={`h${i}`}>{sec}</div> : null;
-            lastSection = sec;
+          {shown.map(({ b, s }) => {
+            const head = s !== last ? <div className="section-h">{s}</div> : null;
+            last = s;
             return (
               <div key={b.id}>
                 {head}
@@ -100,52 +113,118 @@ export function EventPage({ id }: { id: string }) {
               </div>
             );
           })}
-        </Panel>
+        </div>
+        <p className="tiny dim" style={{ marginTop: 10 }}>Click a fight for the tale of the tape and the keys to victory. Odds are moneylines with the bookmaker's margin.</p>
       </div>
+    </>
+  );
+}
+
+function Corner({ w, id, side, result, bonus }: { w: World; id: string; side: "a" | "b"; result: "W" | "L" | "D" | null; bonus?: boolean }) {
+  const f = w.fighters[id];
+  if (!f) return <div />;
+  const rl = rankLabel(w, f);
+  return (
+    <div className={side}>
+      {side === "b" && result && <span className={`wl ${result}`}>{result}</span>}
+      <div style={{ minWidth: 0 }}>
+        <Link to={`/fighter/${f.id}`} className="fname" style={{ display: "block" }}>
+          <span className="first">{rl ? `${rl === "C" ? "Champion" : rl === "IC" ? "Interim champ" : rl} · ` : ""}{f.first}</span>
+          {f.surname}
+        </Link>
+        <div className="meta">{recordText(f)}{bonus ? " · Performance of the Night" : ""}</div>
+      </div>
+      {side === "a" && result && <span className={`wl ${result}`}>{result}</span>}
     </div>
   );
 }
 
 function BoutRow({ w, b }: { w: World; b: Bout }) {
+  const [open, setOpen] = useState(false);
   const done = b.status === "done" && b.res;
-  const wa = done && b.res!.winner === "a";
-  const wb = done && b.res!.winner === "b";
+  const ra = done ? (b.res!.winner === "a" ? "W" : b.res!.winner === "b" ? "L" : "D") : null;
+  const rb = done ? (b.res!.winner === "b" ? "W" : b.res!.winner === "a" ? "L" : "D") : null;
   const mine = w.fighters[b.a]?.ctrl || w.fighters[b.b]?.ctrl;
   const title = b.kind === "title" || b.kind === "vacant" || b.kind === "interim";
   const bonus = b.res?.bonus ?? [];
+  const odds = oddsOf(b);
+  const A = w.fighters[b.a];
+  const B = w.fighters[b.b];
+  if (!A || !B) return null;
   return (
-    <div className={`bout${mine ? " mine" : ""}${b.status === "cancelled" ? " cancel" : ""}`}>
-      <div className={`a ${wa ? "won" : done && !wa && b.res!.winner ? "lost" : ""}`}>
-        <div style={{ minWidth: 0, textAlign: "right" }}>
-          <FighterLink w={w} id={b.a} rank />
-          <div className="tiny dim">{w.fighters[b.a] ? recordText(w.fighters[b.a]) : ""}{bonus.includes("potn-a") ? " · Performance of the Night" : ""}</div>
+    <div className={`bout-wrap${mine ? " mine" : ""}`}>
+      <div className={`bout${mine ? " mine" : ""}${b.status === "cancelled" ? " cancel" : ""}${title ? " title-bout" : ""}`} onClick={() => b.status !== "cancelled" && setOpen((o) => !o)} aria-expanded={open}>
+        <Corner w={w} id={b.a} side="a" result={ra} bonus={bonus.includes("potn-a")} />
+        <div className="mid">
+          <div className="wc">{title ? (b.kind === "interim" ? "Interim title bout" : b.kind === "vacant" ? "Vacant title bout" : `${DIVISIONS[b.div].name} title bout`) : b.kind === "eliminator" ? "Title eliminator" : `${DIVISIONS[b.div].name} bout`}</div>
+          {done ? (
+            <>
+              <div className="res">{methodText(b.res!.method, b.res!.detail)}</div>
+              <div>{b.res!.method !== "DEC" && b.res!.method !== "DRAW" ? `R${b.res!.round} · ${clock(b.res!.time)}` : b.res!.cards ? b.res!.cards.map(([x, y]) => `${Math.max(x, y)}-${Math.min(x, y)}`).join(" · ") : ""}</div>
+              {bonus.includes("fotn") && <span className="badge gold" style={{ marginTop: 4 }}>Fight of the Night</span>}
+            </>
+          ) : b.status === "cancelled" ? (
+            <div className="res">Cancelled</div>
+          ) : (
+            <>
+              <div className="vs">VS</div>
+              <div>{b.rounds} × {b.roundSec / 60} min{b.shortNotice ? " · short notice" : ""}{b.pending ? " · offered" : ""}</div>
+            </>
+          )}
         </div>
+        <Corner w={w} id={b.b} side="b" result={rb} bonus={bonus.includes("potn-b")} />
       </div>
-      <div className="mid">
-        {done ? (
-          <>
-            <b>{methodText(b.res!.method, b.res!.detail)}</b>
-            {b.res!.method !== "DEC" && b.res!.method !== "DRAW" ? `R${b.res!.round} ${clock(b.res!.time)}` : b.res!.cards ? b.res!.cards.map(([x, y]) => `${Math.max(x, y)}-${Math.min(x, y)}`).join(", ") : ""}
-            {bonus.includes("fotn") && <div><span className="badge gold">Fight of the Night</span></div>}
-          </>
-        ) : b.status === "cancelled" ? (
-          <b>Cancelled</b>
-        ) : (
-          <>
-            <b>{title ? (b.kind === "interim" ? "Interim title" : b.kind === "vacant" ? "Vacant title" : "Title fight") : b.kind === "eliminator" ? "Eliminator" : DIVISIONS[b.div].short}</b>
-            {b.rounds} rounds{b.shortNotice ? " · short notice" : ""}{b.pending ? " · offered" : ""}
-          </>
-        )}
+      <div className="bout-foot">
+        <span className="l row tight" style={{ justifyContent: "flex-end" }}>{countryOf(A.country).name} <Flag code={A.country} /></span>
+        <span className="c">
+          {odds ? (
+            <>
+              <span className={`ml${b.odds! >= 0.5 ? " fav" : ""}`}>{odds.a}</span>
+              <span className="label">{done ? "Closing odds" : "Odds"}</span>
+              <span className={`ml${b.odds! < 0.5 ? " fav" : ""}`}>{odds.b}</span>
+            </>
+          ) : null}
+        </span>
+        <span className="row tight"><Flag code={B.country} /> {countryOf(B.country).name}</span>
       </div>
-      <div className={`b ${wb ? "won" : done && !wb && b.res!.winner ? "lost" : ""}`}>
-        <div style={{ minWidth: 0 }}>
-          <FighterLink w={w} id={b.b} rank />
-          <div className="tiny dim">{w.fighters[b.b] ? recordText(w.fighters[b.b]) : ""}{bonus.includes("potn-b") ? " · Performance of the Night" : ""}</div>
+      {open && <BoutPreview w={w} b={b} />}
+    </div>
+  );
+}
+
+export function BoutPreview({ w, b }: { w: World; b: Bout }) {
+  const A = w.fighters[b.a];
+  const B = w.fighters[b.b];
+  const pv = preview(w, b);
+  const h2h = headToHead(w, b.a, b.b).filter((x) => x.id !== b.id);
+  return (
+    <div className="expand">
+      <div className="grid">
+        <div className="c6">
+          <div className="label" style={{ marginBottom: 6 }}>Tale of the tape</div>
+          <div className="versus"><div className="l">{recordText(A)}</div><div className="m">Record</div><div className="r">{recordText(B)}</div></div>
+          <Versus label="Height (in)" a={A.height} b={B.height} higher="none" />
+          <Versus label="Reach (in)" a={A.reach} b={B.reach} />
+          <Versus label="Striking" a={groupScore(A.attrs, "striking")} b={groupScore(B.attrs, "striking")} fmt={(v) => v.toFixed(1)} />
+          <Versus label="Grappling" a={groupScore(A.attrs, "grappling")} b={groupScore(B.attrs, "grappling")} fmt={(v) => v.toFixed(1)} />
+          <Versus label="Win streak" a={Math.max(0, A.streak)} b={Math.max(0, B.streak)} />
+        </div>
+        <div className="c6">
+          <div className="label" style={{ marginBottom: 6 }}>Preview</div>
+          <p className="small"><b>{pv.summary}</b>{b.odds !== undefined ? ` Implied chances ${Math.round(b.odds * 100)}% to ${Math.round((1 - b.odds) * 100)}%.` : ""}</p>
+          <div className="keys">
+            <div><h5>Keys for {A.surname}</h5><ul>{pv.keys[0].map((k, i) => <li key={i}>{k}</li>)}</ul></div>
+            <div><h5>Keys for {B.surname}</h5><ul>{pv.keys[1].map((k, i) => <li key={i}>{k}</li>)}</ul></div>
+          </div>
+          {h2h.length > 0 && (
+            <p className="small" style={{ marginTop: 10 }}>
+              <b>History:</b> {h2h.map((x) => `${w.fighters[x.res?.winner === "a" ? x.a : x.b]?.surname ?? ""} won by ${x.res ? methodText(x.res.method, x.res.detail).toLowerCase() : ""} (${fmtDate(x.day)})`).join("; ")}.
+            </p>
+          )}
         </div>
       </div>
     </div>
   );
 }
 
-export { PROMO_IDS };
-export type { PromoId };
+export { moneyline };

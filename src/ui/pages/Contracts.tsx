@@ -13,7 +13,7 @@ export function Contracts({ id }: { id?: string }) {
   const w = useWorld();
   const fid = id && w.career.fc[id] ? id : w.career.fighters[0];
   const f = w.fighters[fid];
-  if (!f) return <Empty title="No fighter" />;
+  if (!f) return <Empty title="No fighters under contract">{w.career.mode === "manager" ? "Sign clients from Scouting and their deals appear here." : "There is no active fighter in this career."}</Empty>;
   const offers = w.career.contractOffers.filter((o) => o.fighter === fid && o.status === "open");
   const fc = w.career.fc[fid];
   const c = f.contract;

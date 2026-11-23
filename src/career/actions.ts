@@ -4,6 +4,7 @@ import type { World } from "../model/types";
 import { withRng, touch } from "../world/core";
 import { withdraw } from "../world/matchmaking";
 import { acceptFight, declineFight, rejectContract, signContract } from "./offers";
+import { answerMedia, answerMicrophone, type Tone } from "./fightweek";
 
 export function answer(w: World, msgId: string, action: string): string {
   const m = w.inbox.find((x) => x.id === msgId);
@@ -16,6 +17,11 @@ export function answer(w: World, msgId: string, action: string): string {
     if (action === "sign") text = withRng(w, (rng) => signContract(w, rng, m.ref!));
     else if (action === "reject") text = rejectContract(w, m.ref);
     else return "";
+  } else if (action.startsWith("media:") && m.ref && m.fighter) {
+    const b = w.bouts[m.ref];
+    if (b) text = answerMedia(w, b, w.fighters[m.fighter], action.slice(6) as Tone);
+  } else if ((action.startsWith("callout:") || action === "titleshot") && m.fighter) {
+    text = answerMicrophone(w, w.fighters[m.fighter], action);
   } else if (m.kind === "injury" && m.ref) {
     const b = w.bouts[m.ref];
     if (action === "pull-out" && b && b.status === "booked" && m.fighter) {
@@ -38,6 +44,7 @@ export function autoAnswer(w: World): void {
     if (m.kind === "offer") answer(w, m.id, "accept");
     else if (m.kind === "contract") answer(w, m.id, "sign");
     else if (m.kind === "injury") answer(w, m.id, "fight-hurt");
+    else if (m.actions?.some((a) => a.id === "media:confident")) answer(w, m.id, "media:confident");
     else {
       m.needs = false;
       m.done = "ok";

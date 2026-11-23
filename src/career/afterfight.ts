@@ -12,6 +12,7 @@ import { fullName, rankOf } from "../world/core";
 import { notify } from "./inbox";
 import { payPurse } from "./money";
 import { checkAchievements } from "./achievements";
+import { clearCallout, offerMicrophone } from "./fightweek";
 
 export function afterFightCareer(w: World, rng: Rng, b: Bout, o: FightOutcome): void {
   for (const side of ["a", "b"] as const) {
@@ -57,6 +58,8 @@ export function afterFightCareer(w: World, rng: Rng, b: Bout, o: FightOutcome): 
       }
     }
     checkAchievements(w, f, b);
+    clearCallout(w, f, opp.id);
+    if (won) offerMicrophone(w, f, b);
     void rng;
   }
 }

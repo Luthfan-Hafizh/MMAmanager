@@ -12,6 +12,7 @@ import type { BaseArt } from "../data/styles";
 import { ATTRS, ovrOf } from "../model/attributes";
 import type { AgingType, Attrs, Fighter, Gym, Stance } from "../model/types";
 import { blankRecord, blankTotals, makeTechniques } from "./generate";
+import { KNOWN_TITLES, startingLegacy } from "./legacy";
 
 export interface RealFighter {
   id: string;
@@ -240,7 +241,7 @@ export function realFighter(rf: RealFighter, ctx: RealContext, seed: number): Fi
     reigns: rf.tr,
     dmg: clamp(koL * 10 + fights * 1.2 + Math.max(0, rf.a - 30) * 2, 0, 130),
     stats: blankTotals(),
-    official: s ? { slpm, sapm, acc, def, td, tdDef, sub, kd } : undefined,
+    official: s ? { slpm, sapm, acc, def, td, tdDef, sub, kd, head: s[8], body: s[9], leg: s[10], stand: s[11], clinch: s[12], ground: s[13] } : undefined,
     real: true,
     fatigue: 10,
     sharp: 70,
@@ -248,6 +249,10 @@ export function realFighter(rf: RealFighter, ctx: RealContext, seed: number): Fi
     joined: 0,
     best: Math.round(cur),
   };
+  const known = KNOWN_TITLES[rf.id];
+  if (known) f.reigns = Math.max(f.reigns, known[0]);
+  f.legacy = startingLegacy(f, known ? known[1] : rf.td);
+  f.bestStreak = Math.max(rf.ws, 0);
   return f;
 }
 
@@ -261,7 +266,7 @@ export function realGym(g: RealGym): Gym {
     facilities: g.fac,
     coaches: { head: g.q[0], striking: g.q[1], grappling: g.q[2], wrestling: g.q[3], sc: g.q[4] },
     headCoach: g.hc || "Head coach",
-    fee: 10,
+    fee: g.rep >= 80 ? 15 : g.rep >= 70 ? 12 : 10,
     real: true,
   };
 }

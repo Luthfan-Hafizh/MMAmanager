@@ -99,22 +99,24 @@ export function NewGame() {
   };
 
   return (
-    <div className="wizard">
-      <div className="row" style={{ marginBottom: 14 }}>
-        <Logo size={34} />
-        <div className="disp up" style={{ fontSize: 26, fontWeight: 800 }}>
-          New career
-        </div>
-        <div className="grow" style={{ flex: 1 }} />
-        <button className="btn ghost" onClick={() => go("/")}>Back to the title screen</button>
-      </div>
-      <div className="steps">
-        {steps.map((s, i) => (
-          <div key={s} className={s === step ? "on" : steps.indexOf(step) > i ? "done" : ""}>
-            {i + 1}. {stepName[s]}
+    <div>
+      <header className="band">
+        <div className="wrap" style={{ paddingTop: 26, paddingBottom: 0 }}>
+          <div className="spread">
+            <div className="row"><Logo size={32} /><span className="label" style={{ color: "var(--band-ink-3)" }}>MMA Manager</span></div>
+            <button className="btn sm" onClick={() => go("/")}>Back to the title screen</button>
           </div>
-        ))}
-      </div>
+          <h1 style={{ marginTop: 22 }}>New career</h1>
+          <div className="steps">
+            {steps.map((s, i) => (
+              <div key={s} className={s === step ? "on" : steps.indexOf(step) > i ? "done" : ""}>
+                {i + 1}. {stepName[s]}
+              </div>
+            ))}
+          </div>
+        </div>
+      </header>
+      <div className="wrap page-body">
 
       {step === "mode" && (
         <Panel title="What kind of career?">
@@ -218,6 +220,7 @@ export function NewGame() {
           </div>
         </Panel>
       )}
+      </div>
     </div>
   );
 }

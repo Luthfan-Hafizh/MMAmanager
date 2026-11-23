@@ -7,6 +7,7 @@ import { changed, useWorld } from "../../state/store";
 import { go } from "../router";
 import { Empty, FighterLink, Panel, Seg } from "../components";
 import { fullName } from "../../world/core";
+import { GymPanel, WeightPanel } from "./Moves";
 
 export function FighterSwitch({ w, id, base }: { w: World; id: string; base: string }) {
   if (w.career.fighters.length <= 1) return null;
@@ -25,7 +26,7 @@ export function Training({ id }: { id?: string }) {
   const f = w.fighters[fid];
   const fc = w.career.fc[fid];
   const preview = useMemo(() => (f && fc ? planPreview(w, f, fc.plan) : null), [w, f, fc, fc?.plan, w.day]);
-  if (!f || !fc) return <Empty title="No fighter to train" />;
+  if (!f || !fc) return <Empty title="No fighter to train">{w.career.mode === "manager" ? "Sign clients from Scouting to plan their training." : "There is no active fighter in this career."}</Empty>;
   const gym = w.gyms[f.gym];
   const setSlot = (i: number, s: SessionId) => {
     fc.plan = { ...fc.plan, week: fc.plan.week.map((x, k) => (k === i ? s : x)), template: "custom" };
@@ -84,7 +85,7 @@ export function Training({ id }: { id?: string }) {
                   const off = fc.dayJob && i >= 6;
                   return (
                     <div className="slot" key={i} title={SLOT_NAMES[i]}>
-                      <select value={s} disabled={off} onChange={(e) => setSlot(i, e.target.value as SessionId)} style={{ borderLeftColor: off ? "var(--border)" : SESSIONS[s].color, opacity: off ? 0.45 : 1 }}>
+                      <select value={s} disabled={off} onChange={(e) => setSlot(i, e.target.value as SessionId)} style={{ borderTopColor: off ? "var(--line)" : SESSIONS[s].color, opacity: off ? 0.45 : 1 }}>
                         {SESSION_IDS.map((x) => <option key={x} value={x}>{SESSIONS[x].name}</option>)}
                       </select>
                     </div>
@@ -127,6 +128,8 @@ export function Training({ id }: { id?: string }) {
         </Panel>
       </div>
       <div className="c4 stack">
+        <GymPanel w={w} f={f} />
+        <WeightPanel w={w} f={f} />
         <Panel title="Forecast" hint="one week of this plan">
           {preview && (
             <div className="stack" style={{ gap: 8 }}>

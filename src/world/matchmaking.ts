@@ -11,6 +11,8 @@ import { ovrOf } from "../model/attributes";
 import type { Bout, BoutKind, FightOffer, Fighter, MMAEvent, World } from "../model/types";
 import { addNews, availableFrom, daysSinceFight, fightsInPromo, fullName, isControlled, nextId, rankOf, rosterOf } from "./core";
 import { lostToRecently } from "./rankings";
+import { setOdds } from "./odds";
+import { calloutFor } from "../career/fightweek";
 import { notify } from "../career/inbox";
 import { fightOfferPay } from "../career/money";
 import { fmtDate } from "../core/time";
@@ -120,6 +122,7 @@ export function makeBout(w: World, ev: MMAEvent, a: Fighter, b: Fighter, kind: B
   ev.bouts.push(bout.id);
   a.booked = bout.id;
   b.booked = bout.id;
+  setOdds(w, bout);
   return bout;
 }
 
@@ -392,9 +395,25 @@ export function offerFight(w: World, rng: Rng, ev: MMAEvent, f: Fighter, opp?: F
         k = "vacant";
       }
     }
+    if (!o) {
+      // A call-out the matchmaker likes the sound of.
+      const c = calloutFor(w, f);
+      const t = c ? w.fighters[c] : null;
+      if (t && pool.includes(t) && !teammates(f, t)) {
+        const rf = rankOf(w, f);
+        const rt = rankOf(w, t);
+        const gap = (rf ?? 18) - (rt ?? 18);
+        if (rng.chance(gap > 8 ? 0.2 : gap > 4 ? 0.5 : 0.75)) o = t;
+      }
+    }
     if (!o) o = bestOpponent(w, rng, f, pool, ev.promo, new Set());
   }
   if (!o) return null;
+  if (k === "regular" && p.rankSize) {
+    const rf = rankOf(w, f);
+    const ro = rankOf(w, o);
+    if (rf !== null && ro !== null && rf > 0 && ro > 0 && rf <= 5 && ro <= 5) k = "eliminator";
+  }
   const bout = replace ?? makeBout(w, ev, f, o, k, { shortNotice, pending: "x" });
   if (replace) {
     // A replacement spot: the player's fighter steps in.
@@ -458,6 +477,7 @@ export function withdraw(w: World, rng: Rng, b: Bout, outId: string, why: string
     b.replaced = outId;
     b.shortNotice = true;
     playerSub.booked = b.id;
+    setOdds(w, b);
     offerFight(w, rng, ev, playerSub, stay, b.kind === "title" ? "title" : b.kind, true, b);
     addNews(w, { kind: "booking", promo: ev.promo, fighters: [outId], text: `${fullName(out)} is out of ${ev.name} (${why}).` });
     return;
@@ -470,6 +490,7 @@ export function withdraw(w: World, rng: Rng, b: Bout, outId: string, why: string
     b.replaced = outId;
     b.shortNotice = true;
     sub.booked = b.id;
+    setOdds(w, b);
     if (titleFight && w.promos[ev.promo].champs[b.div] === outId) b.kind = "interim";
     addNews(w, { kind: "booking", promo: ev.promo, fighters: [outId, sub.id, stayId], text: `${fullName(out)} is out of ${ev.name} (${why}). ${fullName(sub)} steps in on short notice against ${fullName(stay)}.` });
     if (stay.ctrl) {

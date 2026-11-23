@@ -24,6 +24,9 @@ import { Promotions, PromotionPage } from "../src/ui/pages/Promotions";
 import { Settings } from "../src/ui/pages/Settings";
 import { Agency, Scouting } from "../src/ui/pages/Agency";
 import { FightNight } from "../src/ui/pages/FightNight";
+import { Legacy } from "../src/ui/pages/Legacy";
+import { retirePlayer } from "../src/career/retire";
+import { becomeManager } from "../src/career/retire";
 
 const g = globalThis as unknown as Record<string, unknown>;
 g.window = { location: { hash: "" }, addEventListener() {}, removeEventListener() {} };
@@ -81,6 +84,7 @@ function pages(w: World, label: string) {
   check("Promotion", <PromotionPage id="ufc" />);
   check("Settings", <Settings />);
   check("Fight night", <FightNight />);
+  check("Legacy", <Legacy />);
   if (w.career.mode === "manager") {
     check("Agency", <Agency />);
     check("Scouting", <Scouting />);
@@ -95,6 +99,14 @@ pages(fw, "Fighter career, after 240 days");
 const tw = createWorld(roster, { name: "UI", seed: 78, mode: "fighter", difficulty: "normal", takeover: "ufc-ilia-topuria" });
 play(tw, 200);
 pages(tw, "Real fighter career");
+
+// Retire the real fighter, look at the after-career screen, then open an agency.
+const top = tw.fighters[tw.career.fighters[0]];
+if (top.booked) top.booked = null;
+retirePlayer(tw, top);
+pages(tw, "Retired fighter");
+becomeManager(tw, "Topuria Management");
+pages(tw, "Retired fighter turned manager");
 
 const mw = createWorld(roster, { name: "UI", seed: 79, mode: "manager", difficulty: "normal", agency: "Check Management" });
 for (const f of starterClients(mw, 3)) addControlled(mw, f);

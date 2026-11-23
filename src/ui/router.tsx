@@ -1,6 +1,6 @@
 // A tiny hash router: #/fighter/ufc-joshua-van and so on.
 
-import { useSyncExternalStore, type ReactNode, type MouseEvent } from "react";
+import { useSyncExternalStore, type CSSProperties, type ReactNode, type MouseEvent } from "react";
 
 function current(): string {
   const h = window.location.hash.replace(/^#/, "");
@@ -21,18 +21,17 @@ export function useRoute(): { path: string; parts: string[]; query: URLSearchPar
 export function go(path: string): void {
   if (current() === path) return;
   window.location.hash = path;
-  const main = document.querySelector(".main");
-  if (main) main.scrollTop = 0;
+  window.scrollTo({ top: 0, behavior: "auto" });
 }
 
-export function Link({ to, children, className, title }: { to: string; children: ReactNode; className?: string; title?: string }) {
+export function Link({ to, children, className, title, style }: { to: string; children: ReactNode; className?: string; title?: string; style?: CSSProperties }) {
   const onClick = (e: MouseEvent) => {
     if (e.metaKey || e.ctrlKey || e.shiftKey || e.button !== 0) return;
     e.preventDefault();
     go(to);
   };
   return (
-    <a href={`#${to}`} onClick={onClick} className={className} title={title}>
+    <a href={`#${to}`} onClick={onClick} className={className} title={title} style={style}>
       {children}
     </a>
   );

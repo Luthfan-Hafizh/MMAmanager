@@ -1,0 +1,209 @@
+// The day-by-day loop. Continue moves the calendar until something needs the
+// player: a decision in the inbox, a fight night, or the end of the week.
+
+import { Rng, hashString, mix } from "../core/rng";
+import { isFirstOfMonth, isMonday, fmtDate } from "../core/time";
+import { PROMOTIONS, PROMO_IDS } from "../data/promotions";
+import { ovr } from "../model/attributes";
+import type { Bout, MMAEvent, World } from "../model/types";
+import { TECHNIQUES, type TechId } from "../data/techniques";
+import { ensureSchedule, eventsOn } from "../world/calendar";
+import { fullName, touch, withRng } from "../world/core";
+import { monthlyDevelopment } from "../world/development";
+import { monthlyMarket } from "../world/market";
+import { bookingPass, campInjuries, fillGaps, withdraw } from "../world/matchmaking";
+import { applyResult, finishEvent, fightInputFor, runEvent } from "../world/results";
+import { updateP4P, updateRankings } from "../world/rankings";
+import { simulate, type FightOutcome } from "../engine/sim";
+import { campWeek, fightEve } from "../career/camp";
+import { blocking, notify } from "../career/inbox";
+import { monthlyMoney } from "../career/money";
+import { careerInterest, expireOffers } from "../career/offers";
+import { trainingWeek } from "../career/training";
+import { rankAchievements } from "../career/achievements";
+import { monthlySponsors, weeklySponsors } from "../career/sponsors";
+import { monthlyAgency } from "../career/agency";
+
+export interface Stop {
+  kind: "decision" | "fight" | "week" | "message" | "retired";
+  text: string;
+  ref?: string;
+}
+
+function heal(w: World): void {
+  for (const id of w.career.fighters) {
+    const f = w.fighters[id];
+    if (!f) continue;
+    if (f.injury && f.injury.until <= w.day) {
+      notify(w, { kind: "injury", fighter: f.id, from: "Team doctor", subject: `${fullName(f)} is fit again`, body: `The ${f.injury.name.toLowerCase()} has healed. Back to full training.` });
+      f.injury = null;
+    }
+  }
+  if (w.day % 7 === 3) {
+    for (const f of Object.values(w.fighters)) if (f.injury && f.injury.until <= w.day) f.injury = null;
+  }
+}
+
+function weekly(w: World, rng: Rng): void {
+  for (const id of w.career.fighters) {
+    const f = w.fighters[id];
+    const fc = w.career.fc[id];
+    if (!f || !fc || f.status !== "active") continue;
+    const plan = { ...fc.plan, week: [...fc.plan.week] };
+    if (fc.dayJob) for (let k = 6; k < 10; k++) plan.week[k] = "rest";
+    const r = trainingWeek(w, f, plan, rng, true);
+    fc.week = { growth: r.growth, fatigue: r.fatigue, injury: r.injury?.name };
+    // Technique drilling.
+    if (r.drilled) {
+      const prog = (fc as unknown as { drill?: Partial<Record<TechId, number>> });
+      prog.drill = prog.drill ?? {};
+      const cur = (prog.drill[r.drilled.tech] ?? 0) + r.drilled.progress;
+      if (cur >= 1) {
+        prog.drill[r.drilled.tech] = 0;
+        f.tech[r.drilled.tech] = Math.min(3, (f.tech[r.drilled.tech] ?? 0) + 1);
+        const lvl = f.tech[r.drilled.tech]!;
+        notify(w, { kind: "training", fighter: f.id, from: "Technique coach", subject: `${TECHNIQUES[r.drilled.tech].name}: ${["", "working", "sharp", "second nature"][lvl]}`, body: `${fullName(f)}'s ${TECHNIQUES[r.drilled.tech].name.toLowerCase()} is now ${["", "a working technique", "sharp", "second nature"][lvl]}.${lvl >= 3 ? " Pick a new technique to drill." : ""}` });
+        if (lvl >= 3) fc.plan.drill = null;
+      } else prog.drill[r.drilled.tech] = cur;
+    }
+    if (r.injury) {
+      const until = w.day + r.injury.days;
+      f.injury = { name: r.injury.name, area: r.injury.area as "body", until, severity: r.injury.severity, from: "training" };
+      const b = f.booked ? w.bouts[f.booked] : undefined;
+      if (b && b.status === "booked" && until > b.day - 3) {
+        if (r.injury.severity >= 2 || until > b.day + 21) {
+          notify(w, { kind: "injury", fighter: f.id, from: "Team doctor", subject: `Out of the fight: ${r.injury.name.toLowerCase()}`, body: `${fullName(f)} suffered a ${r.injury.name.toLowerCase()} in training: out for about ${Math.round(r.injury.days / 7)} weeks. The fight is off; the promotion will look for a replacement opponent.` });
+          withdraw(w, rng, b, f.id, r.injury.name.toLowerCase());
+          fc.camp = null;
+        } else {
+          notify(w, { kind: "injury", fighter: f.id, ref: b.id, from: "Team doctor", subject: `Hurt in camp: ${r.injury.name.toLowerCase()}`, body: `${fullName(f)} suffered a ${r.injury.name.toLowerCase()} in training, about ${Math.round(r.injury.days / 7)} weeks to heal. It won't be fully healed on fight night (${fmtDate(b.day)}). Fight through it, or pull out?`, needs: true, actions: [{ id: "fight-hurt", label: "Fight through it", primary: true }, { id: "pull-out", label: "Pull out", danger: true }] });
+        }
+      } else {
+        notify(w, { kind: "injury", fighter: f.id, from: "Team doctor", subject: `Injury: ${r.injury.name.toLowerCase()}`, body: `${fullName(f)} picked up a ${r.injury.name.toLowerCase()} in training. Out of full training for about ${Math.round(r.injury.days / 7) || 1} week${r.injury.days > 10 ? "s" : ""}.` });
+      }
+    }
+    const films = plan.week.filter((s) => s === "film").length;
+    const spars = plan.week.filter((s) => s === "sparring").length;
+    campWeek(w, f, films, spars);
+    if (f.fatigue >= 80) notify(w, { kind: "training", fighter: f.id, from: "Strength coach", subject: `${fullName(f)} is overtrained`, body: `Fatigue is at ${f.fatigue}. Growth is suffering and the injury risk is high. Take a light week.` });
+  }
+  weeklySponsors(w);
+}
+
+function monthly(w: World, rng: Rng): void {
+  monthlyDevelopment(w, rng);
+  monthlyMarket(w, rng);
+  for (const id of PROMO_IDS) if (PROMOTIONS[id].rankSize) updateRankings(w, id);
+  updateP4P(w);
+  monthlyMoney(w);
+  careerInterest(w, rng);
+  monthlySponsors(w, rng);
+  if (w.career.mode === "manager") monthlyAgency(w, rng);
+  rankAchievements(w);
+  for (const id of w.career.fighters) {
+    const fc = w.career.fc[id];
+    const f = w.fighters[id];
+    if (fc && f) {
+      fc.progress.push({ day: w.day, ovr: ovr(f.attrs) });
+      if (fc.progress.length > 240) fc.progress.shift();
+    }
+  }
+}
+
+/** Fight nights waiting for the player today. */
+export function fightNight(w: World): MMAEvent | null {
+  for (const ev of eventsOn(w, w.day)) {
+    if (ev.status === "done") continue;
+    if (ev.bouts.some((id) => {
+      const b = w.bouts[id];
+      return (b.status === "booked" || b.awaiting) && !b.pending && (w.fighters[b.a]?.ctrl || w.fighters[b.b]?.ctrl);
+    })) return ev;
+  }
+  return null;
+}
+
+/** Start a fight night: the undercard is fought, the player's fights wait. */
+export function openFightNight(w: World, ev: MMAEvent): Bout[] {
+  return withRng(w, (rng) => runEvent(w, rng, ev).awaiting);
+}
+
+export function resolvePlayerBout(w: World, b: Bout, out: FightOutcome): void {
+  withRng(w, (rng) => {
+    applyResult(w, rng, b, out);
+    const ev = w.events[b.ev];
+    if (ev && !ev.bouts.some((id) => w.bouts[id].awaiting)) finishEvent(w, rng, ev);
+  });
+  touch(w);
+}
+
+/** The fight's own random stream: the same bout always plays out the same way for the same plans. */
+export function boutRng(w: World, b: Bout): Rng {
+  return new Rng(mix(w.seed, hashString(b.id)));
+}
+
+export function quickSim(w: World, b: Bout): FightOutcome {
+  const rng = boutRng(w, b);
+  const seed = rng.int(1, 2 ** 31 - 1);
+  return simulate(fightInputFor(w, b, rng, seed, true));
+}
+
+export function advanceDay(w: World): Stop[] {
+  const stops: Stop[] = [];
+  withRng(w, (rng) => {
+    w.day += 1;
+    heal(w);
+    expireOffers(w);
+    campInjuries(w, rng);
+    bookingPass(w, rng);
+    if (w.day % 3 === 0) fillGaps(w, rng);
+    if (isMonday(w.day)) weekly(w, rng);
+    if (isFirstOfMonth(w.day)) monthly(w, rng);
+    for (const ev of eventsOn(w, w.day)) {
+      if (ev.status === "done") continue;
+      const mine = ev.bouts.some((id) => {
+        const b = w.bouts[id];
+        return b.status === "booked" && !b.pending && (w.fighters[b.a]?.ctrl || w.fighters[b.b]?.ctrl);
+      });
+      if (mine) {
+        stops.push({ kind: "fight", text: `Fight night: ${ev.name}`, ref: ev.id });
+        continue;
+      }
+      runEvent(w, rng, ev);
+    }
+    // The day before a player's fight: the weigh-in.
+    for (const ev of eventsOn(w, w.day + 1)) {
+      for (const id of ev.bouts) {
+        const b = w.bouts[id];
+        if (b.status === "booked" && !b.pending && (w.fighters[b.a]?.ctrl || w.fighters[b.b]?.ctrl)) fightEve(w, rng, b);
+      }
+    }
+    ensureSchedule(w, rng);
+  });
+  touch(w);
+  return stops;
+}
+
+export interface AdvanceResult {
+  days: number;
+  stop: Stop | null;
+}
+
+/** Continue: up to `max` days, stopping for decisions and fight nights. */
+export function advance(w: World, max = 7, onDay?: (w: World) => void): AdvanceResult {
+  let days = 0;
+  const before = new Set(w.inbox.slice(0, 40).map((m) => m.id));
+  for (; days < max; ) {
+    const block = blocking(w);
+    if (block.length) return { days, stop: { kind: "decision", text: block[0].subject, ref: block[0].id } };
+    const fn = fightNight(w);
+    if (fn) return { days, stop: { kind: "fight", text: `Fight night: ${fn.name}`, ref: fn.id } };
+    if (!w.career.fighters.some((id) => w.fighters[id]?.status === "active")) return { days, stop: { kind: "retired", text: "No active fighters." } };
+    const stops = advanceDay(w);
+    days++;
+    onDay?.(w);
+    if (stops.length) return { days, stop: stops[0] };
+    const fresh = w.inbox.filter((m) => !before.has(m.id) && !m.read && (m.needs || m.kind === "result" || m.kind === "injury" || m.kind === "contract"));
+    if (fresh.length) return { days, stop: { kind: fresh[0].needs ? "decision" : "message", text: fresh[0].subject, ref: fresh[0].id } };
+  }
+  return { days, stop: { kind: "week", text: "A week has passed." } };
+}

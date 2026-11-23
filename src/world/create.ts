@@ -1,0 +1,525 @@
+// Creating a world: the real UFC and PFL rosters, every regional, local and
+// amateur promotion filled with fighters of its own level, gyms in every
+// country, a calendar, and the player's career.
+
+import { Rng, hashString } from "../core/rng";
+import { clamp } from "../core/util";
+import { COUNTRY_LIST, countriesIn, countryOf, REGION_IDS, type RegionId } from "../data/countries";
+import { DIVISIONS, type DivisionId, type Sex } from "../data/divisions";
+import { makeName } from "../data/names";
+import { PROMOTIONS, PROMO_IDS, promoFor, type PromoId } from "../data/promotions";
+import { ARTS, type BaseArt } from "../data/styles";
+import { ovrOf } from "../model/attributes";
+import type { Career, Contract, Fighter, Gym, PromoState, Stance, World } from "../model/types";
+import { defaultTraining } from "../career/training";
+import { ensureSchedule } from "./calendar";
+import { addNews, fullName, nextId, touch, withRng } from "./core";
+import { generateFighter, makeRecord, pickCountry } from "./generate";
+import { realFighter, realGym, type RosterFile } from "./real";
+import { entryElo, updateP4P, updateRankings } from "./rankings";
+
+export const SAVE_VERSION = 1;
+
+export type StartLevel = "amateur" | "debut" | "regional";
+export type Talent = "average" | "prospect" | "phenom";
+
+export interface CreatedFighter {
+  first: string;
+  surname: string;
+  nick?: string;
+  sex: Sex;
+  country: string;
+  hometown?: string;
+  div: DivisionId;
+  age: number;
+  height: number;
+  reach: number;
+  stance: Stance;
+  art: BaseArt;
+  talent: Talent;
+  start: StartLevel;
+  gym?: string;
+}
+
+export interface NewGameOptions {
+  name: string;
+  seed: number;
+  mode: "fighter" | "manager";
+  difficulty: "easy" | "normal" | "hard";
+  takeover?: string;
+  created?: CreatedFighter;
+  managerName?: string;
+  agency?: string;
+  clients?: string[];
+}
+
+const TIER_LEVEL: Record<string, [number, number]> = {
+  regional: [62, 5],
+  local: [54, 5],
+  amateur: [46, 4.5],
+  league: [67, 5],
+};
+
+const GYM_PATTERNS = ["{city} MMA", "{city} Fight Club", "Team {name}", "{name} Combat Academy", "{city} Top Team", "{name} Jiu-Jitsu", "{city} Muay Thai", "{city} Wrestling Club", "Iron {name} Gym", "{city} Martial Arts Centre"];
+
+function makeGym(w: World, rng: Rng, country: string, rep: number): Gym {
+  const c = countryOf(country);
+  const city = rng.pick(c.cities);
+  const { last } = makeName(rng, c.culture, "M");
+  const name = rng.pick(GYM_PATTERNS).replace("{city}", city).replace("{name}", last);
+  const q = () => Math.round(clamp(rep + rng.normal(0, 8), 20, 90));
+  const head = makeName(rng, c.culture, "M");
+  const g: Gym = {
+    id: nextId(w, "gym"),
+    name,
+    country,
+    city,
+    rep: Math.round(rep),
+    facilities: q(),
+    coaches: { head: q(), striking: q(), grappling: q(), wrestling: q(), sc: q() },
+    headCoach: `${head.first} ${head.last}`,
+    fee: 10,
+  };
+  w.gyms[g.id] = g;
+  return g;
+}
+
+function gymsIn(w: World, country: string): Gym[] {
+  return Object.values(w.gyms).filter((g) => g.country === country);
+}
+
+export function pickGym(w: World, rng: Rng, country: string, level: number): Gym {
+  let list = gymsIn(w, country);
+  if (!list.length) {
+    const region = countryOf(country).region;
+    list = Object.values(w.gyms).filter((g) => countryOf(g.country).region === region);
+  }
+  if (!list.length) return makeGym(w, rng, country, 40);
+  // Better fighters end up in better rooms.
+  return rng.weighted(list, (g) => Math.exp(-Math.abs(g.rep - (level - 10)) / 14) + 0.02);
+}
+
+function blankPromo(id: PromoId): PromoState {
+  return {
+    id,
+    champs: {},
+    interim: {},
+    ranks: {},
+    prevRanks: {},
+    reigns: [],
+    counter: PROMOTIONS[id].firstNumber ?? 1,
+    cityCount: {},
+    nextEvent: 0,
+    contender: {},
+  };
+}
+
+export function contractFor(promo: PromoId, f: Fighter, day: number, rng: Rng, opts: { rank?: number | null; fights?: number } = {}): Contract {
+  const p = PROMOTIONS[promo];
+  const rank = opts.rank ?? null;
+  let show: number;
+  if (p.tier === "amateur") show = 0;
+  else if (promo === "ufc") {
+    if (rank === 0) show = Math.round(rng.range(500, 1100)) * 1000;
+    else if (rank !== null && rank <= 5) show = Math.round(rng.range(150, 320)) * 1000;
+    else if (rank !== null) show = Math.round(rng.range(55, 150)) * 1000;
+    else show = Math.round(clamp(12 + f.pop * 0.5 + rng.range(0, 22), 12, 70)) * 1000;
+  } else if (promo === "pfl") {
+    if (rank === 0) show = Math.round(rng.range(350, 900)) * 1000;
+    else if (rank !== null) show = Math.round(rng.range(50, 180)) * 1000;
+    else show = Math.round(rng.range(10, 45)) * 1000;
+  } else {
+    const champ = rank === 0;
+    show = Math.round((p.showLow + (p.showHigh - p.showLow) * (champ ? 0.6 : clamp((ovrOf(f.attrs) - 50) / 40, 0, 0.5) * rng.next())) / 100) * 100;
+  }
+  const flat = (promo === "ufc" || promo === "pfl") && rank === 0;
+  const fights = opts.fights ?? (p.tier === "amateur" ? 99 : promo === "ufc" ? rng.int(1, 5) : rng.int(1, 4));
+  return {
+    promo,
+    fights: Math.max(fights, 1),
+    left: Math.max(fights, 1),
+    show,
+    win: flat ? 0 : show,
+    escal: p.tier === "major" ? 2000 : p.tier === "league" ? 2500 : Math.round(show * 0.1),
+    start: day,
+    end: day + (p.tier === "amateur" ? 3650 : 365 * (promo === "ufc" ? 3 : 2)),
+    champClause: p.tier === "major" || p.tier === "league",
+    signBonus: 0,
+  };
+}
+
+function populate(w: World, rng: Rng, promo: PromoId): void {
+  const p = PROMOTIONS[promo];
+  const lvl = TIER_LEVEL[p.tier];
+  if (!lvl || p.region === "global") return;
+  const prestigeShift = (p.prestige - (p.tier === "regional" ? 40 : p.tier === "local" ? 17 : 6)) * 0.12;
+  for (const d of p.divisions) {
+    const women = DIVISIONS[d].sex === "F";
+    const count = Math.round(p.rosterPerDiv * (women ? 0.6 : 1));
+    const members: Fighter[] = [];
+    for (let k = 0; k < count; k++) {
+      const ageMean = p.tier === "amateur" ? 21 : p.tier === "local" ? 25.5 : 27.5;
+      const age = Math.round(clamp(rng.normal(ageMean, p.tier === "amateur" ? 2.2 : 3.6), p.tier === "amateur" ? 17 : 19, 38));
+      const o = clamp(rng.normal(lvl[0] + prestigeShift, lvl[1]), 35, 80);
+      const f = generateFighter(rng, { id: nextId(w, "f"), region: p.region as RegionId, div: d, ovr: o, age, day: w.day, amateur: p.tier === "amateur" });
+      f.gym = pickGym(w, rng, f.country, o).id;
+      if (p.tier === "amateur") f.am = makeRecord(rng, o, age, 0, true);
+      else {
+        f.rec = makeRecord(rng, o, age, p.tier === "local" ? 1 : 2, false);
+        f.am = makeRecord(rng, o, Math.min(age, 22), 0, true);
+      }
+      f.promo = promo;
+      f.contract = contractFor(promo, f, w.day, rng);
+      f.elo = entryElo(promo, ovrOf(f.attrs), 1500) + (f.rec.w - f.rec.l) * 6;
+      f.lastFight = w.day - rng.int(14, Math.round(p.gap * 1.3));
+      f.streak = rng.chance(0.6) ? rng.int(1, 3) : -rng.int(1, 2);
+      f.pop = Math.round(clamp((o - 40) * 0.6 + rng.normal(0, 5), 1, 40));
+      f.joined = w.day;
+      w.fighters[f.id] = f;
+      members.push(f);
+    }
+    // The champion: the best of them, usually.
+    if (p.tier !== "amateur" || rng.chance(0.8)) {
+      const champ = members.slice().sort((a, b) => ovrOf(b.attrs) + b.rec.w * 0.3 - (ovrOf(a.attrs) + a.rec.w * 0.3))[rng.chance(0.75) ? 0 : 1];
+      if (champ) {
+        w.promos[promo].champs[d] = champ.id;
+        champ.elo += 60;
+        champ.streak = Math.max(champ.streak, rng.int(2, 5));
+        champ.reigns = 1;
+        w.promos[promo].reigns.push({ fighter: champ.id, promo, div: d, won: w.day - rng.int(40, 500), defenses: rng.int(0, 2), how: "won" });
+        if (champ.contract) champ.contract.show = Math.round(champ.contract.show * 1.6);
+      }
+    }
+  }
+}
+
+function freeAgentPool(w: World, rng: Rng): void {
+  for (const region of REGION_IDS) {
+    const n = region === "na" || region === "sa" || region === "ee" ? 30 : 16;
+    for (let k = 0; k < n; k++) {
+      const men = rng.chance(0.85);
+      const div: DivisionId = men ? rng.pick(["FLY", "BW", "FW", "LW", "WW", "MW", "LHW", "HW"]) : rng.pick(["WSW", "WFLY", "WBW"]);
+      const o = clamp(rng.normal(55, 6), 40, 72);
+      const age = Math.round(clamp(rng.normal(27, 4), 19, 38));
+      const f = generateFighter(rng, { id: nextId(w, "f"), region, div, ovr: o, age, day: w.day });
+      f.gym = pickGym(w, rng, f.country, o).id;
+      f.rec = makeRecord(rng, o, age, 1, false);
+      f.elo = 1150 + (o - 54) * 9;
+      f.lastFight = w.day - rng.int(30, 300);
+      w.fighters[f.id] = f;
+    }
+  }
+}
+
+export function createWorld(roster: RosterFile, o: NewGameOptions): World {
+  const seed = o.seed >>> 0;
+  const rng = new Rng(seed);
+  const day = 0;
+  const career: Career = {
+    mode: o.mode,
+    name: o.managerName ?? o.name,
+    fighters: [],
+    money: 0,
+    ledger: [],
+    monthly: [],
+    fc: {},
+    fightOffers: [],
+    contractOffers: [],
+    sponsors: [],
+    living: 1500,
+    pitches: [],
+    achievements: [],
+  };
+  const w: World = {
+    v: SAVE_VERSION,
+    id: `w${seed.toString(36)}${Date.now().toString(36)}`,
+    name: o.name,
+    created: Date.now(),
+    seed,
+    rng: rng.s,
+    day,
+    start: day,
+    fighters: {},
+    bouts: {},
+    events: {},
+    promos: {},
+    gyms: {},
+    news: [],
+    inbox: [],
+    career,
+    ids: {},
+    p4p: [],
+    awards: [],
+    hof: [],
+    stamp: 0,
+    upcoming: [],
+  };
+  for (const id of PROMO_IDS) w.promos[id] = blankPromo(id);
+
+  // Gyms: the real ones, then rooms in every country.
+  for (const g of roster.gyms) w.gyms[g.id] = realGym(g);
+  for (const c of COUNTRY_LIST) {
+    const n = Math.max(1, Math.round(Math.sqrt(c.talent) * 1.6));
+    for (let k = 0; k < n; k++) makeGym(w, rng, c.code, clamp(rng.normal(38 + Math.sqrt(c.talent) * 3, 10), 15, 70));
+  }
+
+  // The real fighters.
+  const ufcRank = new Map<string, number>();
+  for (const [d, r] of Object.entries(roster.ufc.ranks)) {
+    if (!r) continue;
+    if (r.c) ufcRank.set(r.c, 0);
+    r.e.forEach((id, i) => ufcRank.set(id, i + 1));
+    void d;
+  }
+  const pflRank = new Map<string, number>();
+  for (const id of Object.values(roster.pfl.champs)) if (id) pflRank.set(id, 0);
+  for (const list of Object.values(roster.pfl.ranks)) list?.forEach((id, i) => pflRank.set(id, i + 1));
+  const p4p = new Map(roster.ufc.p4p.map((id, i) => [id, i + 1] as const));
+  const ctx = {
+    rankOf: (id: string) => (id.startsWith("ufc-") ? ufcRank.get(id) ?? null : pflRank.get(id) ?? null),
+    p4p: (id: string) => p4p.get(id) ?? null,
+    day,
+  };
+  for (const rf of roster.fighters) {
+    const f = realFighter(rf, ctx, seed);
+    if (f.promo === "pfl" && !PROMOTIONS.pfl.divisions.includes(f.div)) {
+      f.promo = null; // the PFL runs no women's strawweight division
+    }
+    if (!f.gym || !w.gyms[f.gym]) f.gym = pickGym(w, rng, f.country, ovrOf(f.attrs)).id;
+    const rank = f.promo ? ctx.rankOf(f.id) : null;
+    if (f.promo) f.contract = contractFor(f.promo, f, day, rng, { rank });
+    f.joined = day;
+    const gap = f.promo === "ufc" ? 200 : 170;
+    f.lastFight = day - rng.int(rank === 0 ? 60 : 21, gap);
+    w.fighters[f.id] = f;
+  }
+  // UFC titles, rankings and ratings from the official list.
+  const ups = w.promos.ufc;
+  for (const [d, r] of Object.entries(roster.ufc.ranks) as [DivisionId, { c: string | null; e: string[] }][]) {
+    if (r.c && w.fighters[r.c]) {
+      ups.champs[d] = r.c;
+      const f = w.fighters[r.c];
+      ups.reigns.push({ fighter: r.c, promo: "ufc", div: d, won: day - rng.int(120, 700), defenses: 0, how: "won" });
+      f.elo = 1860;
+    } else ups.champs[d] = null;
+    ups.ranks[d] = r.e.filter((id) => w.fighters[id]?.promo === "ufc");
+    ups.ranks[d]!.forEach((id, i) => (w.fighters[id].elo = 1800 - i * 9));
+  }
+  for (const f of Object.values(w.fighters)) {
+    if (f.promo === "ufc" && !ufcRank.has(f.id)) f.elo = Math.round(clamp(1480 + (ovrOf(f.attrs) - 72) * 13 + f.streak * 6, 1380, 1665));
+  }
+  const pps = w.promos.pfl;
+  for (const d of PROMOTIONS.pfl.divisions) {
+    const c = roster.pfl.champs[d];
+    pps.champs[d] = c && w.fighters[c] ? c : null;
+    if (c && w.fighters[c]) {
+      w.fighters[c].elo = 1690;
+      pps.reigns.push({ fighter: c, promo: "pfl", div: d, won: day - rng.int(90, 500), defenses: 0, how: "won" });
+    }
+    const ic = roster.pfl.interim[d];
+    pps.interim[d] = ic && w.fighters[ic] ? ic : null;
+    if (ic && w.fighters[ic]) w.fighters[ic].elo = 1660;
+    pps.ranks[d] = (roster.pfl.ranks[d] ?? []).filter((id) => w.fighters[id]?.promo === "pfl");
+    pps.ranks[d]!.forEach((id, i) => (w.fighters[id].elo = 1650 - i * 11));
+  }
+  for (const f of Object.values(w.fighters)) {
+    if (f.promo === "pfl" && !pflRank.has(f.id) && pps.interim[f.div] !== f.id) f.elo = Math.round(clamp(1390 + (ovrOf(f.attrs) - 66) * 11, 1250, 1600));
+  }
+  w.p4p = roster.ufc.p4p.filter((id) => w.fighters[id]?.promo === "ufc");
+
+  // PFL divisions with few real fighters get generated depth.
+  for (const d of PROMOTIONS.pfl.divisions) {
+    const have = Object.values(w.fighters).filter((f) => f.promo === "pfl" && f.div === d).length;
+    const want = DIVISIONS[d].sex === "F" ? 14 : 22;
+    for (let k = have; k < want; k++) {
+      const region = rng.pick(["na", "we", "ee", "sa", "af", "wa"] as RegionId[]);
+      const o2 = clamp(rng.normal(66, 4.5), 55, 78);
+      const age = Math.round(clamp(rng.normal(29, 3.5), 22, 38));
+      const f = generateFighter(rng, { id: nextId(w, "f"), region, div: d, ovr: o2, age, day });
+      f.gym = pickGym(w, rng, f.country, o2).id;
+      f.rec = makeRecord(rng, o2, age, 3, false);
+      f.promo = "pfl";
+      f.contract = contractFor("pfl", f, day, rng);
+      f.elo = Math.round(1390 + (o2 - 66) * 11);
+      f.lastFight = day - rng.int(30, 160);
+      f.pop = Math.round(clamp((o2 - 45) * 0.8, 5, 45));
+      f.joined = day;
+      w.fighters[f.id] = f;
+    }
+  }
+
+  // Every region's ladder.
+  for (const id of PROMO_IDS) populate(w, rng, id);
+  freeAgentPool(w, rng);
+  touch(w);
+  for (const id of PROMO_IDS) if (PROMOTIONS[id].rankSize && id !== "ufc" && id !== "pfl") updateRankings(w, id);
+
+  // First events: every promotion starts within its own interval.
+  for (const id of PROMO_IDS) {
+    const p = PROMOTIONS[id];
+    const ps = w.promos[id];
+    const first = id === "ufc" ? 5 : Math.round(rng.range(3, Math.max(8, 365 / p.eventsPerYear)));
+    let d0 = first;
+    while (((d0 % 7) + 7) % 7 !== p.day) d0++;
+    ps.nextEvent = d0;
+  }
+  ensureSchedule(w, rng);
+  w.rng = rng.s;
+
+  setupCareer(w, roster, o);
+  updateP4P(w);
+  welcome(w, o);
+  return w;
+}
+
+function difficultyMoney(o: NewGameOptions, base: number): number {
+  return Math.round(base * (o.difficulty === "easy" ? 1.8 : o.difficulty === "hard" ? 0.6 : 1));
+}
+
+export function addControlled(w: World, f: Fighter): void {
+  f.ctrl = true;
+  if (!w.career.fighters.includes(f.id)) w.career.fighters.push(f.id);
+  w.career.fc[f.id] = {
+    id: f.id,
+    plan: defaultTraining(f),
+    camp: null,
+    goals: [],
+    progress: [{ day: w.day, ovr: Math.round(ovrOf(f.attrs)) }],
+    dayJob: false,
+    manager: null,
+    mediaStyle: "confident",
+    shortNotice: false,
+  };
+}
+
+function setupCareer(w: World, roster: RosterFile, o: NewGameOptions): void {
+  const c = w.career;
+  if (o.mode === "fighter") {
+    let f: Fighter | undefined;
+    if (o.takeover && w.fighters[o.takeover]) {
+      f = w.fighters[o.takeover];
+      const champ = f.promo ? w.promos[f.promo].champs[f.div] === f.id : false;
+      const est = (f.contract?.show ?? 10000) * (f.rec.w + f.rec.l) * 0.25;
+      c.money = difficultyMoney(o, clamp(est, 15000, champ ? 2500000 : 600000));
+      c.living = f.promo === "ufc" ? (champ ? 15000 : 5000) : 3000;
+    } else if (o.created) {
+      f = createPlayerFighter(w, o.created, o);
+      const start = o.created.start;
+      c.money = difficultyMoney(o, start === "amateur" ? 2500 : start === "debut" ? 4000 : 9000);
+      c.living = start === "amateur" ? 1100 : start === "debut" ? 1500 : 2200;
+    }
+    if (f) {
+      addControlled(w, f);
+      if (o.created && o.created.start !== "regional") c.fc[f.id].dayJob = true;
+      c.name = fullName(f);
+    }
+  } else {
+    c.money = difficultyMoney(o, 60000);
+    c.living = 4500;
+    c.agency = { name: o.agency || "New Agency", rep: 22, cut: 15, staff: 1, scouting: [] };
+    for (const id of o.clients ?? []) {
+      const f = w.fighters[id];
+      if (f) addControlled(w, f);
+    }
+  }
+  touch(w);
+}
+
+export function createPlayerFighter(w: World, cf: CreatedFighter, o: NewGameOptions): Fighter {
+  const region = countryOf(cf.country).region;
+  const level = cf.start === "amateur" ? 47 : cf.start === "debut" ? 53 : 61;
+  const potBy: Record<Talent, number> = { average: 72, prospect: 82, phenom: 90 };
+  const pot = potBy[cf.talent] + (o.difficulty === "easy" ? 3 : o.difficulty === "hard" ? -3 : 0);
+  const f = withRng(w, (rng) => {
+    const g = generateFighter(rng, { id: nextId(w, "p"), country: cf.country, region, div: cf.div, ovr: level, age: cf.age, day: w.day, art: cf.art, pot });
+    g.first = cf.first;
+    g.surname = cf.surname;
+    g.nick = cf.nick || undefined;
+    g.hometown = cf.hometown || g.hometown;
+    g.height = cf.height;
+    g.reach = cf.reach;
+    g.stance = cf.stance;
+    g.hid.pot = pot;
+    g.hid.consistency = Math.max(g.hid.consistency, 11);
+    g.pers.professionalism = Math.max(g.pers.professionalism, 13);
+    g.gym = cf.gym && w.gyms[cf.gym] ? cf.gym : pickGym(w, rng, cf.country, level + 8).id;
+    if (cf.start === "regional") {
+      g.rec = { w: 5, l: 1, d: 0, nc: 0, koW: 2, subW: 1, decW: 2, koL: 0, subL: 0, decL: 1 };
+      g.am = { w: 6, l: 2, d: 0, nc: 0, koW: 2, subW: 2, decW: 2, koL: 0, subL: 1, decL: 1 };
+    } else if (cf.start === "debut") {
+      g.am = { w: 4, l: 1, d: 0, nc: 0, koW: 1, subW: 1, decW: 2, koL: 0, subL: 0, decL: 1 };
+    }
+    g.amateur = cf.start === "amateur";
+    const tier = cf.start === "amateur" ? "amateur" : cf.start === "debut" ? "local" : "regional";
+    const p = promoFor(region, tier) ?? promoFor("na", tier)!;
+    if (!p.divisions.includes(cf.div)) {
+      // Small scenes without the division: start in the nearest region that has it.
+      const alt = REGION_IDS.map((r) => promoFor(r, tier)).find((x) => x && x.divisions.includes(cf.div));
+      g.promo = alt?.id ?? p.id;
+    } else g.promo = p.id;
+    g.contract = contractFor(g.promo!, g, w.day, rng, { fights: tier === "amateur" ? 99 : 3 });
+    g.elo = entryElo(g.promo!, ovrOf(g.attrs), 1200);
+    g.lastFight = cf.start === "amateur" ? null : w.day - 60;
+    g.pop = cf.start === "regional" ? 8 : 2;
+    g.joined = w.day;
+    g.best = Math.round(ovrOf(g.attrs));
+    return g;
+  });
+  w.fighters[f.id] = f;
+  return f;
+}
+
+function welcome(w: World, o: NewGameOptions): void {
+  const c = w.career;
+  const f = c.fighters[0] ? w.fighters[c.fighters[0]] : undefined;
+  if (o.mode === "fighter" && f) {
+    const p = f.promo ? PROMOTIONS[f.promo] : null;
+    w.inbox.unshift({
+      id: nextId(w, "m"),
+      day: w.day,
+      from: w.gyms[f.gym]?.headCoach ?? "Your coach",
+      subject: "Welcome to the team",
+      body: `Good to have you at ${w.gyms[f.gym]?.name ?? "the gym"}. ${p ? `You're signed to ${p.name}. ` : ""}Set your training week on the Training page, keep an eye on your inbox for fight offers, and press Continue to move the calendar on. When a fight is signed, the camp starts: plan the cut, pick the sparring partners and build the game plan.`,
+      kind: "info",
+      read: false,
+      fighter: f.id,
+    });
+  } else {
+    w.inbox.unshift({
+      id: nextId(w, "m"),
+      day: w.day,
+      from: "Agency office",
+      subject: `${c.agency?.name ?? "The agency"} opens its doors`,
+      body: `You manage ${c.fighters.length} fighter${c.fighters.length === 1 ? "" : "s"}. You take ${c.agency?.cut ?? 15}% of every purse and 20% of sponsorship deals. Negotiate their contracts, choose their fights and camps, find them sponsors, and sign more talent from the Scouting page. A good stable builds your reputation; a bad deal costs you clients.`,
+      kind: "info",
+      read: false,
+    });
+  }
+  addNews(w, { kind: "other", text: "A new season of MMA is under way. The UFC, the PFL and promotions in eight regions have cards on the calendar." });
+}
+
+/** Fighters a new manager can sign at the start: young talent outside the top level. */
+export function starterClients(w: World, n = 24): Fighter[] {
+  const pool = Object.values(w.fighters).filter(
+    (f) => f.status === "active" && !f.ctrl && f.promo && ["regional", "local", "league"].includes(PROMOTIONS[f.promo].tier) && f.hid.pot >= 70,
+  );
+  pool.sort((a, b) => b.hid.pot + ovrOf(b.attrs) * 0.3 - (a.hid.pot + ovrOf(a.attrs) * 0.3));
+  const out: Fighter[] = [];
+  const seen = new Set<string>();
+  for (const f of pool) {
+    const key = `${f.promo}:${f.div}`;
+    if (seen.has(key) && out.length < n * 0.7) continue;
+    seen.add(key);
+    out.push(f);
+    if (out.length >= n) break;
+  }
+  return out;
+}
+
+export function regionCountries(region: RegionId) {
+  return countriesIn(region);
+}
+
+export { pickCountry };
+export const ART_LIST = Object.values(ARTS);
+export const seedFrom = (s: string) => hashString(s);

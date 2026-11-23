@@ -1,0 +1,131 @@
+// Saves: compressed JSON in IndexedDB, one record per career, plus export and import.
+
+import type { World } from "../model/types";
+import { SAVE_VERSION } from "../world/create";
+
+export interface SaveMeta {
+  id: string;
+  name: string;
+  mode: World["career"]["mode"];
+  who: string;
+  day: number;
+  savedAt: number;
+  version: number;
+  size: number;
+}
+
+const DB = "mma-manager";
+const STORE = "saves";
+const META = "meta";
+
+function open(): Promise<IDBDatabase> {
+  return new Promise((resolve, reject) => {
+    const req = indexedDB.open(DB, 1);
+    req.onupgradeneeded = () => {
+      const db = req.result;
+      if (!db.objectStoreNames.contains(STORE)) db.createObjectStore(STORE);
+      if (!db.objectStoreNames.contains(META)) db.createObjectStore(META);
+    };
+    req.onsuccess = () => resolve(req.result);
+    req.onerror = () => reject(req.error);
+  });
+}
+
+function tx<T>(db: IDBDatabase, store: string, mode: IDBTransactionMode, fn: (s: IDBObjectStore) => IDBRequest<T>): Promise<T> {
+  return new Promise((resolve, reject) => {
+    const t = db.transaction(store, mode);
+    const r = fn(t.objectStore(store));
+    r.onsuccess = () => resolve(r.result);
+    r.onerror = () => reject(r.error);
+  });
+}
+
+async function gzip(text: string): Promise<Uint8Array | string> {
+  if (typeof CompressionStream === "undefined") return text;
+  const stream = new Blob([text]).stream().pipeThrough(new CompressionStream("gzip"));
+  return new Uint8Array(await new Response(stream).arrayBuffer());
+}
+
+async function gunzip(data: Uint8Array | string): Promise<string> {
+  if (typeof data === "string") return data;
+  const stream = new Blob([data]).stream().pipeThrough(new DecompressionStream("gzip"));
+  return await new Response(stream).text();
+}
+
+export function metaOf(w: World, size = 0): SaveMeta {
+  const first = w.career.fighters[0] ? w.fighters[w.career.fighters[0]] : undefined;
+  return {
+    id: w.id,
+    name: w.name,
+    mode: w.career.mode,
+    who: w.career.mode === "manager" ? w.career.agency?.name ?? w.career.name : first ? `${first.first} ${first.surname}` : w.career.name,
+    day: w.day,
+    savedAt: Date.now(),
+    version: w.v,
+    size,
+  };
+}
+
+export async function saveWorld(w: World): Promise<SaveMeta> {
+  const json = JSON.stringify(w);
+  const data = await gzip(json);
+  const db = await open();
+  const meta = metaOf(w, typeof data === "string" ? data.length : data.byteLength);
+  await tx(db, STORE, "readwrite", (s) => s.put(data, w.id));
+  await tx(db, META, "readwrite", (s) => s.put(meta, w.id));
+  db.close();
+  return meta;
+}
+
+export async function listSaves(): Promise<SaveMeta[]> {
+  try {
+    const db = await open();
+    const all = await tx<SaveMeta[]>(db, META, "readonly", (s) => s.getAll() as IDBRequest<SaveMeta[]>);
+    db.close();
+    return all.sort((a, b) => b.savedAt - a.savedAt);
+  } catch {
+    return [];
+  }
+}
+
+export async function loadWorld(id: string): Promise<World | null> {
+  const db = await open();
+  const data = await tx<Uint8Array | string | undefined>(db, STORE, "readonly", (s) => s.get(id) as IDBRequest<Uint8Array | string | undefined>);
+  db.close();
+  if (!data) return null;
+  const w = JSON.parse(await gunzip(data)) as World;
+  return w;
+}
+
+export async function deleteSave(id: string): Promise<void> {
+  const db = await open();
+  await tx(db, STORE, "readwrite", (s) => s.delete(id));
+  await tx(db, META, "readwrite", (s) => s.delete(id));
+  db.close();
+}
+
+export function compatible(m: SaveMeta | World): boolean {
+  return ("version" in m ? m.version : m.v) === SAVE_VERSION;
+}
+
+export function exportWorld(w: World): void {
+  const blob = new Blob([JSON.stringify(w)], { type: "application/json" });
+  const a = document.createElement("a");
+  a.href = URL.createObjectURL(blob);
+  const who = metaOf(w).who.replace(/[^a-z0-9]+/gi, "-").toLowerCase();
+  a.download = `mma-manager-${who}-${w.day}.json`;
+  document.body.appendChild(a);
+  a.click();
+  a.remove();
+  setTimeout(() => URL.revokeObjectURL(a.href), 2000);
+}
+
+export async function importFile(file: File): Promise<World> {
+  let text: string;
+  if (file.name.endsWith(".gz")) text = await gunzip(new Uint8Array(await file.arrayBuffer()));
+  else text = await file.text();
+  const w = JSON.parse(text) as World;
+  if (!w || !w.fighters || !w.career) throw new Error("That file is not an MMA Manager save.");
+  if (w.v !== SAVE_VERSION) throw new Error(`This save is from another version of the game (format ${w.v}).`);
+  return w;
+}

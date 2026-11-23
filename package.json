@@ -1,0 +1,30 @@
+{
+  "name": "mma-manager",
+  "private": true,
+  "version": "4.0.0",
+  "type": "module",
+  "description": "MMA Manager: a realistic MMA career and management simulator, rebuilt from zero.",
+  "scripts": {
+    "dev": "vite --port 5630",
+    "build": "tsc --noEmit && vite build",
+    "preview": "vite preview --port 5631",
+    "typecheck": "tsc --noEmit",
+    "data": "node scripts/build-data.mjs",
+    "check:engine": "node scripts/run.mjs scripts/check-engine.ts",
+    "check:world": "node scripts/run.mjs scripts/check-world.ts",
+    "check:ui": "node scripts/run.mjs scripts/check-ui.tsx",
+    "check": "npm run typecheck && npm run check:engine -- --quick && npm run check:world -- --quick && npm run check:ui"
+  },
+  "dependencies": {
+    "react": "18.3.1",
+    "react-dom": "18.3.1"
+  },
+  "devDependencies": {
+    "@types/react": "18.3.12",
+    "@types/react-dom": "18.3.1",
+    "@vitejs/plugin-react": "4.3.4",
+    "esbuild": "0.21.5",
+    "typescript": "5.6.3",
+    "vite": "5.4.11"
+  }
+}

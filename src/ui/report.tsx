@@ -101,7 +101,7 @@ export function FightReport({ data, title = "Fight report" }: { data: ReportData
   const cur = sel < 0 ? tot : rounds[sel];
   const cards = sel >= 0 ? data.rcards?.[sel] : undefined;
   const ended = (i: number) => data.method && data.method !== "DEC" && data.method !== "DRAW" && data.endRound === i + 1;
-  const moments = (data.log ?? []).filter((l) => l.big || l.kind === "read" || l.kind === "kd" || l.kind === "rock" || l.kind === "finish");
+  const moments = (data.log ?? []).filter((l) => l.big || l.kind === "read" || l.kind === "kd" || l.kind === "rock" || l.kind === "finish" || l.kind === "call");
   return (
     <section className="fr" aria-label={title}>
       <div className="fr-head">

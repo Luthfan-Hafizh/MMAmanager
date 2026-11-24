@@ -28,7 +28,7 @@ import { Legacy } from "../src/ui/pages/Legacy";
 import { Titles } from "../src/ui/pages/Titles";
 import { BoutPreview } from "../src/ui/pages/Events";
 import { FightReport, reportOf } from "../src/ui/report";
-import { simulate } from "../src/engine/sim";
+import { FightSim, simulate } from "../src/engine/sim";
 import { retirePlayer } from "../src/career/retire";
 import { becomeManager } from "../src/career/retire";
 import { hireManager, makeContractOffer } from "../src/career/offers";
@@ -122,6 +122,31 @@ function pages(w: World, label: string) {
       failures++;
       console.log(`  FAIL play by play: only ${out.log?.length} lines in ${rounds.length} rounds`);
     }
+    // Live corner calls: the corner calls during the rounds, your answers are logged and reported.
+    const live = new FightSim({ a: x, b: y, rounds: 3, roundSec: 300, div: x.div, seed: 7, log: true, aiCorner: [false, true] });
+    let calls = 0;
+    let follow = 0;
+    let g = 0;
+    while (!live.over && g++ < 20000) {
+      if (live.between) {
+        live.nextRound();
+        continue;
+      }
+      live.step();
+      const adv = live.liveAdvice(0, 0.7);
+      if (adv) {
+        calls++;
+        live.act(0, adv.options[0].shout, { key: adv.key, text: adv.text, label: adv.options[0].label, by: "you" });
+      }
+      if (live.cornerFeedback(0)) follow++;
+    }
+    const lo = live.outcome();
+    const mine = lo.log?.filter((l) => l.kind === "call").length ?? 0;
+    if (calls < 3 || !mine || live.calls.filter((c) => c.i === 0).length !== calls || !live.calls.some((c) => c.i === 1)) {
+      failures++;
+      console.log(`  FAIL live calls: ${calls} calls, ${mine} logged, ${live.calls.length} recorded, ${follow} follow-ups`);
+    }
+    check("Fight report with your calls", <FightReport data={{ a: x, b: y, rounds: lo.rounds ?? [], rcards: lo.rcards, log: lo.log, winner: lo.winner, method: lo.method, detail: lo.detail, endRound: lo.round, endTime: lo.time }} />);
   }
   if (w.career.mode === "manager") {
     check("Agency", <Agency />);

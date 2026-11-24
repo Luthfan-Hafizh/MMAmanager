@@ -85,6 +85,8 @@ export interface Side {
   read: [number, number, number];
   /** Things the commentary has already pointed out. */
   noted: Record<string, boolean>;
+  /** A call acted on this instant: the fighter does it in the next exchange. */
+  now?: Shout | null;
   sta: number;
   cap: number;
   head: number;
@@ -201,6 +203,64 @@ const SUB_BOTTOM: Record<GPos, [string, number][]> = {
   back: [],
 };
 
+/** One choice on a corner call: what to do, or nothing (keep the plan). */
+export interface AdviceOption {
+  label: string;
+  shout: Shout | null;
+  primary?: boolean;
+}
+
+/** A call from the corner during a round. The fight doesn't stop for it. */
+export interface LiveAdvice {
+  key: string;
+  text: string;
+  /** The first option is the corner's call. */
+  options: AdviceOption[];
+  urgent: boolean;
+  round: number;
+  t: number;
+  /** The clock time it stops applying. */
+  until: number;
+  /** What the fighter does with it if nobody chooses. */
+  instinct: number;
+}
+
+/** A call and what was done with it. */
+export interface CornerCall {
+  /** Whose corner it was. */
+  i: 0 | 1;
+  r: number;
+  t: number;
+  key: string;
+  text: string;
+  choice: string;
+  by: "you" | "instinct" | "corner";
+  shout: Shout | null;
+  ok: boolean;
+}
+
+const AGGRESSIVE = new Set<Shout>(["push", "finish", "power", "pressure", "takedown", "gnp", "head"]);
+/** Calls a fighter acts on in the very next exchange. */
+const IMMEDIATE = new Set<Shout>(["finish", "power", "push", "pressure", "takedown", "clinch", "circle", "getup", "gnp", "subs"]);
+const CAREFUL = new Set<Shout>(["calm", "defend", "clinch", "jab", "circle", "counter", "control", "stand", "check"]);
+const FOLLOW_UP = new Set<Shout>(["legs", "body", "head", "opening", "mix", "push", "pressure", "takedown", "finish", "jab", "circle", "defend", "counter", "subs", "gnp"]);
+/** "Velasquez ___." */
+const ACTION_3RD: Record<Shout, string> = {
+  push: "ups the pace", calm: "slows it down to breathe", head: "starts head hunting", body: "goes to the body", legs: "goes after the legs",
+  mix: "mixes up the levels", opening: "looks for the opening", jab: "goes back to the jab and stays long", pressure: "walks {him} down",
+  circle: "circles off the fence", counter: "sits back to counter", clinch: "ties {him} up", takedown: "changes levels, looking for the takedown",
+  stand: "keeps it standing", getup: "fights to get back up", control: "settles in on top", gnp: "postures up to ground and pound",
+  subs: "hunts for a submission", power: "loads up on the power shots", finish: "goes for the finish", defend: "puts the hands up to survive",
+  check: "starts lifting the shin to check the kicks",
+};
+/** "...wants to ___, but..." */
+const ACTION_INF: Record<Shout, string> = {
+  push: "push the pace", calm: "slow it down", head: "go upstairs", body: "go to the body", legs: "chop the legs", mix: "mix it up",
+  opening: "find the opening", jab: "use the jab", pressure: "walk {him} down", circle: "circle off the fence", counter: "counter",
+  clinch: "tie {him} up", takedown: "shoot", stand: "keep it standing", getup: "get up", control: "hold {him} down", gnp: "ground and pound",
+  subs: "hunt the submission", power: "load up", finish: "finish it", defend: "cover up", check: "check the kicks",
+};
+
 export interface FightOutcome extends BoutResult {
   stats: [RoundStat, RoundStat];
   sides: [Side, Side];
@@ -241,6 +301,12 @@ export class FightSim {
   log: FightLogLine[] = [];
   cards: [number, number][][] = []; // [round][judge] scores
   private aiCorner: [boolean, boolean];
+  /** Live corner calls: when each kind was last given, the calls made, and the follow-ups waiting. */
+  private adviceAt: [Record<string, number>, Record<string, number>] = [{}, {}];
+  private lastAdvice: [number, number] = [-9999, -9999];
+  calls: CornerCall[] = [];
+  private checks: { i: 0 | 1; sh: Shout; at: number; base: Record<string, number>; done?: boolean }[] = [];
+  private aiReactAt: [number, number] = [-9999, -9999];
 
   constructor(input: FightInput) {
     this.input = input;
@@ -393,7 +459,10 @@ export class FightSim {
   step(): number {
     if (this.over || this.between) return 0;
     let dt: number;
-    if (this.pos === "dist") dt = this.distance();
+    const urgent = this.s.find((x) => x.now);
+    const forced = urgent ? this.immediate(urgent) : null;
+    if (forced !== null) dt = forced;
+    else if (this.pos === "dist") dt = this.distance();
     else if (this.pos === "clinch") dt = this.clinch();
     else dt = this.ground();
     if (this.over) return dt;
@@ -402,6 +471,7 @@ export class FightSim {
     this.t += dt;
     this.recover(dt);
     if (this.logOn) this.cues();
+    this.aiReactAll();
     if (this.pos === "ground") this.s[this.top].ctl[this.round - 1] += dt;
     if (this.pos === "clinch") this.s[this.ctrl].ctl[this.round - 1] += dt * 0.5;
     if (this.pos === "ground") this.rs(this.s[this.top]).ctrl += dt;
@@ -591,6 +661,304 @@ export class FightSim {
     else if (lead > 1 && left <= 1) notes.push({ text: `You're ahead. Stay safe, don't give it away.` });
     if (!notes.length) notes.push({ text: `It's going to plan. Same again.` });
     return notes.slice(0, 4);
+  }
+
+  // ---------- live corner calls ----------
+
+  /** Fight time from the first bell, in seconds. */
+  private clockAll(): number {
+    return (this.round - 1) * this.roundSec + this.t;
+  }
+
+  /** Who is winning the round so far, from this side's view: -1 losing it clearly .. 1 winning it clearly. */
+  roundEdge(i: 0 | 1): number {
+    const r = this.round - 1;
+    const me = this.s[i];
+    const o = this.other(me);
+    const a = (me.imp[r] ?? 0) + (me.gimp[r] ?? 0);
+    const b = (o.imp[r] ?? 0) + (o.gimp[r] ?? 0);
+    return clamp((a - b) / (4 + 0.25 * (a + b)), -1, 1);
+  }
+
+  /**
+   * The corner reads the fight and calls something: urgent calls when someone
+   * is hurt or pinned, strategic ones about the pace, the opening, the cards.
+   * A better head coach (quality 0..1) notices sooner and reads the guard.
+   * Uses no randomness: asking never changes the fight.
+   */
+  liveAdvice(i: 0 | 1, quality = 0.6): LiveAdvice | null {
+    if (this.over || this.between) return null;
+    const me = this.s[i];
+    const o = this.other(me);
+    const now = this.clockAll();
+    if (now - this.lastAdvice[i] < 14) return null;
+    const she = o.f.sex === "F";
+    const he = she ? "she" : "he";
+    const him = she ? "her" : "him";
+    const his = she ? "her" : "his";
+    const He = he.charAt(0).toUpperCase() + he.slice(1);
+    const His = his.charAt(0).toUpperCase() + his.slice(1);
+    const left = this.roundSec - this.t;
+    const r = this.round - 1;
+    const active = (sh: Shout | null) => !!sh && Object.values(me.shouts).includes(sh);
+    const make = (key: string, cooldown: number, urgent: boolean, lasts: number, text: string, options: AdviceOption[]): LiveAdvice | null => {
+      if (now - (this.adviceAt[i][key] ?? -9999) < cooldown) return null;
+      if (active(options[0].shout)) return null;
+      this.adviceAt[i][key] = now;
+      this.lastAdvice[i] = now;
+      options[0].primary = true;
+      const a: LiveAdvice = { key, text, options, urgent, round: this.round, t: Math.round(this.t), until: Math.min(this.roundSec, this.t + lasts), instinct: 0 };
+      a.instinct = this.instinctFor(me, a);
+      return a;
+    };
+    const open = this.openness(o);
+    const myRound = me.rs[r];
+    const oRound = o.rs[r];
+
+    // Urgent: someone is hurt.
+    if (me.stun > 0) return make("hurt", 25, true, 8, "You're hurt! Survive this!", [
+      { label: `Tie ${him} up`, shout: "clinch" }, { label: "Hands up, survive", shout: "defend" }, { label: "Fire back", shout: "power" },
+    ]);
+    if (o.stun > 0) return make("finish", 20, true, 7, `${He}'s hurt! Finish ${him}!`, [
+      { label: "Finish it!", shout: "finish" }, { label: "Stay composed", shout: null },
+    ]);
+    // On the ground.
+    if (this.pos === "ground" && this.top === o.i) {
+      const guard = me.tr.guard > 0.3 || me.n.subs > 0.62;
+      return make("bottom", 55, false, 25, guard ? `Attack from the bottom: ${he}'s leaving an arm in!` : "Don't stay on your back! Get up!", guard
+        ? [{ label: "Hunt the submission", shout: "subs" }, { label: "Get up now!", shout: "getup" }]
+        : [{ label: "Get up now!", shout: "getup" }, { label: "Hunt the submission", shout: "subs" }]);
+    }
+    if (this.pos === "ground" && this.top === me.i) {
+      const neck = me.n.subs > me.n.groundStrikes + 0.08 || o.sta < 40;
+      return make("top", 55, false, 25, neck ? `${He}'s tired underneath. Look for the neck!` : "Posture up and let the hands go!", neck
+        ? [{ label: "Hunt the submission", shout: "subs" }, { label: "Ground and pound", shout: "gnp" }, { label: `Hold ${him} down`, shout: "control" }]
+        : [{ label: "Ground and pound", shout: "gnp" }, { label: "Hunt the submission", shout: "subs" }, { label: `Hold ${him} down`, shout: "control" }]);
+    }
+    // The fence.
+    if (this.pos === "dist" && this.fence === me.i && this.quiet === 0) return make("fence", 75, true, 12, "You're on the fence! Get off it!", [
+      { label: "Circle off the fence", shout: "circle" }, { label: `Tie ${him} up`, shout: "clinch" },
+    ]);
+    if (this.pos === "dist" && this.fence === o.i && this.e(me, "takedowns") > this.e(o, "tdd") - 0.02) return make("tdChance", 70, true, 10, `${He}'s on the fence. Take ${him} down!`, [
+      { label: `Take ${him} down!`, shout: "takedown" }, { label: "Keep striking", shout: null },
+    ]);
+    // The end of the round and the cards.
+    const edge = this.roundEdge(i);
+    if (left < 40 && left > 5 && Math.abs(edge) < 0.35) return make(`steal${this.round}`, 9999, false, 35, "Thirty seconds! Steal the round!", [
+      { label: "Push the pace!", shout: "push" }, { label: `Take ${him} down!`, shout: "takedown" }, { label: "Stay safe", shout: null },
+    ]);
+    if (this.round === this.rounds && this.scoreDiff(me) < -0.5 && this.t > this.roundSec * 0.3) return make("behind", 9999, false, 45, "You're down on the cards. You need a finish!", [
+      { label: "Finish it!", shout: "finish" }, { label: `Take ${him} down!`, shout: "takedown" }, { label: "Push the pace!", shout: "push" },
+    ]);
+    if (this.round === this.rounds && this.scoreDiff(me) > 1 && this.t > this.roundSec * 0.3) return make("ahead", 9999, false, 45, "You're winning this. Stay smart, don't get caught.", [
+      { label: "Use the jab, stay long", shout: "jab" }, { label: "Hands up, survive", shout: "defend" }, { label: "Keep pushing", shout: null },
+    ]);
+    // The gas tanks.
+    if (o.sta < 50 + 10 * quality && me.sta > o.sta + 8) return make("oppTired", 90, false, 25, `${He}'s breathing hard. Push the pace!`, [
+      { label: "Push the pace!", shout: "push" }, { label: "Keep it steady", shout: null },
+    ]);
+    if (me.sta < 42) return make("meTired", 90, false, 25, "You're gassing. Slow it down and breathe.", [
+      { label: "Slow down, breathe", shout: "calm" }, { label: "Push through", shout: null },
+    ]);
+    // The guard: a good coach sees where it has gone.
+    const best = [0, 1, 2].sort((a, b) => open[b] - open[a])[0];
+    const covered = [0, 1, 2].filter((z) => open[z] < 0.88);
+    if (quality >= 0.35 && covered.length && open[best] > 1.25 - 0.15 * quality) {
+      const words = ["head", "body", "legs"];
+      const go: Shout = best === 0 ? "head" : best === 1 ? "body" : "legs";
+      return make("opening", 70, false, 30, `${He}'s covering the ${words[covered[0]]}. The ${words[best]} ${best === 2 ? "are" : "is"} open!`, [
+        { label: best === 0 ? "Go upstairs" : best === 1 ? "Go to the body" : "Chop the legs", shout: go }, { label: "Find the opening", shout: "opening" }, { label: "Mix it up", shout: "mix" },
+      ]);
+    }
+    // Damage that shows.
+    if (o.legs < 72 && (myRound?.leg ?? 0) >= 4 && open[2] >= 0.9) return make("legHurt", 80, false, 30, `${His} lead leg is going. Chop it down!`, [
+      { label: "Chop the legs", shout: "legs" }, { label: "Go upstairs", shout: "head" },
+    ]);
+    if (o.body < 72 && (myRound?.body ?? 0) >= 4) return make("bodyHurt", 80, false, 30, `The body shots are hurting ${him}. Dig to the body!`, [
+      { label: "Go to the body", shout: "body" }, { label: "Head hunting", shout: "head" },
+    ]);
+    if (me.legs < 75 && (oRound?.leg ?? 0) >= 4) return make("myLeg", 80, false, 30, `${He}'s chopping your leg. Check the kicks!`, [
+      { label: "Check the kicks", shout: "check" }, { label: `Walk ${him} down`, shout: "pressure" },
+    ]);
+    // The wrestling and the range.
+    if ((oRound?.tdL ?? 0) >= 2) return make("tdAgainst", 90, false, 30, `${He}'s taking you down at will. Keep it standing!`, [
+      { label: "Keep it standing", shout: "stand" }, { label: "Circle off the fence", shout: "circle" },
+    ]);
+    if (this.pos === "dist" && (oRound?.dist ?? 0) >= (myRound?.dist ?? 0) + 6) {
+      const reach = me.f.reach - o.f.reach >= 2;
+      return make("range", 90, false, 30, reach ? `Use your reach! Keep ${him} on the end of the jab.` : `${He}'s winning at range. Close the distance!`, reach
+        ? [{ label: "Use the jab, stay long", shout: "jab" }, { label: `Walk ${him} down`, shout: "pressure" }]
+        : [{ label: `Walk ${him} down`, shout: "pressure" }, { label: `Take ${him} down!`, shout: "takedown" }, { label: "Make them miss, counter", shout: "counter" }]);
+    }
+    return null;
+  }
+
+  /** What a fighter does with a call when nobody chooses: the disciplined and clever follow the corner, the rest follow their nature. */
+  private instinctFor(s: Side, a: LiveAdvice): number {
+    let best = 0;
+    let top = -Infinity;
+    a.options.forEach((op, k) => {
+      let v = k === 0 ? 0.1 + 0.35 * s.n.discipline + 0.25 * s.n.fightIQ : 0;
+      if (op.shout === null) v += 0.3 * (1 - s.n.aggression);
+      if (op.shout && AGGRESSIVE.has(op.shout)) v += 0.6 * s.n.aggression + 0.3 * s.tr.volume + 0.3 * s.tr.power;
+      if (op.shout && CAREFUL.has(op.shout)) v += 0.5 * s.n.composure + 0.2 * s.n.discipline;
+      if (op.shout === "takedown" || op.shout === "subs" || op.shout === "gnp" || op.shout === "control") v += 0.45 * Math.max(s.n.takedowns, s.n.subs);
+      if (v > top) {
+        top = v;
+        best = k;
+      }
+    });
+    return best;
+  }
+
+  /**
+   * The fighter acts on a call (fighter mode: you are the fighter, so it isn't
+   * a shout that may go unheard). Dazed, the body may not answer.
+   */
+  act(i: 0 | 1, sh: Shout | null, call?: { key: string; text: string; label: string; by: CornerCall["by"] }): boolean {
+    const s = this.s[i];
+    const o = this.other(s);
+    const him = o.f.sex === "F" ? "her" : "him";
+    const record = (ok: boolean) => {
+      if (call) this.calls.push({ i, r: this.round, t: Math.round(this.t), key: call.key, text: call.text, choice: call.label, by: call.by, shout: sh, ok });
+    };
+    if (!sh) {
+      this.say(`${s.name} sticks with the plan.`, s.i, false, call?.by === "you" ? "call" : "corner");
+      record(true);
+      return true;
+    }
+    if (s.stun > 0 && !this.rng.chance(clamp(0.35 + 0.5 * s.n.composure, 0.3, 0.85))) {
+      this.say(`${s.name} wants to ${ACTION_INF[sh].replace("{him}", him)}, but the legs aren't there yet.`, s.i, false, call?.by === "you" ? "call" : "corner");
+      record(false);
+      return false;
+    }
+    const def = SHOUT_BY_ID[sh];
+    s.shouts = { ...s.shouts, [def.group]: sh };
+    s.plan = applyShouts(s.base, s.shouts);
+    s.d = dialsOf(s.plan);
+    if (sh === "check") s.read[2] = Math.min(0.5, s.read[2] + 0.1);
+    if (sh === "defend") s.read[0] = Math.min(0.85, s.read[0] + 0.06);
+    this.normRead(s);
+    const by = call?.by === "instinct" ? " on instinct" : call?.by === "corner" ? ", as the corner says" : "";
+    this.say(`${s.name} ${ACTION_3RD[sh].replace("{him}", him)}${by}.`, s.i, false, call?.by === "you" ? "call" : "corner");
+    record(true);
+    // The corner will say whether it's working.
+    if (FOLLOW_UP.has(sh)) this.checks.push({ i, sh, at: this.clockAll(), base: this.snapshotFor(i) });
+    // Some calls are done on the spot, in the next exchange.
+    if (IMMEDIATE.has(sh)) s.now = sh;
+    return true;
+  }
+
+  /** A call acted on this instant: the swarm, the shot, the escape, the tie-up. Null when it doesn't fit the position. */
+  private immediate(s: Side): number | null {
+    const sh = s.now;
+    s.now = null;
+    const o = this.other(s);
+    if (!sh || s.stun > 0) return null;
+    if (this.pos === "dist") {
+      if (sh === "circle" && this.fence === s.i) {
+        if (this.rng.chance(clamp(0.45 + 0.4 * this.e(s, "footwork") - 0.2 * this.e(o, "footwork"), 0.2, 0.9))) {
+          this.fence = -1;
+          this.say(`${s.name} angles off and gets back to the centre.`, s.i);
+        } else this.say(`${s.name} tries to circle out, but ${o.name} cuts the angle off.`, o.i);
+        return 2.5;
+      }
+      if (sh === "takedown") return this.shoot(s, o, false);
+      if (sh === "clinch") return this.enterClinch(s, o);
+      if (sh === "finish" || sh === "power" || sh === "push" || sh === "pressure") return this.combo(s, o);
+      return null;
+    }
+    if (this.pos === "clinch") {
+      if (sh === "takedown") return this.shoot(s, o, true);
+      if (sh === "circle" || sh === "getup") {
+        this.pos = "dist";
+        this.fence = -1;
+        this.say(`${s.name} breaks the clinch and resets.`, s.i);
+        return 3;
+      }
+      return null;
+    }
+    if (this.top === s.i && (sh === "gnp" || sh === "finish" || sh === "subs")) return this.topMove(s, o);
+    if (this.top !== s.i && (sh === "getup" || sh === "subs")) return this.bottomMove(s, o);
+    return null;
+  }
+
+  private snapshotFor(i: 0 | 1): Record<string, number> {
+    const me = this.s[i];
+    const o = this.other(me);
+    const sum = (s: Side, k: StatKey) => s.rs.reduce((a, r) => a + r[k], 0);
+    return {
+      head: sum(me, "head"), body: sum(me, "body"), leg: sum(me, "leg"), sig: sum(me, "sigL"), abs: sum(o, "sigL"),
+      tdL: sum(me, "tdL"), tdA: sum(me, "tdA"), subA: sum(me, "subA"), kd: sum(me, "kd"), oStun: o.stun > 0 ? 1 : 0,
+    };
+  }
+
+  /** Twenty-odd seconds after a call was acted on, the corner says whether it's working. */
+  cornerFeedback(i: 0 | 1): { text: string; good: boolean } | null {
+    const now = this.clockAll();
+    const me = this.s[i];
+    const o = this.other(me);
+    const he = o.f.sex === "F" ? "she" : "he";
+    const He = he.charAt(0).toUpperCase() + he.slice(1);
+    for (const c of this.checks) {
+      if (c.i !== i || c.done || now - c.at < 22) continue;
+      c.done = true;
+      const n = this.snapshotFor(i);
+      const d = (k: string) => n[k] - c.base[k];
+      let out: { text: string; good: boolean } | null = null;
+      switch (c.sh) {
+        case "legs":
+          out = this.openness(o)[2] < 0.85 ? { text: `${He}'s checking the kicks now. Go upstairs!`, good: false }
+            : d("leg") >= 3 ? { text: `It's working: ${d("leg")} leg kicks in and ${he}'s favouring the leg.`, good: true }
+            : { text: "The kicks aren't landing. Set them up with the hands first!", good: false };
+          break;
+        case "body":
+          out = d("body") >= 3 ? { text: `It's working: ${d("body")} to the body, ${he}'s slowing down.`, good: true }
+            : this.openness(o)[1] < 0.85 ? { text: `${He}'s covering the body now. Switch it up!`, good: false }
+            : { text: "Nothing's getting to the body. Go upstairs first, then dig.", good: false };
+          break;
+        case "head": case "opening": case "mix":
+          out = d("head") + d("body") + d("leg") >= 5 ? { text: `That's it! ${d("head") + d("body") + d("leg")} clean shots since.`, good: true } : { text: "Nothing's landing clean. Change something!", good: false };
+          break;
+        case "push": case "pressure":
+          out = me.sta < 35 ? { text: "Careful, you're running out of gas!", good: false }
+            : d("sig") - d("abs") >= 3 ? { text: `You're winning the exchanges, ${d("sig")} to ${d("abs")}. Keep it up!`, good: true }
+            : d("abs") > d("sig") + 3 ? { text: `${He}'s countering you coming in. Be smarter!`, good: false } : null;
+          break;
+        case "takedown":
+          out = d("tdL") >= 1 ? { text: "Got the takedown! Now work from there.", good: true } : d("tdA") >= 2 ? { text: `${He}'s stuffing the shots. Strike first, then shoot!`, good: false } : null;
+          break;
+        case "finish":
+          out = d("kd") > 0 ? { text: "Down! Stay on top of it!", good: true } : o.stun <= 0 && !this.over ? { text: `${He} survived it. Settle down or you'll gas out.`, good: false } : null;
+          break;
+        case "jab": case "circle": case "defend": case "counter":
+          out = d("abs") <= d("sig") ? { text: `Good, ${he}'s not finding you now.`, good: true } : { text: "Still getting hit. Move your head!", good: false };
+          break;
+        case "subs": case "gnp":
+          out = d("subA") > 0 || d("sig") >= 4 ? { text: "Good work on top. Keep the pressure on.", good: true } : null;
+          break;
+      }
+      if (out) {
+        this.say(`${me.name}'s corner: "${out.text}"`, me.i, false, "corner");
+        return out;
+      }
+    }
+    return null;
+  }
+
+  /**
+   * In a live fight the other corner calls too, and its fighter acts on the
+   * calls by instinct: the same rules on both sides, so your choices are a
+   * chess match. The world's AI-against-AI fights don't do this.
+   */
+  private aiReactAll() {
+    for (const s of this.s) {
+      if (!this.aiCorner[s.i] || this.aiCorner[1 - s.i] || this.over || this.between) continue;
+      const adv = this.liveAdvice(s.i, 0.55);
+      if (!adv) continue;
+      const op = adv.options[adv.instinct];
+      this.act(s.i, op.shout, { key: adv.key, text: adv.text, label: op.label, by: adv.instinct === 0 ? "corner" : "instinct" });
+    }
   }
 
   /** Rough round-by-round lead from this side's view, in rounds. */

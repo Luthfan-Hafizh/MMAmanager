@@ -24,7 +24,7 @@ import { grantStyleTech, pickStyles, switchStyle } from "./fightstyle";
 import { dayOfIso, realSignals } from "./real";
 import { styleFit, type GrappleStyle, type StrikeStyle } from "../data/fightstyles";
 
-export const SAVE_VERSION = 5;
+export const SAVE_VERSION = 6;
 /** The oldest save format this version can bring up to date. */
 export const OLDEST_SAVE = 1;
 
@@ -77,15 +77,6 @@ export function migrate(w: World, roster: RosterFile | null): World {
     w.v = 4;
   }
   if (w.v < 5) {
-    // Format 5: the reigns the world began with start on the real date, with the real defences.
-    for (const promo of ["ufc", "pfl"] as const) {
-      for (const r of w.promos[promo]?.reigns ?? []) {
-        const real = roster?.titles?.[r.fighter];
-        if (!real || r.won >= w.start || r.how !== "won") continue;
-        r.won = Math.min(w.start - 1, dayOfIso(real[0]));
-        r.defenses += real[1];
-      }
-    }
     // Format 5: fighting styles. Real fighters get theirs from how they really fight.
     const byId = new Map((roster?.fighters ?? []).map((rf) => [rf.id, rf] as const));
     for (const f of Object.values(w.fighters)) {
@@ -95,6 +86,18 @@ export function migrate(w: World, roster: RosterFile | null): World {
       grantStyleTech(f);
     }
     w.v = 5;
+  }
+  if (w.v < 6 && roster?.titles) {
+    // Format 6: the reigns the world began with start on the real date, with the real defences.
+    for (const promo of ["ufc", "pfl"] as const) {
+      for (const r of w.promos[promo]?.reigns ?? []) {
+        const real = roster.titles[r.fighter];
+        if (!real || r.won >= w.start || r.how !== "won") continue;
+        r.won = Math.min(w.start - 1, dayOfIso(real[0]));
+        r.defenses += real[1];
+      }
+    }
+    w.v = 6;
   }
   return w;
 }

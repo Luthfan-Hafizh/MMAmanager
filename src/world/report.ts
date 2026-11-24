@@ -107,7 +107,7 @@ export function roundSummary(A: Fighter, B: Fighter, r: [RoundStat, RoundStat], 
   if (subs[sb]) parts.push(`${nm[sb]} tried ${subs[sb] === 1 ? "a submission" : `${subs[sb]} submissions`}`);
   let s = parts.length ? parts[0].charAt(0).toUpperCase() + parts[0].slice(1) : "";
   if (parts.length > 1) s += `; ${parts.slice(1).join("; ")}`;
-  if (last) s += `. It ended at ${clock(last.time)}: ${/^(KO|TKO)/.test(last.method) ? last.method : last.method.charAt(0).toLowerCase() + last.method.slice(1)}`;
+  if (last) s += `. It ended at ${clock(last.time)}: ${/^(KO|TKO)\b/.test(last.method) ? last.method : last.method.charAt(0).toLowerCase() + last.method.slice(1)}`;
   else if (lead >= 0) s += `. ${v.a === 3 || v.b === 3 ? "All three judges" : `${Math.max(v.a, v.b)} of 3 judges`} gave it to ${nm[lead]}`;
   else if (cards?.length) s += `. The judges split it`;
   return `${s}.`;

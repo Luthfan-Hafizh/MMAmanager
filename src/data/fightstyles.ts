@@ -111,7 +111,7 @@ export const FIGHT_STYLES: Record<StyleId, StyleDef> = {
     t: { blitz: 0.75, range: 0.6, mix: 0.4, counter: 0.3 },
   }),
   flash: D({
-    id: "flash", kind: "strike", name: "Flash kicker", from: "Taekwondo", arts: ["taekwondo", "karate", "kickboxing"],
+    id: "flash", kind: "strike", name: "Flash kicker", from: "Taekwondo", arts: ["taekwondo", "kickboxing"],
     desc: "Spinning attacks and head kicks from every angle: unpredictable and dangerous at range.",
     how: ["Head kicks and spinning attacks", "Fast, flashy, unpredictable", "Uncomfortable in the clinch"],
     keys: ["kicks", "speed", "footwork"], tech: ["headKick", "spinningBackKick", "questionMark", "switchKick"], plan: "kickboxer",

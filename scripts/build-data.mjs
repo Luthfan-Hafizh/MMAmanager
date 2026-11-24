@@ -16,6 +16,24 @@ const P_KEYS = ["discipline", "temper", "ego", "charisma", "legacy", "money", "l
 
 const replaced = new Set(Object.keys(src.pfl.replaces ?? {}));
 
+/** The background the snapshot names ("Muay Thai", "Wrestler", "Striker"...), as the game's arts. */
+const BASES = {
+  "muay thai": "muaythai", "jiu-jitsu": "bjj", "brazilian jiu-jitsu": "bjj", wrestling: "wrestling", wrestler: "wrestling",
+  boxing: "boxing", boxer: "boxing", kickboxer: "kickboxing", kickboxing: "kickboxing", karate: "karate", "kung fu": "karate",
+  judo: "judo", sambo: "sambo", taekwondo: "taekwondo", brawler: "brawler", striker: "striker", grappler: "grappler",
+};
+function baseOf(f) {
+  for (const v of [f.base, f.stats?.style]) {
+    const k = String(v ?? "").toLowerCase();
+    if (BASES[k] && BASES[k] !== "striker" && BASES[k] !== "grappler") return BASES[k];
+  }
+  for (const v of [f.base, f.stats?.style]) {
+    const k = String(v ?? "").toLowerCase();
+    if (BASES[k]) return BASES[k];
+  }
+  return undefined;
+}
+
 function compact(f, promo) {
   const st = f.stats;
   const m = f.methods ?? {};
@@ -30,6 +48,7 @@ function compact(f, promo) {
     ht: f.heightIn,
     rc: f.reachIn || f.heightIn,
     b: f.build,
+    ba: baseOf(f),
     d: DIV[f.divisionId],
     p: promo,
     lg: f.league,
@@ -100,10 +119,10 @@ function titleWin(rows, promo) {
     const [r, , , , date, , , notes] = h;
     const n = String(notes ?? "").toLowerCase();
     if (!n.includes(promo)) continue;
-    if (/won the.*championship/.test(n) && r === "W") won = { date, defenses: 0, interim: n.includes("interim") ? 1 : 0 };
-    else if (/(defended|retained).*championship/.test(n) && r === "W" && won) won.defenses++;
-    else if (/lost the.*championship/.test(n)) won = null;
-    else if (/promoted to undisputed/.test(n) && won) won.interim = 0;
+    if (/\bwon the\b.*championship/.test(n) && r === "W") won = { date, defenses: 0, interim: n.includes("interim") ? 1 : 0 };
+    else if (/\b(defended|retained)\b.*championship/.test(n) && r === "W" && won) won.defenses++;
+    else if (/\blost the\b.*championship/.test(n)) won = null;
+    else if (/\bpromoted to undisputed\b/.test(n) && won) won.interim = 0;
   }
   return won;
 }

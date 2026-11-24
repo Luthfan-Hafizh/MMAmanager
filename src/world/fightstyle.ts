@@ -51,14 +51,14 @@ function realBonus(id: StyleId, r: RealSignals): number {
     case "chain": return (r.td - 2) * 9 + (r.tdEntry - 0.5) * 40 + (r.top - 0.5) * 15;
     case "blast": return (r.td - 1.6) * 6 + (r.tdEntry - 0.5) * 30 - (r.clinch - 0.45) * 15;
     case "grinder": return (r.clinch - 0.45) * 35 + (r.clinchShare - 11) * 1 + (r.tdEntry - 0.4) * 20;
-    case "scrambler": return (r.scramble - 0.5) * 60;
+    case "scrambler": return (r.scramble - 0.5) * 40 + (r.tdEntry - 0.35) * 15;
     case "pounder": return (r.top - 0.5) * 30 + (r.finish - 0.5) * 25 + (r.groundShare - 15) * 0.9;
     case "passer": return (r.top - 0.55) * 40 + (r.sub - 0.5) * 15;
     case "guard": return (r.subHunt - 0.4) * 40 - (r.top - 0.5) * 25;
     case "backTaker": return (r.subHunt - 0.35) * 30 + (r.scramble - 0.5) * 25 + (r.sub - 0.5) * 15;
     case "legLocker": return (r.subHunt - 0.6) * 40 - 10;
     case "thrower": return (r.clinch - 0.45) * 25 + (r.tdEntry - 0.4) * 10;
-    case "sprawl": return (r.tdDef - 65) * 1.2 - (r.tdEntry - 0.3) * 40;
+    case "sprawl": return (r.tdDef - 65) * 1.2 - (r.tdEntry - 0.3) * 40 + (r.td < 1 ? 8 : 0);
   }
 }
 

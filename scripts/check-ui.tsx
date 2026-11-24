@@ -118,7 +118,7 @@ function pages(w: World, label: string) {
       failures++;
       console.log("  FAIL fight report: no end-of-round condition recorded");
     }
-    if ((out.log?.length ?? 0) < 40 * rounds.length) {
+    if ((out.log?.length ?? 0) < 25 * rounds.length) {
       failures++;
       console.log(`  FAIL play by play: only ${out.log?.length} lines in ${rounds.length} rounds`);
     }

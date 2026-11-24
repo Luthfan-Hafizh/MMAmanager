@@ -262,46 +262,66 @@ async function main() {
 const found = new Map(); // id -> { title, fights, off }
 const titleOf = (p) => p.name.replace(/\s+/g, " ").trim();
 
-async function tryBatch(list, toTitle) {
-  for (let k = 0; k < list.length; k += 8) {
-    const chunk = list.slice(k, k + 8);
-    const titles = chunk.map(toTitle);
-    const res = await contents(titles);
-    for (let i = 0; i < chunk.length; i++) {
-      const p = chunk[i];
-      const page = res.get(titles[i]);
+async function tryBatch(list, toTitle, maxOff = 3) {
+  // Each item is a fighter and one title to try for them.
+  const items = list.map((x) => (x.p ? x : { p: x, title: toTitle(x) }));
+  for (let k = 0; k < items.length; k += 8) {
+    const chunk = items.slice(k, k + 8);
+    const res = await contents(chunk.map((x) => x.title));
+    for (const { p, title } of chunk) {
+      const page = res.get(title);
       if (!page?.text) continue;
       const fights = parseTable(page.text);
       if (!fights?.length) continue;
       const c = check(fights, p.rec);
       const prev = found.get(p.id);
-      if (c.off <= 3 && (!prev || c.off < prev.off)) found.set(p.id, { title: page.title, fights: c.pre, off: c.off });
+      if (c.off <= maxOff && (!prev || c.off < prev.off)) found.set(p.id, { title: page.title, fights: c.pre, off: c.off });
     }
-    process.stdout.write(`\r${found.size}/${people.length} found (batch ${Math.floor(k / 8) + 1})   `);
-    await sleep(250);
+    process.stdout.write(`
+${found.size}/${people.length} found (batch ${Math.floor(k / 8) + 1})   `);
   }
+}
+
+/** Other ways a name is written on Wikipedia: straight apostrophes, a hyphenated surname, the nickname dropped, the long disambiguation. */
+function variants(p) {
+  const n = titleOf(p);
+  const out = new Set();
+  const straight = n.replace(/[‘’`]/g, "'");
+  if (straight !== n) {
+    out.add(straight);
+    out.add(`${straight} (fighter)`);
+  }
+  const w = n.split(" ");
+  if (w.length >= 3) {
+    out.add(`${w.slice(0, -2).join(" ")} ${w.slice(-2).join("-")}`);
+    out.add(`${w[0]} ${w[w.length - 1]}`);
+    out.add(`${w[0]} ${w[w.length - 1]} (fighter)`);
+  }
+  out.add(`${n} (mixed martial artist)`);
+  return [...out];
 }
 
 console.log(`${people.length} real fighters`);
 await tryBatch(people, titleOf);
 await tryBatch(people.filter((p) => !found.has(p.id)), (p) => `${titleOf(p)} (fighter)`);
-const rest = people.filter((p) => !found.has(p.id));
-console.log(`\nsearching for ${rest.length} more`);
-let n = 0;
-for (const p of rest) {
-  n++;
-  // One request: the search results come back with their text.
-  const pages = (await searchPages(`${p.name} mixed martial artist`)).filter((x) => !x.title.toLowerCase().startsWith("list of"));
-  for (const page of pages) {
-    const fights = parseTable(page.text);
-    if (!fights?.length) continue;
-    const c = check(fights, p.rec);
-    const prev = found.get(p.id);
-    // A search hit has to match the record closely: it could be someone else.
-    if (c.off <= 1 && (!prev || c.off < prev.off)) found.set(p.id, { title: page.title, fights: c.pre, off: c.off });
+// Variants have to match the record closely: a shorter name can be someone else.
+await tryBatch(people.filter((p) => !found.has(p.id)).flatMap((p) => variants(p).map((title) => ({ p, title }))), null, 1);
+// Optional and slow: search for the rest by name. Light searches first, then
+// the candidate pages fetched in batches. A hit has to match the record closely.
+if (process.argv.includes("--search")) {
+  const rest = people.filter((p) => !found.has(p.id));
+  console.log(`
+searching for ${rest.length} more`);
+  const pairs = [];
+  let n = 0;
+  for (const p of rest) {
+    n++;
+    const titles = (await search(`${p.name} mixed martial artist`)).filter((t) => !t.toLowerCase().startsWith("list of")).slice(0, 2);
+    for (const title of titles) pairs.push({ p, title });
+    if (n % 20 === 0) process.stdout.write(`
+searched ${n}/${rest.length}   `);
   }
-  if (n % 10 === 0) process.stdout.write(`\r${found.size}/${people.length} found (search ${n}/${rest.length})   `);
-  await sleep(200);
+  await tryBatch(pairs, null, 1);
 }
 
 // Link opponents who are in the roster.
@@ -328,7 +348,8 @@ for (const p of people) {
   };
   fights += v.fights.length;
 }
-const file = only.length ? "node_modules/.cache/history-sample.json" : "public/data/history.json";
+const outArg = process.argv.find((a) => a.startsWith("--out="));
+const file = outArg ? outArg.slice(6) : only.length ? "node_modules/.cache/history-sample.json" : "public/data/history.json";
 writeFileSync(file, JSON.stringify(out));
 const exact = [...found.values()].filter((v) => v.off === 0).length;
 console.log(`\n${found.size} of ${people.length} fighters (${exact} match the record exactly), ${fights} fights -> ${file} (${(JSON.stringify(out).length / 1e6).toFixed(2)} MB)`);

@@ -27,6 +27,8 @@ export interface RealFighter {
   ht: number;
   rc: number;
   b: string;
+  /** The background the snapshot names: an art, or just "striker" / "grappler". */
+  ba?: string;
   d: DivisionId;
   p: "ufc" | "pfl";
   lg?: string;
@@ -91,6 +93,15 @@ function guessArt(rf: RealFighter): BaseArt {
   const t = rf.t;
   const c = rf.c;
   const caucasus = ["RU", "KZ", "KG", "TJ", "UZ", "AZ"].includes(c);
+  // The snapshot names the background for many: that beats any guess.
+  const ARTS_OK = ["wrestling", "greco", "sambo", "judo", "bjj", "boxing", "kickboxing", "muaythai", "karate", "taekwondo", "mma", "brawler"];
+  if (rf.ba && ARTS_OK.includes(rf.ba)) return rf.ba as BaseArt;
+  if (rf.ba === "striker") {
+    if (c === "TH" || (t[T.clinch] > 0.5 && t[T.kicking] > 0.55)) return "muaythai";
+    if (t[T.kicking] > 0.55) return c === "KR" ? "taekwondo" : t[T.range] > 0.65 ? "karate" : "kickboxing";
+    return "boxing";
+  }
+  if (rf.ba === "grappler") return U > W ? (c === "JP" ? "judo" : "bjj") : caucasus ? "sambo" : "wrestling";
   if (W > S + 4 && W >= U) return caucasus ? "sambo" : c === "GE" || c === "AM" ? "wrestling" : "wrestling";
   if (U > S + 4 && U > W) return c === "JP" ? "judo" : "bjj";
   if (S > W + 4 && S > U) {

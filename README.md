@@ -2,6 +2,8 @@
 
 A browser MMA career and management simulator. Take a fighter from the amateur circuit to a UFC title, or run a management company and build a stable of champions, in a living world of real promotions.
 
+**Play it at https://mma-manager-eta.vercel.app.** Careers are saved in the browser you play in; Settings exports a save file, and "Import a save file" on the title screen loads it on another device or browser.
+
 > Version 4 is a rebuild from zero of the earlier game (github.com/Luthfan-Hafizh/MMAGames): a new engine, a new world simulation and a new interface. Saves from earlier versions do not carry over.
 >
 > An unofficial fan game, not affiliated with, endorsed or sponsored by the UFC, the PFL, Dana White's Contender Series, IMMAF or any promotion named. Real names are used for identification only; no logos are used.
@@ -80,6 +82,8 @@ npm run check                   # all of the above, quick versions
 ```
 
 `npm run data` rebuilds `public/data/roster.json` from the snapshot in `data-src/`.
+
+The live site is the Vercel project `mma-manager`, deployed from this folder with the Vercel CLI (`npx vercel deploy --prod`, which runs `npm run build` and serves `dist/`). It is not connected to GitHub, so pushing to `main` does not deploy; run the command again after a change. It is separate from the old game's Vercel projects.
 
 ## Data
 

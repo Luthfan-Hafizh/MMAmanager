@@ -6,6 +6,7 @@ import { PROMOTIONS, TIER_NAME, type Tier } from "../../data/promotions";
 import type { Bout, MMAEvent, World } from "../../model/types";
 import { methodText } from "../../engine/sim";
 import { cardSection } from "../../world/calendar";
+import { beltNote, isBeltFight, stakeLabel } from "../../world/belts";
 import { rankLabel, recordText } from "../../world/core";
 import { headToHead, moneyline, oddsOf, preview } from "../../world/odds";
 import { useWorld } from "../../state/store";
@@ -46,12 +47,12 @@ function EventRow({ w, e }: { w: World; e: MMAEvent }) {
     const b = w.bouts[id];
     return b.status !== "cancelled" && (w.fighters[b.a]?.ctrl || w.fighters[b.b]?.ctrl);
   });
-  const title = main && (main.kind === "title" || main.kind === "vacant" || main.kind === "interim");
+  const stake = main ? stakeLabel(main) : null;
   return (
     <div className={`ev-row${mine ? " mine" : ""}`} onClick={() => go(`/event/${e.id}`)}>
       <div className="when"><span>{DOW[t.dow]}</span><b>{t.d}</b><span>{MONTHS[t.m]} {t.y}</span></div>
       <div style={{ minWidth: 0 }}>
-        <div className="nm">{e.name}{title ? " · Title fight" : ""}</div>
+        <div className="nm">{e.name}{stake && stake !== "Title eliminator" ? ` · ${stake}` : ""}</div>
         <div className="headline">{main && e.status !== "planned" ? `${w.fighters[main.a]?.surname} vs ${w.fighters[main.b]?.surname}` : "Card to be announced"}</div>
         <div className="where">{e.venue}, {e.city} · {p.name}</div>
       </div>
@@ -145,8 +146,9 @@ function BoutRow({ w, b }: { w: World; b: Bout }) {
   const ra = done ? (b.res!.winner === "a" ? "W" : b.res!.winner === "b" ? "L" : "D") : null;
   const rb = done ? (b.res!.winner === "b" ? "W" : b.res!.winner === "a" ? "L" : "D") : null;
   const mine = w.fighters[b.a]?.ctrl || w.fighters[b.b]?.ctrl;
-  const title = b.kind === "title" || b.kind === "vacant" || b.kind === "interim";
+  const title = isBeltFight(b);
   const bonus = b.res?.bonus ?? [];
+  const won = done && b.res!.winner ? beltNote(b, b.res!.winner === "a" ? b.a : b.b) : null;
   const odds = oddsOf(b);
   const A = w.fighters[b.a];
   const B = w.fighters[b.b];
@@ -156,11 +158,12 @@ function BoutRow({ w, b }: { w: World; b: Bout }) {
       <div className={`bout${mine ? " mine" : ""}${b.status === "cancelled" ? " cancel" : ""}${title ? " title-bout" : ""}`} onClick={() => b.status !== "cancelled" && setOpen((o) => !o)} aria-expanded={open}>
         <Corner w={w} id={b.a} side="a" result={ra} bonus={bonus.includes("potn-a")} />
         <div className="mid">
-          <div className="wc">{title ? (b.kind === "interim" ? "Interim title bout" : b.kind === "vacant" ? "Vacant title bout" : `${DIVISIONS[b.div].name} title bout`) : b.kind === "eliminator" ? "Title eliminator" : `${DIVISIONS[b.div].name} bout`}</div>
+          <div className={`wc${b.kind === "bmf" ? " bmf-t" : ""}`}>{stakeLabel(b, true) ?? `${DIVISIONS[b.div].name} bout`}</div>
           {done ? (
             <>
               <div className="res">{methodText(b.res!.method, b.res!.detail)}</div>
               <div>{b.res!.method !== "DEC" && b.res!.method !== "DRAW" ? `R${b.res!.round} · ${clock(b.res!.time)}` : b.res!.cards ? b.res!.cards.map(([x, y]) => `${Math.max(x, y)}-${Math.min(x, y)}`).join(" · ") : ""}</div>
+              {won && <div className="tiny gold-t" style={{ fontWeight: 700 }}>{w.fighters[b.res!.winner === "a" ? b.a : b.b]?.surname}: {won.toLowerCase()}</div>}
               {bonus.includes("fotn") && <span className="badge gold" style={{ marginTop: 4 }}>Fight of the Night</span>}
             </>
           ) : b.status === "cancelled" ? (

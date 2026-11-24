@@ -14,6 +14,7 @@ import { lostToRecently, ratingFor } from "./rankings";
 import { setOdds } from "./odds";
 import { calloutFor } from "../career/fightweek";
 import { makeInjury, trainingInjury } from "../data/injuries";
+import { beltBooked, bmfPairing, isBeltFight, stakeLabel, stakeOf } from "./belts";
 import { notify } from "../career/inbox";
 import { fightOfferPay, payShowOnly } from "../career/money";
 import { boutLimit, CUT_TEXT, cutCheck, findCall, type Call } from "../career/shortnotice";
@@ -144,6 +145,7 @@ export function makeBout(w: World, ev: MMAEvent, a: Fighter, b: Fighter, kind: B
     pending: opts.pending,
     why: opts.why,
   };
+  bout.stake = stakeOf(w, bout);
   w.bouts[bout.id] = bout;
   ev.bouts.push(bout.id);
   a.booked = bout.id;
@@ -172,6 +174,7 @@ function importance(w: World, b: Bout): number {
   const fb = w.fighters[b.b];
   let s = 0;
   if (b.kind === "title" || b.kind === "vacant") s += 2000;
+  if (b.kind === "bmf") s += 1800;
   if (b.kind === "interim") s += 1600;
   if (b.kind === "eliminator") s += 300;
   const ra = rankOf(w, fa);
@@ -193,7 +196,8 @@ export function orderCard(w: World, ev: MMAEvent): void {
   const p = PROMOTIONS[ev.promo];
   list.forEach((b, i) => {
     b.order = i;
-    const title = b.kind === "title" || b.kind === "interim" || b.kind === "vacant";
+    // Title fights and the BMF go five rounds wherever they sit on the card.
+    const title = isBeltFight(b);
     b.rounds = roundsFor(p, title, i === 0 && b.status !== "cancelled");
   });
   if (ev.promo === "ufc" && ev.kind === "fightnight") {
@@ -264,13 +268,13 @@ function titleFights(w: World, rng: Rng, ev: MMAEvent, maxTitles: number): numbe
       // injured who chose to keep the belt gets an interim title made meanwhile.
       const hold = w.career.fc[champ.id]?.hold;
       const out = availableFrom(champ) - ev.day;
-      if (hold && hold.promo === ev.promo && hold.div === d && !ps.interim[d] && out > 60 && p.rankSize) {
+      if (hold && hold.promo === ev.promo && hold.div === d && !ps.interim[d] && out > 60 && p.rankSize && !beltBooked(w, ev.promo, d, "interim")) {
         const ranked = (ps.ranks[d] ?? []).map((id) => w.fighters[id]).filter((f) => f && pool.includes(f) && !f.ctrl && f.id !== champ.id);
         if (ranked.length >= 2 && !teammates(ranked[0], ranked[1])) {
           makeBout(w, ev, ranked[0], ranked[1], "interim");
           made++;
         }
-      }
+      } else if (ps.interim[d] && out > 120 && interimDefence(w, ev, d, champ, pool)) made++;
       continue;
     }
     const gap = DEFENCE_GAP[p.tier];
@@ -284,18 +288,30 @@ function titleFights(w: World, rng: Rng, ev: MMAEvent, maxTitles: number): numbe
       }
       continue;
     }
-    // The champion is out for a long time: an interim belt.
+    // The champion is out for a long time: an interim belt, and the interim champion defends it.
     const out = availableFrom(champ) - ev.day;
     const idle = daysSinceFight(w, champ) + (ev.day - w.day);
-    if (!ps.interim[d] && (out > 110 || idle > 330) && p.rankSize) {
+    if (!ps.interim[d] && (out > 110 || idle > 330) && p.rankSize && !beltBooked(w, ev.promo, d, "interim")) {
       const ranked = (ps.ranks[d] ?? []).map((id) => w.fighters[id]).filter((f) => f && pool.includes(f) && !f.ctrl && f.id !== champ.id);
       if (ranked.length >= 2 && !teammates(ranked[0], ranked[1])) {
         makeBout(w, ev, ranked[0], ranked[1], "interim");
         made++;
       }
-    }
+    } else if (ps.interim[d] && out > 120 && interimDefence(w, ev, d, champ, pool)) made++;
   }
   return made;
+}
+
+/** An interim champion defends the interim belt while the champion is out. */
+function interimDefence(w: World, ev: MMAEvent, d: DivisionId, champ: Fighter, pool: Fighter[]): boolean {
+  const ps = w.promos[ev.promo];
+  const ic = ps.interim[d] ? w.fighters[ps.interim[d]!] : null;
+  if (!ic || ic.ctrl || !pool.includes(ic) || beltBooked(w, ev.promo, d, "interim")) return false;
+  if (daysSinceFight(w, ic) + (ev.day - w.day) < DEFENCE_GAP[PROMOTIONS[ev.promo].tier]) return false;
+  const c = contenderFor(w, ev, d, ic, pool.filter((x) => x.id !== champ.id && x.id !== ic.id));
+  if (!c || c.ctrl || teammates(c, ic)) return false;
+  makeBout(w, ev, ic, c, "interim");
+  return true;
 }
 
 export function buildCard(w: World, rng: Rng, ev: MMAEvent): void {
@@ -311,6 +327,13 @@ export function buildCard(w: World, rng: Rng, ev: MMAEvent): void {
   for (const id of w.career.fighters) {
     const f = w.fighters[id];
     if (f && f.promo === ev.promo && wantsOffer(w, f, ev)) offerFight(w, rng, ev, f);
+  }
+  const bmf = bmfPairing(w, rng, ev, (f) => readyFor(w, f, ev) && !w.career.fightOffers.some((o) => o.fighter === f.id && o.status === "open"));
+  if (bmf) {
+    const [x, y] = bmf;
+    if (x.ctrl) offerFight(w, rng, ev, x, y, "bmf");
+    else if (y.ctrl) offerFight(w, rng, ev, y, x, "bmf");
+    else makeBout(w, ev, x, y, "bmf");
   }
   const maxTitles = ev.kind === "numbered" ? 2 : ev.kind === "fightnight" ? (rng.chance(0.12) ? 1 : 0) : p.tier === "amateur" ? 1 : rng.chance(0.65) ? 1 : 2;
   titleFights(w, rng, ev, maxTitles);
@@ -430,6 +453,12 @@ export function offerFight(w: World, rng: Rng, ev: MMAEvent, f: Fighter, opp?: F
       if (!due) return null;
       o = contenderFor(w, ev, d, f, pool);
       k = "title";
+    } else if (champ && ps.interim[d] === f.id && availableFrom(w.fighters[champ]) - ev.day > 120) {
+      // The interim champion defends while the champion is out.
+      const due = daysSinceFight(w, f) + (ev.day - w.day) >= DEFENCE_GAP[p.tier] - 20;
+      if (!due) return null;
+      o = contenderFor(w, ev, d, f, pool.filter((x) => x.id !== champ));
+      k = "interim";
     } else if (champ && ps.contender[d] === f.id) {
       const c = w.fighters[champ];
       if (c && !c.ctrl && readyFor(w, c, ev)) {
@@ -470,6 +499,11 @@ export function offerFight(w: World, rng: Rng, ev: MMAEvent, f: Fighter, opp?: F
     replace.pending = "x";
   }
   const pay = extra.stay ? fightOfferPay(w, f, ev.promo, false) : fightOfferPay(w, f, ev.promo, shortNotice);
+  if (k === "bmf") {
+    // A BMF fight sells: it pays like a main event.
+    pay.show = Math.round((pay.show * 1.5) / 1000) * 1000;
+    pay.win = Math.round((pay.win * 1.5) / 1000) * 1000;
+  }
   const days = ev.day - w.day;
   // Short notice can't wait: two days to answer with a week or more to go, a day inside a week, the same day at the end.
   const expires = shortNotice ? w.day + (days >= 8 ? 2 : days >= 4 ? 1 : 0) : Math.min(ev.day - 10, w.day + 5);
@@ -543,13 +577,13 @@ export function offerFight(w: World, rng: Rng, ev: MMAEvent, f: Fighter, opp?: F
     });
     return offer;
   }
-  const kindText = bout.kind === "title" ? "a title fight" : bout.kind === "vacant" ? "a fight for the vacant title" : bout.kind === "interim" ? "an interim title fight" : bout.kind === "tryout" ? "a Contender Series fight" : "a fight";
+  const kindText = bout.kind === "bmf" ? (bout.stake === "bmf-defence" ? "a BMF title defence" : "a fight for the BMF title, five rounds") : bout.kind === "title" ? (bout.stake === "unify" ? "a title unification" : "a title fight") : bout.kind === "vacant" ? "a fight for the vacant title" : bout.kind === "interim" ? (bout.stake === "interim-defence" ? "an interim title defence" : "an interim title fight") : bout.kind === "tryout" ? "a Contender Series fight" : "a fight";
   notify(w, {
     kind: "offer",
     fighter: f.id,
     ref: offer.id,
     from: `${p.short} matchmaker`,
-    subject: `${p.short} offer: ${fullName(o)}${bout.kind === "title" ? " (title)" : ""}`,
+    subject: `${p.short} offer: ${fullName(o)}${stakeLabel(bout) ? ` (${stakeLabel(bout)!.toLowerCase()})` : ""}`,
     body: `${p.name} offers ${you} ${kindText} against ${fullName(o)} (${rec}) at ${ev.name} on ${fmtDate(ev.day)} in ${ev.city}. ${bout.rounds} rounds. ${purse}`,
     needs: true,
     actions: [

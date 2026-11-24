@@ -3,12 +3,13 @@ import { ageYears, fmtDate, clock } from "../../core/time";
 import { cmOf, heightText } from "../../core/util";
 import { countryOf } from "../../data/countries";
 import { DIVISIONS } from "../../data/divisions";
-import { PROMOTIONS } from "../../data/promotions";
+import { PROMOTIONS, PROMO_IDS } from "../../data/promotions";
 import { ARTS } from "../../data/styles";
 import { MASTERY_NAMES, TECHNIQUES, TECH_IDS, type TechId } from "../../data/techniques";
 import { groupScore, ovr, ovrBand, styleOf } from "../../model/attributes";
 import type { Bout, Fighter, World } from "../../model/types";
 import { methodText } from "../../engine/sim";
+import { beltNote, isBeltFight, stakeLabel } from "../../world/belts";
 import { boutsOf, isChampion, rankLabel, recordText, resultFor, amRecordText } from "../../world/core";
 import { potentialText, primeText } from "../../world/development";
 import { changed, toast, useWorld } from "../../state/store";
@@ -56,6 +57,7 @@ function Hero({ w, f, tabs }: { w: World; f: Fighter; tabs: React.ReactNode }) {
           {rank === "C" ? <span className="tag gold">Champion</span> : rank === "IC" ? <span className="tag gold">Interim champion</span> : rank ? <span className="tag red">{rank} {div.short}</span> : null}
           <span className="tag">{div.name}</span>
           <span className="tag">{f.status === "retired" ? "Retired" : f.promo ? PROMOTIONS[f.promo].short : "Free agent"}</span>
+          {w.promos.ufc?.bmf?.holder === f.id && <span className="tag bmf">BMF</span>}
           {f.ctrl && <span className="tag red">Your fighter</span>}
           {f.tags?.includes("dwcs") && <span className="tag">Contender Series</span>}
         </>
@@ -224,9 +226,51 @@ function MiniBout({ w, b, f }: { w: World; b: Bout; f: Fighter }) {
   );
 }
 
+/** Every belt a fighter has held in this world (and the real ones before it), with the BMF. */
+function Belts({ w, f }: { w: World; f: Fighter }) {
+  const rows: { belt: string; interim: boolean; bmf?: boolean; won: number; lost?: number; how: string; ended?: string; defenses: number; to: string }[] = [];
+  for (const id of PROMO_IDS) {
+    for (const r of w.promos[id].reigns) {
+      if (r.fighter !== f.id) continue;
+      rows.push({ belt: `${PROMOTIONS[id].short} ${DIVISIONS[r.div].name}`, interim: !!r.interim, won: r.won, lost: r.lost, how: r.how, ended: r.ended, defenses: r.defenses, to: `/titles/${id}/${r.div}` });
+    }
+  }
+  for (const r of w.promos.ufc?.bmf?.reigns ?? []) {
+    if (r.fighter === f.id) rows.push({ belt: "UFC BMF", interim: false, bmf: true, won: r.won, lost: r.lost, how: "won", ended: r.ended, defenses: r.defenses, to: "/titles/ufc/bmf" });
+  }
+  if (!rows.length) return null;
+  rows.sort((a, b) => b.won - a.won);
+  const ENDED: Record<string, string> = { lost: "Lost it", vacated: "Vacated", stripped: "Stripped", retired: "Retired", moved: "Left", unified: "Unified", injury: "Vacated (injury)" };
+  return (
+    <section className="sec">
+      <div className="sec-h"><h2>Belts</h2><span className="hint">{rows.length} reign{rows.length === 1 ? "" : "s"}</span></div>
+      <div className="panel">
+        <div className="tbl-wrap">
+          <table className="tbl">
+            <thead><tr><th>Belt</th><th>Won</th><th>Until</th><th>How it ended</th><th className="c">Defences</th></tr></thead>
+            <tbody>
+              {rows.map((r, i) => (
+                <tr key={i} className={r.lost === undefined ? "hl" : ""}>
+                  <td><Link to={r.to}><b>{r.belt}</b></Link> {r.bmf ? <span className="badge bmf">BMF</span> : r.interim ? <span className="badge">Interim</span> : <span className="badge gold">Champion</span>}</td>
+                  <td className="nowrap">{fmtDate(r.won)}</td>
+                  <td className="nowrap">{r.lost === undefined ? <b>Current</b> : fmtDate(r.lost)}</td>
+                  <td className={`small${r.ended === "stripped" ? " bad" : ""}`}>{r.lost === undefined ? "" : ENDED[r.ended ?? ""] ?? r.ended ?? ""}</td>
+                  <td className="c"><b className="num">{r.defenses}</b></td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </section>
+  );
+}
+
 function History({ w, f }: { w: World; f: Fighter }) {
   const bouts = boutsOf(w, f).filter((b) => b.status === "done").reverse();
   return (
+    <>
+    <Belts w={w} f={f} />
     <section className="sec">
       <div className="sec-h"><h2>Fight history</h2><span className="hint">{bouts.length} fights in this world</span></div>
       <div className="panel">
@@ -235,7 +279,7 @@ function History({ w, f }: { w: World; f: Fighter }) {
         ) : (
           <div className="tbl-wrap">
             <table className="tbl">
-              <thead><tr><th>Date</th><th>Opponent</th><th>Res.</th><th>Decision</th><th className="c">Rnd</th><th className="c">Time</th><th>Event</th></tr></thead>
+              <thead><tr><th>Date</th><th>Opponent</th><th>Res.</th><th>Decision</th><th className="c">Rnd</th><th className="c">Time</th><th>Stakes</th><th>Event</th></tr></thead>
               <tbody>
                 {bouts.map((b) => {
                   const r = resultFor(b, f.id);
@@ -243,11 +287,15 @@ function History({ w, f }: { w: World; f: Fighter }) {
                   return (
                     <tr key={b.id}>
                       <td className="nowrap">{fmtDate(b.day)}</td>
-                      <td><FighterLink w={w} id={opp} /> {(b.kind === "title" || b.kind === "vacant") && <span className="badge gold">Title</span>}{b.kind === "interim" && <span className="badge gold">Interim</span>}</td>
+                      <td><FighterLink w={w} id={opp} />{b.shortNotice && b.sub === f.id ? <span className="tiny dim"> · short notice</span> : null}</td>
                       <td><span className="form"><i className={r ?? "D"}>{r === "NC" ? "N" : r}</i></span></td>
                       <td>{b.res ? methodText(b.res.method, b.res.detail) : ""}</td>
                       <td className="c">{b.res?.round}</td>
                       <td className="c">{b.res ? clock(b.res.time) : ""}</td>
+                      <td>
+                        {stakeLabel(b) ? <span className={`badge ${b.kind === "bmf" ? "bmf" : isBeltFight(b) ? "gold" : ""}`}>{stakeLabel(b)}</span> : <span className="dim">-</span>}
+                        {beltNote(b, f.id) ? <div className="tiny" style={{ marginTop: 3 }}>{beltNote(b, f.id)}</div> : null}
+                      </td>
                       <td><Link to={`/event/${b.ev}`}>{w.events[b.ev]?.name}</Link></td>
                     </tr>
                   );
@@ -258,6 +306,7 @@ function History({ w, f }: { w: World; f: Fighter }) {
         )}
       </div>
     </section>
+    </>
   );
 }
 

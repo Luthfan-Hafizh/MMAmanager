@@ -30,6 +30,7 @@ import { Promotions, PromotionPage } from "./pages/Promotions";
 import { Settings } from "./pages/Settings";
 import { Agency, Scouting } from "./pages/Agency";
 import { Legacy } from "./pages/Legacy";
+import { Titles } from "./pages/Titles";
 import type { World } from "../model/types";
 
 export function App() {
@@ -99,6 +100,8 @@ function pageFor(parts: string[]): PageDef {
         : { title: "Promotions", eyebrow: "The ladder", sub: "Amateur circuits, local shows, regional promotions, the Contender Series, the PFL and the UFC.", el: <Promotions /> };
     case "settings":
       return { title: "Settings", eyebrow: "The game", el: <Settings /> };
+    case "titles":
+      return { title: "Title history", el: <Titles promo={p1} div={p2} />, custom: true };
     case "legacy":
       return { title: "Legacy", el: <Legacy />, custom: true };
     case "agency":

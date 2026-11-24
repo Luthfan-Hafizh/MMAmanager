@@ -1,3 +1,4 @@
+import { isBeltFight, stakeLabel } from "../../world/belts";
 import { useState } from "react";
 import { ageAt, fmtDate, weeksText, durationText } from "../../core/time";
 import { heightText, money, pct } from "../../core/util";
@@ -67,14 +68,14 @@ export function NextFight({ id }: { id?: string }) {
 
 function FightHeader({ w, b, f, opp }: { w: World; b: Bout; f: Fighter; opp: Fighter }) {
   const ev = w.events[b.ev];
-  const title = b.kind === "title" || b.kind === "vacant" || b.kind === "interim";
+  const title = isBeltFight(b);
   const days = b.day - w.day;
   const odds = oddsOf(b);
   const mine = b.a === f.id ? "a" : "b";
   const myP = b.odds === undefined ? 0.5 : mine === "a" ? b.odds : 1 - b.odds;
   return (
     <Band
-      eyebrow={<>{title && <span className="tag gold">{b.kind === "interim" ? "Interim title" : "Title fight"}</span>}<span>{ev?.name}</span><span className="dim">·</span><span>{fmtDate(b.day, { dow: true })}</span></>}
+      eyebrow={<>{title && <span className={`tag ${b.kind === "bmf" ? "bmf" : "gold"}`}>{stakeLabel(b)}</span>}<span>{ev?.name}</span><span className="dim">·</span><span>{fmtDate(b.day, { dow: true })}</span></>}
       first={`${f.surname} vs`}
       title={opp.surname}
       sub={`${ev?.venue}, ${ev?.city} · ${b.rounds} × ${b.roundSec / 60} min · ${b.limit ? `${b.limit} lb catchweight` : `${DIVISIONS[b.div].name} (${DIVISIONS[b.div].limit} lb)`}${b.shortNotice && b.sub === f.id ? ` · stepped in on ${b.notice ?? "short"} days' notice` : b.shortNotice ? " · new opponent on short notice" : ""}`}

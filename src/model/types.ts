@@ -186,7 +186,7 @@ export interface Fighter {
   prior?: { promo: PromoId; n: number };
 }
 
-export type BoutKind = "title" | "interim" | "vacant" | "eliminator" | "regular" | "tryout" | "amateur";
+export type BoutKind = "title" | "interim" | "vacant" | "eliminator" | "regular" | "tryout" | "amateur" | "bmf";
 
 export interface RoundStat {
   sigL: number;
@@ -227,6 +227,8 @@ export interface BoutResult {
   log?: FightLogLine[];
   bonus?: ("fotn" | "potn-a" | "potn-b")[];
   perf: [number, number];
+  /** What the fight did to each side's belts: "Won the title", "Defended the interim title"... */
+  belt?: { a?: string; b?: string };
 }
 
 export interface FightLogLine {
@@ -270,6 +272,8 @@ export interface Bout {
   purses?: { a?: Purse; b?: Purse };
   why?: string;
   replaced?: string;
+  /** What's at stake beyond the kind: the belts unified, an interim champion defending, the BMF holder defending. */
+  stake?: "unify" | "interim-defence" | "bmf-defence";
   /** The fighter who stepped in on short notice, and how many days' notice they had. */
   sub?: string;
   notice?: number;
@@ -311,6 +315,26 @@ export interface PromoState {
   nextEvent: number;
   /** Named number-one contender per division. */
   contender: Partial<Record<DivisionId, string | null>>;
+  /** The UFC's BMF title (lightweight). */
+  bmf?: BmfState;
+}
+
+export interface BmfReign {
+  fighter?: string;
+  name: string;
+  won: number;
+  lost?: number;
+  defenses: number;
+  ended?: "lost" | "retired" | "vacated" | "moved";
+  /** Where it was won. */
+  at?: string;
+}
+
+export interface BmfState {
+  holder: string | null;
+  reigns: BmfReign[];
+  /** Day of the last BMF fight. */
+  last?: number;
 }
 
 export interface Gym {
@@ -505,6 +529,8 @@ export interface FighterCareer {
   hold?: { promo: PromoId; div: DivisionId; since: number };
   /** A champion who vacated through injury: a title shot when fit, until this day. */
   promise?: { promo: PromoId; div: DivisionId; until: number };
+  /** Day a champion out injured was warned the belt may be taken. */
+  stripWarned?: number;
   /** Advice taken and ignored, for the manager's mood. */
   trust?: number;
 }

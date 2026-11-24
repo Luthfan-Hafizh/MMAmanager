@@ -13,6 +13,7 @@ import { go, Link } from "../router";
 import { Bar, Empty, FighterLink, Panel, Seg } from "../components";
 import { Band } from "../art";
 import { PlanEditor } from "./NextFight";
+import { stakeLabel } from "../../world/belts";
 
 export function FightNight() {
   const w = useWorld();
@@ -79,7 +80,7 @@ export function FightNight() {
           const a = w.fighters[b.a];
           const c = w.fighters[b.b];
           return (
-            <Panel key={b.id} title={b.kind === "title" || b.kind === "vacant" ? "Title fight" : "Your fight"} className="accent">
+            <Panel key={b.id} title={stakeLabel(b) && stakeLabel(b) !== "Title eliminator" ? stakeLabel(b)! : "Your fight"} className="accent">
               <div className="vs-card">
                 <div><div className="who">{a.surname}</div><div className="small dim">{recordText(a)}</div></div>
                 <div className="vs">VS</div>

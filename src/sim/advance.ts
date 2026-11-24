@@ -28,6 +28,7 @@ import { walkMonthly } from "../career/moves";
 import { legacyMonthly } from "../world/legacy";
 import { retirementTalk } from "../career/retire";
 import { injuryHealed, playerInjured } from "../career/injury";
+import { bmfMonthly, stripMonthly } from "../world/belts";
 import { INJURY } from "../data/injuries";
 
 export interface Stop {
@@ -96,6 +97,8 @@ function monthly(w: World, rng: Rng): void {
   rankAchievements(w);
   walkMonthly(w);
   legacyMonthly(w);
+  stripMonthly(w);
+  bmfMonthly(w);
   retirementTalk(w, rng);
   for (const id of w.career.fighters) {
     const fc = w.career.fc[id];

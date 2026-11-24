@@ -20,6 +20,7 @@ import { legacyAfterFight } from "./legacy";
 import { boutLimit, cutCheck, noticeHurt, sizeEdge } from "../career/shortnotice";
 import { fightInjuryDef, hurtOnNight, makeInjury, type InjuryDef } from "../data/injuries";
 import { lc, playerInjured } from "../career/injury";
+import { handleBmf } from "./belts";
 import { notify } from "../career/inbox";
 
 export { ringRust } from "./core";
@@ -341,6 +342,7 @@ export function applyResult(w: World, rng: Rng, b: Bout, o: FightOutcome): void 
   // Belts, and what the result does for a legacy.
   const champBefore = w.promos[b.promo].champs[b.div] ?? null;
   handleTitle(w, rng, b, winner, loser);
+  if (b.kind === "bmf") handleBmf(w, b, winner, loser);
   const champAfter = w.promos[b.promo].champs[b.div] ?? null;
   // The player's injuries are reported once the belt is settled (a champion may have a decision to make).
   for (const [f, def] of hurtNow) playerInjured(w, rng, f, def, "fight", "in the fight");
@@ -404,55 +406,94 @@ function handleTitle(w: World, rng: Rng, b: Bout, winner: Fighter | null, loser:
   const missed = (f: Fighter) => (b.weighIn?.missA && f.id === b.a) || (b.weighIn?.missB && f.id === b.b);
   const ev = w.events[b.ev];
   const belt = `${p.short} ${DIVISIONS[d].name.toLowerCase()} title`;
+  // What the fight did to each side's belts, for the records.
+  const note = (f: Fighter, text: string) => {
+    if (b.res) b.res.belt = { ...(b.res.belt ?? {}), [b.a === f.id ? "a" : "b"]: text };
+  };
+  const reignOf = (id: string, interim: boolean) => [...ps.reigns].reverse().find((x) => x.fighter === id && x.div === d && x.lost === undefined && !!x.interim === interim);
   if (b.kind === "interim") {
+    const holder = ps.interim[d] ?? null;
+    // With an interim champion who isn't in this fight, it can't be for the interim belt.
+    if (holder && b.a !== holder && b.b !== holder) return;
+    if (winner && loser && holder === winner.id) {
+      // An interim champion defending the interim belt.
+      const r = reignOf(winner.id, true);
+      if (r) r.defenses++;
+      note(winner, "Defended the interim title");
+      addNews(w, { kind: "title", promo: b.promo, ev: b.ev, fighters: [winner.id, loser.id], text: `${fullName(winner)} defends the interim ${belt}${ev ? ` at ${ev.name}` : ""}.` });
+      return;
+    }
     if (winner && !missed(winner)) {
+      if (holder && loser && holder === loser.id) {
+        endReign(w, loser, b, "lost");
+        note(loser, "Lost the interim title");
+      }
       ps.interim[d] = winner.id;
       startReign(w, winner, b, "interim", true);
+      note(winner, "Won the interim title");
       addNews(w, { kind: "title", promo: b.promo, ev: b.ev, fighters: [winner.id], big: true, text: `${fullName(winner)} is the interim ${belt.replace("title", "champion")}.` });
-    }
+    } else if (winner) note(winner, "Missed weight: not eligible for the belt");
     return;
   }
   if (b.kind === "vacant") {
     if (winner && !missed(winner)) {
       ps.champs[d] = winner.id;
-      if (ps.interim[d] === winner.id) ps.interim[d] = null;
+      if (ps.interim[d] === winner.id) {
+        ps.interim[d] = null;
+        endReign(w, winner, b, "unified");
+      }
       startReign(w, winner, b, "vacant");
+      note(winner, "Won the vacant title");
       addNews(w, { kind: "title", promo: b.promo, ev: b.ev, fighters: [winner.id], big: true, text: `${fullName(winner)} wins the vacant ${belt}${ev ? ` at ${ev.name}` : ""}.` });
-    }
+    } else if (winner) note(winner, "Missed weight: not eligible for the belt");
     updateRankings(w, b.promo, [d]);
     return;
   }
-  // A title defence (or unification).
+  // A title defence (or a unification).
   if (!winner || !loser) {
-    const r = [...ps.reigns].reverse().find((x) => x.fighter === champId && x.lost === undefined);
+    const r = champId ? reignOf(champId, false) : undefined;
     if (r) r.defenses++;
-    if (champId) ps.contender[d] = champId === b.a ? b.b : b.a; // a draw: run it back
+    if (champId) {
+      note(w.fighters[champId], "Kept the title (draw)");
+      ps.contender[d] = champId === b.a ? b.b : b.a; // a draw: run it back
+    }
     return;
   }
   if (winner.id === champId) {
-    const r = [...ps.reigns].reverse().find((x) => x.fighter === champId && x.lost === undefined && !x.interim);
+    const r = reignOf(champId, false);
     if (r) r.defenses++;
     if (ps.interim[d] === loser.id) {
       ps.interim[d] = null;
       endReign(w, loser, b, "unified");
+      note(winner, "Unified the titles");
+      note(loser, "Lost the interim title");
+    } else {
+      note(winner, `Defended the title${r && r.defenses > 1 ? ` (${r.defenses})` : ""}`);
+      note(loser, "Lost the title shot");
     }
     if (rng.chance(0.25) && b.res?.verdict === "split") ps.contender[d] = loser.id;
     return;
   }
-  if (missed(winner)) return; // cannot win the belt on the scale
+  if (missed(winner)) {
+    note(winner, "Missed weight: not eligible for the belt");
+    return; // cannot win the belt on the scale
+  }
   if (champId) {
     const old = w.fighters[champId];
     endReign(w, old, b, "lost");
+    note(old, "Lost the title");
     const r = [...ps.reigns].reverse().find((x) => x.fighter === champId && x.div === d);
     // Close fights and long reigns earn the immediate rematch.
     if (b.res && (b.res.verdict === "split" || b.res.verdict === "majority" || (r && r.defenses >= 2))) ps.contender[d] = champId;
   }
   ps.champs[d] = winner.id;
-  if (ps.interim[d] === winner.id) {
+  const wasInterim = ps.interim[d] === winner.id;
+  if (wasInterim) {
     ps.interim[d] = null;
     endReign(w, winner, b, "unified");
   }
   startReign(w, winner, b, "won");
+  note(winner, wasInterim ? "Unified the titles" : "Won the title");
   addNews(w, { kind: "title", promo: b.promo, ev: b.ev, fighters: [winner.id, loser.id], big: true, text: `NEW CHAMPION: ${fullName(winner)} beats ${fullName(loser)} for the ${belt}${ev ? ` at ${ev.name}` : ""}.` });
 }
 

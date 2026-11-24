@@ -704,6 +704,32 @@ input[type="checkbox"] { accent-color: var(--red); width: 16px; height: 16px; }
 .injury-bar { height: 6px; background: var(--sheet-3); border-radius: 3px; overflow: hidden; margin: 10px 0 4px; }
 .injury-bar i { display: block; height: 100%; background: var(--win); border-radius: 3px; }
 
+/* ---------- belts: interim, BMF, title history ---------- */
+.band .tag.bmf, .tag.bmf { background: #0f0f0f; border-color: var(--gold); color: var(--gold); font-weight: 900; letter-spacing: 0.14em; }
+.badge.bmf { background: #0f0f0f; color: var(--gold); border-color: #0f0f0f; letter-spacing: 0.1em; }
+.wc.bmf-t { color: var(--gold); }
+.rk-interim { display: flex; flex-wrap: wrap; align-items: baseline; gap: 6px 10px; padding: 8px 16px; background: var(--gold-soft); border-bottom: 1px solid var(--line); font-size: 13.5px; }
+.rk-col > .rk-hist { display: block; padding: 10px 16px; border-top: 1px solid var(--line); font-stretch: 75%; font-weight: 700; font-size: 11.5px; letter-spacing: 0.1em; text-transform: uppercase; color: var(--red); border-bottom: 1px solid var(--line); }
+.rk-col > .rk-hist:hover { background: var(--sheet-2); }
+.bmf-card { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 12px 16px; background: #0f0f0f; color: #f3efe6; border-bottom: 1px solid var(--line); text-decoration: none; position: relative; overflow: hidden; }
+.bmf-card .label { color: var(--gold); }
+.bmf-card .bmf-name { font-stretch: 62%; font-weight: 900; font-size: 22px; text-transform: uppercase; letter-spacing: 0.01em; line-height: 1.05; color: #fff; }
+.bmf-card .bmf-name a { color: #fff; }
+.bmf-card .bmf-mark { font-stretch: 62%; font-weight: 900; font-size: 44px; line-height: 1; color: transparent; -webkit-text-stroke: 1.5px var(--gold); letter-spacing: 0.04em; }
+.bmf-card:hover .bmf-mark { color: var(--gold); }
+.bmf-card.big { border-radius: var(--r); padding: 22px 26px; border: 0; }
+.bmf-card.big .bmf-name { font-size: 44px; }
+.bmf-card.big .bmf-mark { font-size: 120px; }
+.bmf-card.big .small { color: #c9c3b6; max-width: 62ch; margin-top: 6px; }
+.pills { display: flex; flex-wrap: wrap; gap: 6px; margin: 4px 0 6px; }
+.pill { height: 30px; padding: 0 12px; border-radius: 15px; border: 1px solid var(--line-2); background: var(--sheet); font: inherit; font-size: 12.5px; font-weight: 700; color: var(--ink-2); cursor: pointer; }
+.pill:hover { border-color: var(--ink); color: var(--ink); }
+.pill.on { background: var(--ink); border-color: var(--ink); color: var(--sheet); }
+.pill.bmf { border-color: var(--gold); color: #7a5a14; }
+.pill.bmf.on { background: #0f0f0f; color: var(--gold); border-color: #0f0f0f; }
+.tbl tr.hl td { background: var(--gold-soft); }
+.tbl td.bad { color: var(--loss); font-weight: 700; }
+
 /* ---------- responsive ---------- */
 @media (max-width: 1180px) {
   .offer-grid { grid-template-columns: repeat(3, minmax(0, 1fr)); }
@@ -717,6 +743,8 @@ input[type="checkbox"] { accent-color: var(--red); width: 16px; height: 16px; }
   .art .ghost { font-size: 220px; }
 }
 @media (max-width: 860px) {
+  .bmf-card.big .bmf-mark { font-size: 72px; }
+  .bmf-card.big .bmf-name { font-size: 30px; }
   .offer-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
   .advice-verdict { font-size: 18px; }
   .mark-big { font-size: 110px; }

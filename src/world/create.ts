@@ -19,8 +19,9 @@ import { generateFighter, makeRecord, pickCountry } from "./generate";
 import { currentStreak, potentialNoise, prospectRoom, realFighter, realGym, type RosterFile } from "./real";
 import { entryElo, updateP4P, updateRankings } from "./rankings";
 import { managerPerson } from "../career/advisor";
+import { initBmf } from "./belts";
 
-export const SAVE_VERSION = 3;
+export const SAVE_VERSION = 4;
 /** The oldest save format this version can bring up to date. */
 export const OLDEST_SAVE = 1;
 
@@ -66,6 +67,11 @@ export function migrate(w: World, roster: RosterFile | null): World {
       }
     });
     w.v = 3;
+  }
+  if (w.v < 4) {
+    // Format 4: the BMF title, as it stood when the world began.
+    initBmf(w);
+    w.v = 4;
   }
   return w;
 }
@@ -418,6 +424,7 @@ export function createWorld(roster: RosterFile, o: NewGameOptions): World {
 
   setupCareer(w, roster, o);
   updateP4P(w);
+  initBmf(w);
   welcome(w, o);
   return w;
 }

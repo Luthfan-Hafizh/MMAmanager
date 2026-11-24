@@ -23,6 +23,7 @@ import { useState } from "react";
 import { becomeManager, careerRecap } from "../../career/retire";
 import { moneyline } from "../../world/odds";
 import { FightOfferView, InjuryCard } from "../advice";
+import { isBeltFight, stakeLabel } from "../../world/belts";
 
 export function Home() {
   const w = useWorld();
@@ -68,7 +69,7 @@ export function NextFightCard({ w, f }: { w: World; f: Fighter }) {
     const opp = w.fighters[b.a === f.id ? b.b : b.a];
     const ev = w.events[b.ev];
     const days = b.day - w.day;
-    const title = b.kind === "title" || b.kind === "vacant" || b.kind === "interim";
+    const title = isBeltFight(b);
     return (
       <section className="broadcast" aria-label="Next fight">
         <div className="scorebug">
@@ -78,7 +79,7 @@ export function NextFightCard({ w, f }: { w: World; f: Fighter }) {
             <span className="rec">{f.first}</span>
           </div>
           <div className="mid">
-            <div className="rd">{title ? (b.kind === "interim" ? "Interim title" : "Title fight") : `${b.rounds} rounds`}</div>
+            <div className="rd">{title ? stakeLabel(b) : `${b.rounds} rounds`}</div>
             <div className="clock">{days <= 0 ? "Tonight" : days}</div>
             <div className="pos">{days <= 0 ? ev?.name : days === 1 ? "day to go" : "days to go"}</div>
           </div>

@@ -25,6 +25,7 @@ import { Settings } from "../src/ui/pages/Settings";
 import { Agency, Scouting } from "../src/ui/pages/Agency";
 import { FightNight } from "../src/ui/pages/FightNight";
 import { Legacy } from "../src/ui/pages/Legacy";
+import { Titles } from "../src/ui/pages/Titles";
 import { retirePlayer } from "../src/career/retire";
 import { becomeManager } from "../src/career/retire";
 import { hireManager, makeContractOffer } from "../src/career/offers";
@@ -92,6 +93,9 @@ function pages(w: World, label: string) {
   check("Settings", <Settings />);
   check("Fight night", <FightNight />);
   check("Legacy", <Legacy />);
+  check("Title history", <Titles promo="ufc" div="LW" />);
+  check("Title history BMF", <Titles promo="ufc" div="bmf" />);
+  check("Title history PFL", <Titles promo="pfl" />);
   if (w.career.mode === "manager") {
     check("Agency", <Agency />);
     check("Scouting", <Scouting />);
@@ -216,6 +220,26 @@ pages(tw, "Retired fighter turned manager");
     check("Home (hurt in camp)", <Home />);
     check("Next fight (after the injury)", <NextFight />);
   }
+}
+
+// A champion out too long: an interim belt, then stripped, the interim champion promoted.
+{
+  const xw = createWorld(roster, { name: "UI", seed: 83, mode: "fighter", difficulty: "normal", takeover: "ufc-joshua-van" });
+  const champ = xw.fighters[xw.career.fighters[0]];
+  const div = champ.div;
+  withRng(xw, (rng) => playerInjured(xw, rng, champ, INJURY["leg-break"], "training"));
+  const belt = xw.inbox.find((m) => m.kind === "injury" && m.needs && m.actions?.some((a) => a.id === "hold"));
+  if (belt) answer(xw, belt.id, "hold");
+  play(xw, 460);
+  const ps = xw.promos.ufc;
+  const stripped = ps.reigns.some((r) => r.fighter === champ.id && r.ended === "stripped");
+  const promoted = ps.reigns.some((r) => r.div === div && r.how === "promoted");
+  const warned = xw.inbox.some((m) => m.subject === "The belt is at risk");
+  console.log(`Champion out ${Math.round(((champ.injury?.until ?? xw.day) - 0) / 30.4)} months: warned ${warned}, stripped ${stripped}, interim promoted ${promoted}, champion now ${ps.champs[div] ? xw.fighters[ps.champs[div]!].surname : "vacant"}`);
+  if (!stripped) { failures++; console.log("  FAIL a champion out well over a year was not stripped"); }
+  setWorld(xw);
+  check("Title history (stripped)", <Titles promo="ufc" div={div} />);
+  check("Fighter (stripped champion)", <FighterPage id={champ.id} tab="fights" />);
 }
 
 const mw = createWorld(roster, { name: "UI", seed: 79, mode: "manager", difficulty: "normal", agency: "Check Management" });

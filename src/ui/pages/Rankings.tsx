@@ -65,6 +65,22 @@ function DivisionColumn({ w, promo, d }: { w: World; promo: PromoId; d: Division
         </div>
         <span className={`belt${champ ? "" : " none"}`} aria-hidden="true">{champ ? "C" : "—"}</span>
       </div>
+      {ps.interim[d] && w.fighters[ps.interim[d]!] && (
+        <div className="rk-interim">
+          <span className="label">Interim</span>
+          <Link to={`/fighter/${ps.interim[d]}`}><b>{w.fighters[ps.interim[d]!].first} {w.fighters[ps.interim[d]!].surname}</b></Link>
+          {champ && champ.injury && champ.injury.until > w.day ? <span className="tiny dim">champion out to {fmtDate(champ.injury.until)}</span> : null}
+        </div>
+      )}
+      {promo === "ufc" && d === "LW" && ps.bmf && (
+        <Link to="/titles/ufc/bmf" className="bmf-card">
+          <div>
+            <div className="label">BMF title</div>
+            <div className="bmf-name">{ps.bmf.holder && w.fighters[ps.bmf.holder] ? `${w.fighters[ps.bmf.holder].first} ${w.fighters[ps.bmf.holder].surname}` : "Vacant"}</div>
+          </div>
+          <span className="bmf-mark" aria-hidden="true">BMF</span>
+        </Link>
+      )}
       <div className="rk-list">
         {ids.length === 0 && <Empty title="No rankings yet" />}
         {ids.map((id, i) => {
@@ -79,6 +95,7 @@ function DivisionColumn({ w, promo, d }: { w: World; promo: PromoId; d: Division
           );
         })}
       </div>
+      <Link to={`/titles/${promo}/${d}`} className="rk-hist">Title history</Link>
     </article>
   );
 }

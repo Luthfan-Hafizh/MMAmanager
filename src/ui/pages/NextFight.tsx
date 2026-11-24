@@ -1,4 +1,6 @@
 import { isBeltFight, stakeLabel } from "../../world/belts";
+import { traitsOf, fightStyle } from "../../world/fightstyle";
+import { FIGHT_STYLES } from "../../data/fightstyles";
 import { useState } from "react";
 import { ageAt, fmtDate, weeksText, durationText } from "../../core/time";
 import { heightText, money, pct } from "../../core/util";
@@ -7,7 +9,7 @@ import { PROMOTIONS } from "../../data/promotions";
 import { ATTR_INFO, groupScore, ovr, styleOf, type AttrKey } from "../../model/attributes";
 import type { Bout, Camp, Fighter, World } from "../../model/types";
 import {
-  BOTTOM_TEXT, DEF_TEXT, PRESETS, SCALE_TEXT, STYLE_DESC, STYLE_NAMES, TAKEDOWN_TEXT, TARGET_TEXT, TOP_TEXT, preset, suggestPlan,
+  BOTTOM_TEXT, DEF_TEXT, PRESETS, SCALE_TEXT, STYLE_DESC, STYLE_NAMES, TAKEDOWN_TEXT, TARGET_DESC, TARGET_TEXT, TOP_TEXT, preset, suggestPlan,
   type BottomMode, type DefMode, type FightPlan, type PlanStyle, type Target, type TopMode,
 } from "../../engine/plan";
 import { winChance } from "../../engine/sim";
@@ -242,6 +244,7 @@ export function PlanEditor({ plan, onChange, suggest, me, opp, compact }: { plan
         <div className="c6">
           <div className="small dim" style={{ marginBottom: 4 }}>Target</div>
           <Seg<Target> value={plan.target} onChange={(v) => set({ ...plan, target: v })} options={(Object.keys(TARGET_TEXT) as Target[]).map((k) => ({ v: k, label: TARGET_TEXT[k] }))} />
+          <div className="tiny dim" style={{ marginTop: 4 }}>{TARGET_DESC[plan.target]}</div>
         </div>
         <div className="c6">
           <div className="small dim" style={{ marginBottom: 4 }}>On top</div>
@@ -275,6 +278,13 @@ function PlanAdvice({ plan, me, opp }: { plan: FightPlan; me: Fighter; opp: Figh
   if (plan.tempo >= 1 && me.attrs.cardio < 11) notes.push({ t: "A high pace with your cardio could empty the tank by round three.", good: false });
   if (plan.tempo >= 1 && opp.attrs.cardio < 10 && me.attrs.cardio > 13) notes.push({ t: `${opp.surname} fades: pace will break them late.`, good: true });
   if (plan.target === "legs" && opp.tech.checkKicks) notes.push({ t: `${opp.surname} checks kicks: the legs are a hard target.`, good: false });
+  // How the opponent defends: a fighter who reads patterns punishes a one-target plan.
+  const ot = traitsOf(opp);
+  const reads = opp.attrs.fightIQ >= 15 || ot.read > 0.3;
+  if (reads && (plan.target === "legs" || plan.target === "body" || plan.target === "head")) notes.push({ t: `${opp.surname} reads patterns quickly (${FIGHT_STYLES[fightStyle(opp).s].name.toLowerCase()}, fight IQ ${Math.round(opp.attrs.fightIQ)}): one target all night will get covered. Mix it up or find the opening.`, good: false });
+  if ((plan.target === "mix" || plan.target === "opening") && reads) notes.push({ t: `Good against ${opp.surname}: a defence that adapts has to keep guessing.`, good: true });
+  if (plan.target === "legs" && opp.attrs.toughness < 11 && !opp.tech.checkKicks) notes.push({ t: `${opp.surname} doesn't check kicks and the legs aren't durable: chop them early, before the guard comes down to them.`, good: true });
+  if (plan.target === "body" && opp.attrs.cardio < 11) notes.push({ t: `${opp.surname}'s gas tank is the weak point: body shots will empty it.`, good: true });
   if (plan.top === "subs" && me.attrs.subs < 11) notes.push({ t: "Hunting submissions without the skills gives up position.", good: false });
   if (plan.bottom === "guard" && opp.attrs.groundStrikes > 15) notes.push({ t: `On your back under ${opp.surname}'s ground and pound is a bad place to be.`, good: false });
   if (plan.risk >= 1 && opp.attrs.counters > 15) notes.push({ t: `${opp.surname} counters well: big swings get punished.`, good: false });

@@ -26,6 +26,9 @@ import { Agency, Scouting } from "../src/ui/pages/Agency";
 import { FightNight } from "../src/ui/pages/FightNight";
 import { Legacy } from "../src/ui/pages/Legacy";
 import { Titles } from "../src/ui/pages/Titles";
+import { BoutPreview } from "../src/ui/pages/Events";
+import { FightReport, reportOf } from "../src/ui/report";
+import { simulate } from "../src/engine/sim";
 import { retirePlayer } from "../src/career/retire";
 import { becomeManager } from "../src/career/retire";
 import { hireManager, makeContractOffer } from "../src/career/offers";
@@ -96,6 +99,30 @@ function pages(w: World, label: string) {
   check("Title history", <Titles promo="ufc" div="LW" />);
   check("Title history BMF", <Titles promo="ufc" div="bmf" />);
   check("Title history PFL", <Titles promo="pfl" />);
+  // Fight reports: a finished bout's round by round (packed numbers), and a full report with the log.
+  const doneBout = Object.values(w.bouts).find((b) => b.status === "done" && b.res?.rx && w.fighters[b.a] && w.fighters[b.b]);
+  if (doneBout) {
+    check("Bout report (packed rounds)", <BoutPreview w={w} b={doneBout} />);
+    const data = reportOf(w, doneBout);
+    if (!data || data.rounds.length !== (doneBout.res?.rx?.length ?? 0)) {
+      failures++;
+      console.log("  FAIL bout report: the packed rounds did not unpack");
+    }
+  }
+  const [x, y] = Object.values(w.fighters).filter((f) => f.status === "active" && f.promo === "ufc").slice(0, 2);
+  if (x && y) {
+    const out = simulate({ a: x, b: y, rounds: 3, roundSec: 300, div: x.div, seed: 99, log: true });
+    const rounds = out.rounds ?? [];
+    check("Fight report with key moments", <FightReport data={{ a: x, b: y, rounds, rcards: out.rcards, log: out.log, winner: out.winner, method: out.method, detail: out.detail, endRound: out.round, endTime: out.time }} />);
+    if (!rounds.length || rounds[0][0].hd === undefined) {
+      failures++;
+      console.log("  FAIL fight report: no end-of-round condition recorded");
+    }
+    if ((out.log?.length ?? 0) < 40 * rounds.length) {
+      failures++;
+      console.log(`  FAIL play by play: only ${out.log?.length} lines in ${rounds.length} rounds`);
+    }
+  }
   if (w.career.mode === "manager") {
     check("Agency", <Agency />);
     check("Scouting", <Scouting />);

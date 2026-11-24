@@ -29,7 +29,9 @@ import { legacyMonthly } from "../world/legacy";
 import { retirementTalk } from "../career/retire";
 import { injuryHealed, playerInjured } from "../career/injury";
 import { bmfMonthly, stripMonthly } from "../world/belts";
+import { pruneReports } from "../world/report";
 import { INJURY } from "../data/injuries";
+import { FIGHT_STYLES, masteryName } from "../data/fightstyles";
 
 export interface Stop {
   kind: "decision" | "fight" | "week" | "message" | "retired";
@@ -76,6 +78,31 @@ function weekly(w: World, rng: Rng): void {
         if (lvl >= 3) fc.plan.drill = null;
       } else prog.drill[r.drilled.tech] = cur;
     }
+    if (r.styled) {
+      const sd = FIGHT_STYLES[r.styled.id];
+      const was = masteryName(r.styled.before);
+      const now = masteryName(r.styled.after);
+      if (now !== was && r.styled.after > r.styled.before) {
+        notify(w, {
+          kind: "training", fighter: f.id, from: "Head coach",
+          subject: `${sd.name}: ${now.toLowerCase()} now`,
+          body: `${fullName(f)}'s ${sd.name.toLowerCase()} game has moved up a level: ${now.toLowerCase()} (${Math.round(r.styled.after)}). ${sd.how[0]}, and it shows in sparring.`,
+          facts: [{ k: "Style", v: sd.name }, { k: "Mastery", v: `${Math.round(r.styled.before)} → ${Math.round(r.styled.after)}`, tone: "good" }, { k: "Level", v: now }],
+        });
+      }
+      if (r.styled.tech && r.styled.progress) {
+        const prog = (fc as unknown as { drill?: Partial<Record<TechId, number>> });
+        prog.drill = prog.drill ?? {};
+        const t = r.styled.tech;
+        const cur = (prog.drill[t] ?? 0) + r.styled.progress;
+        if (cur >= 1) {
+          prog.drill[t] = 0;
+          f.tech[t] = Math.min(3, (f.tech[t] ?? 0) + 1);
+          const lvl = f.tech[t]!;
+          notify(w, { kind: "training", fighter: f.id, from: "Technique coach", subject: `${TECHNIQUES[t].name}: ${["", "working", "sharp", "second nature"][lvl]}`, body: `Style coaching paid off: ${fullName(f)}'s ${TECHNIQUES[t].name.toLowerCase()} is now ${["", "a working technique", "sharp", "second nature"][lvl]}.` });
+        } else prog.drill[t] = cur;
+      }
+    }
     if (r.injury) playerInjured(w, rng, f, INJURY[r.injury.id], "training");
     const films = plan.week.filter((s) => s === "film").length;
     const spars = plan.week.filter((s) => s === "sparring").length;
@@ -99,6 +126,7 @@ function monthly(w: World, rng: Rng): void {
   legacyMonthly(w);
   stripMonthly(w);
   bmfMonthly(w);
+  pruneReports(w);
   retirementTalk(w, rng);
   for (const id of w.career.fighters) {
     const fc = w.career.fc[id];

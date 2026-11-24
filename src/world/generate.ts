@@ -10,6 +10,7 @@ import { makeName, makeNickname } from "../data/names";
 import { ARTS, COUNTRY_ARTS, DEFAULT_ARTS, type BaseArt } from "../data/styles";
 import { TECH_IDS, TECHNIQUES, type TechId } from "../data/techniques";
 import { ATTRS, ovrOf, type AttrKey } from "../model/attributes";
+import { grantStyleTech, pickStyles } from "./fightstyle";
 import type { AgingType, Attrs, CareerTotals, Fighter, FightRecord, Hidden, Personality, Stance } from "../model/types";
 
 export const blankRecord = (): FightRecord => ({ w: 0, l: 0, d: 0, nc: 0, koW: 0, subW: 0, decW: 0, koL: 0, subL: 0, decL: 0 });
@@ -154,6 +155,8 @@ export function generateFighter(rng: Rng, o: GenOptions): Fighter {
     joined: 0,
     best: Math.round(cur),
   };
+  f.style = pickStyles(f, rng, null, cur);
+  grantStyleTech(f);
   return f;
 }
 

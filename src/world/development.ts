@@ -132,6 +132,14 @@ export function monthlyDevelopment(w: World, rng: Rng): void {
     // Training fatigue and sharpness drift for the world's fighters.
     if (!f.ctrl) {
       f.sharp = clamp(f.sharp + (f.booked ? 6 : -4), 30, 85);
+      // They grow into their styles with the years in the gym, as far as their fight IQ takes them.
+      const st = f.style;
+      if (st) {
+        const learn = age < 30 ? 0.5 : age < 34 ? 0.3 : 0.12;
+        const cap = 45 + f.attrs.fightIQ * 2.6;
+        if (st.sm < cap) st.sm = Math.min(cap, Math.round((st.sm + learn) * 10) / 10);
+        if (st.gm < cap) st.gm = Math.min(cap, Math.round((st.gm + learn * 0.8) * 10) / 10);
+      }
     }
   }
 }

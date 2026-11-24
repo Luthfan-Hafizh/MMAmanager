@@ -14,6 +14,19 @@ import { go, Link } from "../router";
 import { Empty, Flag, Seg, Tabs, Versus } from "../components";
 import { Band } from "../art";
 import { groupScore } from "../../model/attributes";
+import type { FightRecord, Fighter } from "../../model/types";
+import { recordAfter } from "../../world/report";
+import { FightReport, reportOf } from "../report";
+import { styleLabel } from "../../world/fightstyle";
+
+const recText = (r: FightRecord) => `${r.w}-${r.l}${r.d ? `-${r.d}` : ""}${r.nc ? ` (${r.nc} NC)` : ""}`;
+
+/** The record that belongs next to a bout: amateur for amateur fights, and as it stood after the fight once it is over. */
+function boutRecord(w: World, f: Fighter, b: Bout): string {
+  const am = PROMOTIONS[b.promo]?.tier === "amateur";
+  const r = b.status === "done" ? recordAfter(w, f, b) : am ? f.am : f.rec;
+  return `${recText(r)}${am ? " amateur" : ""}`;
+}
 
 const TIERS: (Tier | "all" | "mine")[] = ["mine", "all", "major", "league", "tryout", "regional", "local", "amateur"];
 
@@ -121,7 +134,7 @@ export function EventPage({ id }: { id: string }) {
   );
 }
 
-function Corner({ w, id, side, result, bonus }: { w: World; id: string; side: "a" | "b"; result: "W" | "L" | "D" | null; bonus?: boolean }) {
+function Corner({ w, b, id, side, result, bonus }: { w: World; b: Bout; id: string; side: "a" | "b"; result: "W" | "L" | "D" | null; bonus?: boolean }) {
   const f = w.fighters[id];
   if (!f) return <div />;
   const rl = rankLabel(w, f);
@@ -133,7 +146,7 @@ function Corner({ w, id, side, result, bonus }: { w: World; id: string; side: "a
           <span className="first">{rl ? `${rl === "C" ? "Champion" : rl === "IC" ? "Interim champ" : rl} · ` : ""}{f.first}</span>
           {f.surname}
         </Link>
-        <div className="meta">{recordText(f)}{bonus ? " · Performance of the Night" : ""}</div>
+        <div className="meta">{boutRecord(w, f, b)}{bonus ? " · Performance of the Night" : ""}</div>
       </div>
       {side === "a" && result && <span className={`wl ${result}`}>{result}</span>}
     </div>
@@ -156,7 +169,7 @@ function BoutRow({ w, b }: { w: World; b: Bout }) {
   return (
     <div className={`bout-wrap${mine ? " mine" : ""}`}>
       <div className={`bout${mine ? " mine" : ""}${b.status === "cancelled" ? " cancel" : ""}${title ? " title-bout" : ""}`} onClick={() => b.status !== "cancelled" && setOpen((o) => !o)} aria-expanded={open}>
-        <Corner w={w} id={b.a} side="a" result={ra} bonus={bonus.includes("potn-a")} />
+        <Corner w={w} b={b} id={b.a} side="a" result={ra} bonus={bonus.includes("potn-a")} />
         <div className="mid">
           <div className={`wc${b.kind === "bmf" ? " bmf-t" : ""}`}>{stakeLabel(b, true) ?? `${DIVISIONS[b.div].name} bout`}</div>
           {done ? (
@@ -175,7 +188,7 @@ function BoutRow({ w, b }: { w: World; b: Bout }) {
             </>
           )}
         </div>
-        <Corner w={w} id={b.b} side="b" result={rb} bonus={bonus.includes("potn-b")} />
+        <Corner w={w} b={b} id={b.b} side="b" result={rb} bonus={bonus.includes("potn-b")} />
       </div>
       <div className="bout-foot">
         <span className="l row tight" style={{ justifyContent: "flex-end" }}>{countryOf(A.country).name} <Flag code={A.country} /></span>
@@ -200,12 +213,28 @@ export function BoutPreview({ w, b }: { w: World; b: Bout }) {
   const B = w.fighters[b.b];
   const pv = preview(w, b);
   const h2h = headToHead(w, b.a, b.b).filter((x) => x.id !== b.id);
+  const report = b.status === "done" ? reportOf(w, b) : null;
+  if (b.status === "done") {
+    return (
+      <div className="expand">
+        {report ? (
+          <FightReport data={report} />
+        ) : (
+          <p className="small dim">
+            {b.res?.rcards?.length ? <>Scorecards: {b.res.rcards.map((r, i) => `R${i + 1} ${r.join(", ")}`).join(" · ")}. </> : null}
+            Round-by-round numbers are kept for six months for small shows, and for good on the big stages, in title fights and in your own fights.
+          </p>
+        )}
+      </div>
+    );
+  }
   return (
     <div className="expand">
       <div className="grid">
         <div className="c6">
           <div className="label" style={{ marginBottom: 6 }}>Tale of the tape</div>
-          <div className="versus"><div className="l">{recordText(A)}</div><div className="m">Record</div><div className="r">{recordText(B)}</div></div>
+          <div className="versus"><div className="l">{boutRecord(w, A, b)}</div><div className="m">Record</div><div className="r">{boutRecord(w, B, b)}</div></div>
+          <div className="versus"><div className="l small">{styleLabel(A)}</div><div className="m">Styles</div><div className="r small">{styleLabel(B)}</div></div>
           <Versus label="Height (in)" a={A.height} b={B.height} higher="none" />
           <Versus label="Reach (in)" a={A.reach} b={B.reach} />
           <Versus label="Striking" a={groupScore(A.attrs, "striking")} b={groupScore(B.attrs, "striking")} fmt={(v) => v.toFixed(1)} />

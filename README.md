@@ -23,18 +23,28 @@ A browser MMA career and management simulator. Take a fighter from the amateur c
 
 | | Engine (UFC level) | Real UFC |
 | --- | --- | --- |
-| KO/TKO, submission, decision | 30% / 19% / 50% | about 30% / 19% / 50% |
+| KO/TKO, submission, decision | 29% / 20% / 51% | about 30% / 19% / 50% |
 | Heavyweight vs women's strawweight KO/TKO | 48% vs 15% | 48% vs 13% |
-| Significant strikes landed per minute, accuracy | 3.6, 46% | about 3.5-4.3, 47% |
+| Significant strikes landed per minute, accuracy | 3.6, 47% | about 3.5-4.3, 47% |
 | Takedowns per 15 minutes, accuracy | 1.7, 42% | about 1.5, 38-42% |
-| Share of finishes in round 1 | 46% | about 45-50% |
-| Strikes landed to head / body / legs | 63 / 21 / 16 | 64 / 21 / 15 |
+| Share of finishes in round 1 | 47% | about 45-50% |
+| Strikes landed to head / body / legs | 64 / 21 / 15 | 64 / 21 / 15 |
 | Split and majority share of decisions | 16% | about 15-20% |
 | Short-notice replacements who win (world, UFC and PFL) | 42% | 37-42% |
 
 Lower levels are sloppier: more finishes on the local shows and in the regional promotions; amateurs fight three-minute rounds.
 
-**Fight plans.** Twelve styles to start from and a dozen instructions (tempo, risk, range, kicks, lead or counter, takedowns, clinch, fence pressure, target, top and bottom game, defence). The coaches comment on the plan against this opponent. In the live fight, shout instructions from the corner (discipline decides if they're heard) and change the plan between rounds.
+**Fighting styles.** Every fighter has a way of striking and a way of grappling, the way analysts describe real fighters, each with a mastery from 0 to 100. Twelve striking styles: technical boxer, pressure fighter, counter-puncher, power puncher, Dutch kickboxer, point fighter, flash kicker, Muay Khao knee fighter, Muay Femur technician, volume striker, brawler and the functional striker of a grappler. Eleven grappling styles: chain wrestler, power wrestler, cage grinder, scrambler, ground-and-pounder, pressure passer, guard player, back-take specialist, leg-locker, thrower and sprawl-and-brawl. A style changes what a fighter chooses to do (a technical boxer leads with the jab and wins the range; a Dutch kickboxer ends every combination with a low kick; a chain wrestler chains a failed shot into the next; a guard player attacks off the back) and, the better they know it, how well those moves work. Real fighters get theirs from how they really fight (the snapshot's tendencies and official statistics), everyone else from their background and attributes; a created fighter picks both. Mastery grows with fights, with the years in the gym, and with style coaching on the Training page (the right sessions build it, about a point a week with a focused plan); a new style can be learned, starting from what carries over, and an old one is kept in case you come back.
+
+**Defences that adapt.** Every fighter guards the levels they get hit at: chop the legs all night and the opponent starts checking the kicks, which leaves the head open. Clever fighters read where the guard has gone and hit what's left open, counter-punchers and technical fighters read patterns faster, and volume strikers and point fighters are hard to read. Over thousands of fights the guard averages where strikes really go (three-quarters to the head), so an ordinary fight is neutral and only a pattern opens a gap: in a test of a kickboxer chopping the legs against a boxer, leg-kick accuracy fell from 60% to 53% as the boxer adapted while head shots rose from 36% to 39%, and finding the opening won most.
+
+**Fight plans.** Twelve styles to start from and a dozen instructions (tempo, risk, range, kicks, lead or counter, takedowns, clinch, fence pressure, target, top and bottom game, defence); targets include mixing it up (head, body and legs in turn, so the defence can't settle) and finding the opening. The coaches comment on the plan against this opponent, including how they defend.
+
+**The live fight.** Watch it at reading pace, every exchange told in a line ("Jackson throws a body kick and a calf kick, and both land", "In the clinch, Velasquez lands a short punch; Jackson blocks the rest"), or quickly, fast, or straight to the bell. From the corner, twenty-two instructions in five groups (pace, target, range, grappling, risk and defence), one active from each, from "Push the pace!" and "Find the opening" to "Check the kicks" and "Hunt the submission"; discipline decides whether they're heard. The read panel shows where each fighter is guarding and what is open. Between rounds: a summary of the round, what the corner sees (the opening, the hurt leg, the fading gas tank, the cards) with a button to put it in the plan, and the plan itself.
+
+**Fight reports.** Every fight keeps its round-by-round numbers: significant strikes by target and position, total strikes, knockdowns, takedowns, submission attempts, reversals and control time, the judges' scores for each round, a summary of the round, and how both fighters finished it (head, body, legs, gas tank and where they were guarding). Your own fights add the key moments from the play by play. Small shows keep them for six months; the big stages, title fights and your fights for good.
+
+**Real records.** Real fighters carry their real fight-by-fight history from before the world began (from Wikipedia's MMA record tables, matched against the official record), with opponents linked when they're in the game; champions' reigns start on the real date they won the belt, with their real defences. Records next to a fight are the ones the fighters had on the night, and amateur bouts show amateur records.
 
 **Camps and the scale.** Sparring partners, a nutritionist or a full cut team, the cut strategy, film study. Preparation on the night comes from the camp's length, sharpness, freshness and the partners. Weight is checked the day before; a miss costs 20-30% of the purse and the fight goes ahead at a catchweight.
 
@@ -81,7 +91,7 @@ npm run check:ui                # render every page for a fighter, a real fighte
 npm run check                   # all of the above, quick versions
 ```
 
-`npm run data` rebuilds `public/data/roster.json` from the snapshot in `data-src/`.
+`npm run data` rebuilds `public/data/roster.json` from the snapshot in `data-src/`. `node scripts/build-history.mjs` rebuilds `public/data/history.json`, the real fight histories, from Wikipedia (slow and polite: it caches every answer, so a rate-limited run picks up where it stopped); run `npm run data` after it so the champions' real reign dates reach the roster.
 
 The live site is the Vercel project `mma-manager`, connected to this repository: every push to `main` is built (`npm run build`, with the settings in `vercel.json`) and goes live within a minute, and pushes to other branches get preview deployments. `npx vercel deploy` (without `--prod`) makes a preview of the local folder without touching the live site. It is separate from the old game's Vercel projects.
 
@@ -89,8 +99,9 @@ The live site is the Vercel project `mma-manager`, connected to this repository:
 
 - The UFC roster, rankings and official statistics: a snapshot of ufc.com taken on 1 October 2026.
 - The PFL roster: Wikipedia's List of current PFL fighters (CC BY-SA 4.0), 15 November 2026.
+- Real fight histories before 1 October 2026: the mixed martial arts record tables on English Wikipedia (CC BY-SA 4.0), each matched against the fighter's official record; `public/data/history.json` is shared under the same licence.
 - Records, physicals, rankings and statistics are sourced; the 1-20 attributes are derived from them; everything after the first day is simulated.
-- Saves from the previous save format are brought up to date when loaded (real fighters are re-scouted).
+- Saves from earlier save formats are brought up to date when loaded (real fighters are re-scouted, everyone gets fighting styles, and champions' reigns move to their real start dates).
 
 ## Project layout
 

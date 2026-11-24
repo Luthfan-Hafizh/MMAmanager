@@ -6,6 +6,7 @@ import type { AttrKey } from "./attributes";
 import type { TechId } from "../data/techniques";
 import type { BaseArt } from "../data/styles";
 import type { FightPlan } from "../engine/plan";
+import type { FighterStyle, StyleId } from "../data/fightstyles";
 
 export type Stance = "orthodox" | "southpaw" | "switch";
 export type Attrs = Record<AttrKey, number>;
@@ -184,6 +185,8 @@ export interface Fighter {
   bestStreak?: number;
   /** Fights on a promotion's stage before the world began (real fighters). */
   prior?: { promo: PromoId; n: number };
+  /** How they strike and grapple, and how well they know each style. */
+  style?: FighterStyle;
 }
 
 export type BoutKind = "title" | "interim" | "vacant" | "eliminator" | "regular" | "tryout" | "amateur" | "bmf";
@@ -208,6 +211,13 @@ export interface RoundStat {
   subA: number;
   rev: number;
   ctrl: number;
+  /** Condition at the end of the round, 0..100: head, body, legs and gas tank. */
+  hd?: number;
+  bd?: number;
+  lg?: number;
+  st?: number;
+  /** Where the fighter was guarding at the end of the round: head, body, legs in percent. */
+  gd?: [number, number, number];
 }
 
 export interface BoutResult {
@@ -224,6 +234,8 @@ export interface BoutResult {
   /** Full statistics are kept for the player's fights only. */
   stats?: [RoundStat, RoundStat];
   rounds?: [RoundStat, RoundStat][];
+  /** Round-by-round statistics in compact form (see world/report.ts). */
+  rx?: number[][];
   log?: FightLogLine[];
   bonus?: ("fotn" | "potn-a" | "potn-b")[];
   perf: [number, number];
@@ -486,6 +498,8 @@ export interface TrainingPlan {
   intensity: 0 | 1 | 2; // light, normal, hard
   drill: TechId | null;
   template: string;
+  /** A style the coaches are building, striking or grappling. */
+  style?: StyleId | null;
 }
 
 export interface Camp {

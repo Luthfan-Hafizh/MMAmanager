@@ -85,6 +85,36 @@ for (const [d, id] of Object.entries(src.pfl.champions ?? {})) pflChamps[DIV[d]]
 const pflInterim = {};
 for (const [d, id] of Object.entries(src.pfl.interim ?? {})) pflInterim[DIV[d]] = id;
 
+// The real date each champion won the belt, and the defences since: from the
+// fight histories (scripts/build-history.mjs), when they have been built.
+const titles = {};
+let hist = {};
+try {
+  hist = JSON.parse(readFileSync("public/data/history.json", "utf8")).f ?? {};
+} catch {
+  console.log("No history.json yet: champions keep an estimated reign start.");
+}
+function titleWin(rows, promo) {
+  let won = null;
+  for (const h of [...rows].reverse()) {
+    const [r, , , , date, , , notes] = h;
+    const n = String(notes ?? "").toLowerCase();
+    if (!n.includes(promo)) continue;
+    if (/won the.*championship/.test(n) && r === "W") won = { date, defenses: 0, interim: n.includes("interim") ? 1 : 0 };
+    else if (/(defended|retained).*championship/.test(n) && r === "W" && won) won.defenses++;
+    else if (/lost the.*championship/.test(n)) won = null;
+    else if (/promoted to undisputed/.test(n) && won) won.interim = 0;
+  }
+  return won;
+}
+for (const [promo, ids] of [["ufc", Object.values(ranks).map((r) => r.c)], ["pfl", [...Object.values(pflChamps), ...Object.values(pflInterim)]]]) {
+  for (const id of ids) {
+    if (!id || !hist[id]) continue;
+    const t = titleWin(hist[id].h, promo);
+    if (t?.date) titles[id] = [t.date, t.defenses, t.interim];
+  }
+}
+
 const out = {
   date: src.meta.snapshotDate,
   sources: [
@@ -95,6 +125,8 @@ const out = {
   gyms,
   ufc: { ranks, p4p: src.pfp },
   pfl: { champs: pflChamps, interim: pflInterim, ranks: pflRanks },
+  titles,
 };
 writeFileSync("public/data/roster.json", JSON.stringify(out));
+console.log(`champions with a real reign start: ${Object.keys(titles).length}`);
 console.log(`roster.json: ${fighters.length} fighters (${fighters.filter((f) => f.p === "ufc").length} UFC, ${fighters.filter((f) => f.p === "pfl").length} PFL), ${gyms.length} gyms, ${(JSON.stringify(out).length / 1024).toFixed(0)} KB`);

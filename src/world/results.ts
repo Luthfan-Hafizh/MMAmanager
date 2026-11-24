@@ -10,6 +10,8 @@ import { ovr, ovrOf } from "../model/attributes";
 import type { Bout, BoutResult, Fighter, MMAEvent, Reign, World } from "../model/types";
 import { simulate, methodPhrase, type Condition, type FightInput, type FightOutcome } from "../engine/sim";
 import { addNews, fullName, isControlled, rankOf, ringRust, touch } from "./core";
+import { fightStyle } from "./fightstyle";
+import { packRounds } from "./report";
 import { eloUpdate, entryElo, nameContenders, rankingNews, updateP4P, updateRankings } from "./rankings";
 import { markDone } from "./calendar";
 import { orderCard } from "./matchmaking";
@@ -155,8 +157,10 @@ export function toResult(o: FightOutcome, keep: boolean): BoutResult {
     r.rounds = o.rounds;
     r.rcards = o.rcards;
     r.log = o.log;
-  } else if (o.method === "DEC" || o.method === "DRAW") {
-    r.rcards = o.rcards;
+  } else {
+    // Every fight keeps its round-by-round numbers in compact form (small shows for six months).
+    if (o.rounds?.length) r.rx = packRounds(o.rounds);
+    if (o.rcards?.length) r.rcards = o.rcards;
   }
   (r as BoutResult & { exc?: number }).exc = Math.round(o.excitement * 10) / 10;
   return r;
@@ -294,6 +298,11 @@ export function applyResult(w: World, rng: Rng, b: Bout, o: FightOutcome): void 
     s.tdAbsA += theirs.tdA;
     s.subA += mine.subA;
     s.ctrl += Math.round(mine.ctrl);
+    // A fight deepens a style: the striking always, the grappling when there was some.
+    const st = fightStyle(f);
+    const grappled = mine.tdA + mine.subA + theirs.tdL > 0 || mine.ctrl > 30;
+    st.sm = Math.min(99, Math.round((st.sm + 0.8 * (1 - st.sm / 130)) * 10) / 10);
+    if (grappled) st.gm = Math.min(99, Math.round((st.gm + 0.8 * (1 - st.gm / 130)) * 10) / 10);
   }
 
   // Damage, wear, suspensions and injuries.

@@ -5,6 +5,7 @@
 
 import { Rng, hashString } from "../core/rng";
 import { clamp } from "../core/util";
+import { dayOf } from "../core/time";
 import { countryOf } from "../data/countries";
 import { DIVISIONS, typicalWalk, type DivisionId } from "../data/divisions";
 import type { PromoId } from "../data/promotions";
@@ -13,6 +14,7 @@ import { ATTRS, ovrOf } from "../model/attributes";
 import type { AgingType, Attrs, Fighter, Gym, Stance } from "../model/types";
 import { blankRecord, blankTotals, makeTechniques } from "./generate";
 import { KNOWN_TITLES, startingLegacy } from "./legacy";
+import { grantStyleTech, pickStyles, type RealSignals } from "./fightstyle";
 
 export interface RealFighter {
   id: string;
@@ -66,6 +68,14 @@ export interface RosterFile {
   gyms: RealGym[];
   ufc: { ranks: Partial<Record<DivisionId, { c: string | null; e: string[] }>>; p4p: string[] };
   pfl: { champs: Partial<Record<DivisionId, string>>; interim: Partial<Record<DivisionId, string>>; ranks: Partial<Record<DivisionId, string[]>> };
+  /** Champions' real reigns: the date the belt was won, defences since, and 1 for an interim belt. */
+  titles?: Record<string, [string, number, number]>;
+}
+
+/** The game's day number for an ISO date (day 0 is 5 October 2026). */
+export function dayOfIso(iso: string): number {
+  const [y, m, d] = iso.split("-").map(Number);
+  return dayOf(y, (m || 1) - 1, d || 1);
 }
 
 const SOUTHPAWS = new Set(["ufc-islam-makhachev", "ufc-leon-edwards", "ufc-valentina-shevchenko", "ufc-magomed-ankalaev", "ufc-dustin-poirier", "ufc-brandon-royval"]);
@@ -322,7 +332,22 @@ export function realFighter(rf: RealFighter, ctx: RealContext, seed: number): Fi
   if (known) f.reigns = Math.max(f.reigns, known[0]);
   f.legacy = startingLegacy(f, known ? known[1] : rf.td);
   f.bestStreak = Math.max(rf.bs ?? 0, f.streak, 0);
+  // How they really fight: the styles come from the tendencies and the official numbers.
+  f.style = pickStyles(f, rng, realSignals(rf), cur);
+  grantStyleTech(f);
   return f;
+}
+
+/** The snapshot's tendencies and official statistics, for picking a real fighter's styles. */
+export function realSignals(rf: RealFighter): RealSignals {
+  const t = rf.t;
+  const s = rf.s;
+  return {
+    pressure: t[T.pressure], counter: t[T.counter], range: t[T.range], pocket: t[T.pocket], kicking: t[T.kicking], clinch: t[T.clinch],
+    tdEntry: t[T.tdEntry], top: t[T.top], subHunt: t[T.subHunt], scramble: t[T.scramble], pace: t[T.pace], risk: t[T.risk], finish: t[T.finish],
+    slpm: s?.[0] ?? 3.5, sapm: s?.[1] ?? 3.5, acc: s?.[2] ?? 47, def: s?.[3] ?? 54, td: s?.[4] ?? 1.5, tdDef: s?.[5] ?? 66, sub: s?.[6] ?? 0.5, kd: s?.[7] ?? 0.4,
+    body: s?.[9] ?? 18, leg: s?.[10] ?? 16, clinchShare: s?.[12] ?? 11, groundShare: s?.[13] ?? 13,
+  };
 }
 
 export function realGym(g: RealGym): Gym {

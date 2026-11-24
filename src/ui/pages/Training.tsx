@@ -1,8 +1,11 @@
 import { InjuryCard } from "../advice";
-import { Fragment, useMemo } from "react";
+import { Fragment, useMemo, useState } from "react";
 import { ATTR_INFO, type AttrKey } from "../../model/attributes";
-import type { SessionId, World } from "../../model/types";
-import { INTENSITY_NAMES, SESSIONS, SESSION_IDS, SLOT_NAMES, TEMPLATES, coachQuality, planPreview, templatePlan } from "../../career/training";
+import type { Fighter, FighterCareer, SessionId, World } from "../../model/types";
+import { INTENSITY_NAMES, SESSIONS, SESSION_IDS, SLOT_NAMES, TEMPLATES, coachQuality, planPreview, styleSessions, templatePlan, trainingWeek } from "../../career/training";
+import { FIGHT_STYLES, masteryName, styleFit, type StyleId } from "../../data/fightstyles";
+import { fightStyle, switchStyle } from "../../world/fightstyle";
+import { Rng } from "../../core/rng";
 import { MASTERY_NAMES, TECHNIQUES, TECH_IDS, type TechId } from "../../data/techniques";
 import { changed, useWorld } from "../../state/store";
 import { go } from "../router";
@@ -35,7 +38,7 @@ export function Training({ id }: { id?: string }) {
   };
   const setTemplate = (t: string) => {
     const p = templatePlan(t);
-    fc.plan = { ...p, drill: fc.plan.drill };
+    fc.plan = { ...p, drill: fc.plan.drill, style: fc.plan.style };
     changed();
   };
   const drillable = TECH_IDS.filter((t) => (f.tech[t] ?? 0) < 3);
@@ -111,6 +114,7 @@ export function Training({ id }: { id?: string }) {
             </label>
           </div>
         </Panel>
+        <StyleCoaching w={w} f={f} fc={fc} />
         <Panel title="Sessions" flush>
           <table className="tbl compact">
             <thead>
@@ -174,5 +178,85 @@ export function Training({ id }: { id?: string }) {
         </Panel>
       </div>
     </div>
+  );
+}
+
+/** Style coaching: build one of the two styles, or change one. */
+function StyleCoaching({ w, f, fc }: { w: World; f: Fighter; fc: FighterCareer }) {
+  const st = fightStyle(f);
+  const [picking, setPicking] = useState<"strike" | "grapple" | null>(null);
+  const focus: "off" | "strike" | "grapple" = fc.plan.style ? FIGHT_STYLES[fc.plan.style].kind : "off";
+  const week = useMemo(() => {
+    const clone: Fighter = { ...f, attrs: { ...f.attrs }, style: { ...st } };
+    // The day job takes Thursday and Friday, as it does in the real week.
+    const plan = fc.dayJob ? { ...fc.plan, week: fc.plan.week.map((s, k) => (k >= 6 ? ("rest" as SessionId) : s)) } : fc.plan;
+    return trainingWeek(w, clone, plan, new Rng(1), false).styled;
+  }, [w, f, fc.plan, fc.dayJob, w.day, st.s, st.g, st.sm, st.gm]);
+  const setFocus = (k: "off" | "strike" | "grapple") => {
+    fc.plan = { ...fc.plan, style: k === "off" ? null : k === "strike" ? st.s : st.g };
+    changed();
+  };
+  const choose = (id: StyleId) => {
+    const sd = FIGHT_STYLES[id];
+    const back = st.known?.[id];
+    const start = back ?? Math.round(Math.max(6, Math.min(30, 6 + styleFit(f.attrs, id) * 0.22)));
+    const cur = sd.kind === "strike" ? st.s : st.g;
+    const curM = sd.kind === "strike" ? st.sm : st.gm;
+    if (!confirm(`Switch to ${sd.name}? ${back !== undefined ? `${f.surname} goes back to it at ${Math.round(back)}.` : `${f.surname} starts it at ${start}.`} ${FIGHT_STYLES[cur].name} (${Math.round(curM)}) is kept, in case you come back to it.`)) return;
+    switchStyle(f, id);
+    if (fc.plan.style && FIGHT_STYLES[fc.plan.style].kind === sd.kind) fc.plan = { ...fc.plan, style: id };
+    setPicking(null);
+    changed();
+  };
+  const card = (kind: "strike" | "grapple") => {
+    const id = kind === "strike" ? st.s : st.g;
+    const m = kind === "strike" ? st.sm : st.gm;
+    const sd = FIGHT_STYLES[id];
+    const best = Object.entries(styleSessions(id)).sort((a, b) => (b[1] ?? 0) - (a[1] ?? 0)).slice(0, 2).map(([sid]) => SESSIONS[sid as SessionId].name.toLowerCase());
+    return (
+      <div className={`style-coach${focus === kind ? " on" : ""}`}>
+        <div className="label">{kind === "strike" ? "Striking" : "Grappling"} · from {sd.from}</div>
+        <div className="style-name" style={{ fontSize: 24 }}>{sd.name}</div>
+        <div className="style-m">
+          <div className="bar"><i style={{ width: `${m}%`, background: "var(--ink)" }} /></div>
+          <span><b className="num">{Math.round(m)}</b> {masteryName(m)}</span>
+        </div>
+        <p className="tiny dim" style={{ marginTop: 6 }}>Built in {best.join(" and ")} sessions.</p>
+        <button className="btn sm ghost" style={{ marginTop: 6 }} onClick={() => setPicking(picking === kind ? null : kind)}>{picking === kind ? "Keep this style" : "Change style"}</button>
+      </div>
+    );
+  };
+  const options = picking ? Object.values(FIGHT_STYLES).filter((x) => x.kind === picking).map((x) => ({ x, fit: styleFit(f.attrs, x.id) })).sort((a, b) => b.fit - a.fit) : [];
+  return (
+    <Panel title="Style coaching" hint="The coaches build one style at a time. Mastery makes the style's moves work better in the cage.">
+      <div className="row" style={{ marginBottom: 12 }}>
+        <span className="small dim">Coaching</span>
+        <Seg value={focus} onChange={setFocus} options={[{ v: "off", label: "Off" }, { v: "strike", label: "Striking style" }, { v: "grapple", label: "Grappling style" }]} />
+        {week && <span className="small"><b className="good">+{(week.after - week.before).toFixed(1)}</b> a week with this plan</span>}
+        {focus !== "off" && !week && <span className="small warn">No sessions in this week build it.</span>}
+      </div>
+      <div className="grid">
+        <div className="c6">{card("strike")}</div>
+        <div className="c6">{card("grapple")}</div>
+      </div>
+      {picking && (
+        <div style={{ marginTop: 14 }}>
+          <div className="label" style={{ marginBottom: 6 }}>Pick a {picking === "strike" ? "striking" : "grappling"} style · fit with {f.surname}'s attributes</div>
+          <div className="style-pick">
+            {options.map(({ x, fit }) => {
+              const cur = (picking === "strike" ? st.s : st.g) === x.id;
+              const back = st.known?.[x.id];
+              return (
+                <button key={x.id} className={`style-opt${cur ? " on" : ""}`} disabled={cur} onClick={() => choose(x.id)}>
+                  <span className="n">{x.name} <span className="small dim">· {x.from}</span>{x.arts.includes(f.base) ? <span className="badge info" style={{ marginLeft: 6 }}>Background</span> : null}{back !== undefined ? <span className="badge" style={{ marginLeft: 6 }}>Known: {Math.round(back)}</span> : null}{cur ? <span className="badge gold" style={{ marginLeft: 6 }}>Current</span> : null}</span>
+                  <span className="fit">fit {fit}%</span>
+                  <span className="d">{x.desc}</span>
+                </button>
+              );
+            })}
+          </div>
+        </div>
+      )}
+    </Panel>
   );
 }

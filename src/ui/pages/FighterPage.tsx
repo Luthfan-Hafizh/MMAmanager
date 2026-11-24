@@ -6,7 +6,7 @@ import { DIVISIONS } from "../../data/divisions";
 import { PROMOTIONS, PROMO_IDS } from "../../data/promotions";
 import { ARTS } from "../../data/styles";
 import { MASTERY_NAMES, TECHNIQUES, TECH_IDS, type TechId } from "../../data/techniques";
-import { groupScore, ovr, ovrBand, styleOf } from "../../model/attributes";
+import { ATTR_INFO, groupScore, ovr, ovrBand, styleOf } from "../../model/attributes";
 import type { Bout, Fighter, World } from "../../model/types";
 import { methodText } from "../../engine/sim";
 import { beltNote, isBeltFight, stakeLabel } from "../../world/belts";
@@ -19,6 +19,10 @@ import { AttrGrid, Empty, FighterLink, Flag, Form, Panel, Stars, Tabs } from "..
 import { Band, BodyTarget, Donut, Mark } from "../art";
 import { goatRank, legacyText } from "../../world/legacy";
 import { headToHead } from "../../world/odds";
+import { FIGHT_STYLES, masteryName, styleFit, type StyleId } from "../../data/fightstyles";
+import { fightStyle } from "../../world/fightstyle";
+import { useHistory, realTitleWin, type FighterHistory } from "../../state/history";
+import { dayOf } from "../../core/time";
 
 type Tab = "overview" | "fights" | "stats" | "techniques";
 
@@ -29,14 +33,19 @@ export function FighterPage({ id, tab }: { id: string; tab?: string }) {
   if (!f) return <div className="wrap page-body"><Empty title="Fighter not found" /></div>;
   return (
     <>
-      <Hero w={w} f={f} tabs={<Tabs<Tab> value={t} onChange={setT} tabs={[{ id: "overview", label: "Overview" }, { id: "stats", label: "Stats & records" }, { id: "fights", label: "Fight history" }, { id: "techniques", label: "Techniques" }]} />} />
+      <Hero w={w} f={f} tabs={<Tabs<Tab> value={t} onChange={setT} tabs={[{ id: "overview", label: "Overview" }, { id: "stats", label: "Stats & records" }, { id: "fights", label: "Fight history" }, { id: "techniques", label: "Style & techniques" }]} />} />
       {t === "stats" ? (
         <Stats w={w} f={f} />
       ) : (
         <div className="wrap page-body">
           {t === "overview" && <Overview w={w} f={f} />}
           {t === "fights" && <History w={w} f={f} />}
-          {t === "techniques" && <Techniques f={f} />}
+          {t === "techniques" && (
+            <>
+              <StyleSection f={f} />
+              <Techniques f={f} />
+            </>
+          )}
         </div>
       )}
     </>
@@ -79,6 +88,9 @@ function Hero({ w, f, tabs }: { w: World; f: Fighter; tabs: React.ReactNode }) {
         <div><div className="k">Height / reach</div><div className="v">{heightText(f.height)} ({cmOf(f.height)} cm) / {f.reach}"</div></div>
         <div><div className="k">Stance / base</div><div className="v">{f.stance.replace(/^./, (c) => c.toUpperCase())} / {ARTS[f.base].name}</div></div>
         <div><div className="k">Team</div><div className="v ellip">{w.gyms[f.gym]?.name ?? "-"}</div></div>
+        <div><div className="k">Striking style</div><div className="v">{FIGHT_STYLES[fightStyle(f).s].name}</div></div>
+        <div><div className="k">Grappling style</div><div className="v">{FIGHT_STYLES[fightStyle(f).g].name}</div></div>
+        <div><div className="k">Walks around</div><div className="v">{Math.round(f.walk)} lb</div></div>
       </div>
       <div className="bignums">
         <div><div className="n">{recordText(f)}</div><div className="k">Pro record (W-L-D)</div></div>
@@ -93,6 +105,8 @@ function Hero({ w, f, tabs }: { w: World; f: Fighter; tabs: React.ReactNode }) {
 
 function Overview({ w, f }: { w: World; f: Fighter }) {
   const bouts = boutsOf(w, f).filter((b) => b.status === "done").slice(-5).reverse();
+  const hist = useHistory(f.id, f.real);
+  const before = hist ? hist.rows.slice(0, Math.max(0, 5 - bouts.length)) : [];
   const nextB = f.booked ? w.bouts[f.booked] : null;
   const r = f.rec;
   const wins = Math.max(1, r.w);
@@ -104,9 +118,11 @@ function Overview({ w, f }: { w: World; f: Fighter }) {
           <div className="panel"><div className="panel-b"><AttrGrid f={f} /></div></div>
         </section>
         <section className="sec">
-          <div className="sec-h"><h2>Last fights</h2><div className="acts"><span className="dim small">Record before 5 Oct 2026 not itemised</span></div></div>
+          <div className="sec-h"><h2>Last fights</h2><div className="acts"><span className="dim small">{f.real ? (hist ? "Real fights before 5 Oct 2026 from Wikipedia" : hist === undefined ? "Loading the real record…" : "No itemised real record found") : ""}</span></div></div>
           <div className="panel">
-            {bouts.length ? bouts.map((b) => <MiniBout key={b.id} w={w} b={b} f={f} />) : <Empty title="No fights in this world yet" />}
+            {bouts.map((b) => <MiniBout key={b.id} w={w} b={b} f={f} />)}
+            {before.map((r, i) => <RealMini key={`h${i}`} w={w} r={r} />)}
+            {!bouts.length && !before.length && <Empty title="No fights in this world yet" />}
           </div>
         </section>
       </div>
@@ -200,7 +216,9 @@ function Profile({ f }: { f: Fighter }) {
   ];
   return (
     <div className="stack" style={{ gap: 10 }}>
-      <div className="spread"><span className="label">Style</span><b className="disp up" style={{ fontSize: 17 }}>{styleOf(f.attrs)}</b></div>
+      <div className="spread"><span className="label">Striking</span><b className="disp up" style={{ fontSize: 17 }}>{FIGHT_STYLES[fightStyle(f).s].name}</b></div>
+      <div className="spread"><span className="label">Grappling</span><b className="disp up" style={{ fontSize: 17 }}>{FIGHT_STYLES[fightStyle(f).g].name}</b></div>
+      <div className="spread small dim"><span>Shape</span><span>{styleOf(f.attrs)}</span></div>
       {groups.map(([k, v]) => (
         <div key={k}>
           <div className="spread small"><span className="label">{k}</span><b className="num" style={{ fontSize: 18 }}>{v.toFixed(1)}</b></div>
@@ -227,12 +245,17 @@ function MiniBout({ w, b, f }: { w: World; b: Bout; f: Fighter }) {
 }
 
 /** Every belt a fighter has held in this world (and the real ones before it), with the BMF. */
-function Belts({ w, f }: { w: World; f: Fighter }) {
-  const rows: { belt: string; interim: boolean; bmf?: boolean; won: number; lost?: number; how: string; ended?: string; defenses: number; to: string }[] = [];
+function Belts({ w, f, hist }: { w: World; f: Fighter; hist: FighterHistory | null }) {
+  const rows: { belt: string; interim: boolean; bmf?: boolean; won: number; lost?: number; how: string; ended?: string; defenses: number; to: string; real?: boolean }[] = [];
   for (const id of PROMO_IDS) {
     for (const r of w.promos[id].reigns) {
       if (r.fighter !== f.id) continue;
-      rows.push({ belt: `${PROMOTIONS[id].short} ${DIVISIONS[r.div].name}`, interim: !!r.interim, won: r.won, lost: r.lost, how: r.how, ended: r.ended, defenses: r.defenses, to: `/titles/${id}/${r.div}` });
+      // A reign the world began with: if the record shows a different date, the reign data is from an estimate.
+      const real = r.won < w.start && hist ? realTitleWin(hist, PROMOTIONS[id].short) : null;
+      rows.push({
+        belt: `${PROMOTIONS[id].short} ${DIVISIONS[r.div].name}`, interim: !!r.interim, won: r.won, lost: r.lost, how: r.how, ended: r.ended,
+        defenses: r.defenses, to: `/titles/${id}/${r.div}`, real: !!real && real.date !== undefined && dayFrom(real.date) === r.won,
+      });
     }
   }
   for (const r of w.promos.ufc?.bmf?.reigns ?? []) {
@@ -252,7 +275,7 @@ function Belts({ w, f }: { w: World; f: Fighter }) {
               {rows.map((r, i) => (
                 <tr key={i} className={r.lost === undefined ? "hl" : ""}>
                   <td><Link to={r.to}><b>{r.belt}</b></Link> {r.bmf ? <span className="badge bmf">BMF</span> : r.interim ? <span className="badge">Interim</span> : <span className="badge gold">Champion</span>}</td>
-                  <td className="nowrap">{fmtDate(r.won)}</td>
+                  <td className="nowrap">{fmtDate(r.won)}{r.real ? <span className="tiny dim"> (real)</span> : null}</td>
                   <td className="nowrap">{r.lost === undefined ? <b>Current</b> : fmtDate(r.lost)}</td>
                   <td className={`small${r.ended === "stripped" ? " bad" : ""}`}>{r.lost === undefined ? "" : ENDED[r.ended ?? ""] ?? r.ended ?? ""}</td>
                   <td className="c"><b className="num">{r.defenses}</b></td>
@@ -268,9 +291,10 @@ function Belts({ w, f }: { w: World; f: Fighter }) {
 
 function History({ w, f }: { w: World; f: Fighter }) {
   const bouts = boutsOf(w, f).filter((b) => b.status === "done").reverse();
+  const hist = useHistory(f.id, f.real);
   return (
     <>
-    <Belts w={w} f={f} />
+    <Belts w={w} f={f} hist={hist ?? null} />
     <section className="sec">
       <div className="sec-h"><h2>Fight history</h2><span className="hint">{bouts.length} fights in this world</span></div>
       <div className="panel">
@@ -306,8 +330,85 @@ function History({ w, f }: { w: World; f: Fighter }) {
         )}
       </div>
     </section>
+    {f.real && <RealHistory w={w} f={f} hist={hist} />}
     </>
   );
+}
+
+function RealMini({ w, r }: { w: World; r: FighterHistory["rows"][number] }) {
+  return (
+    <div className="list-row">
+      <span className="form"><i className={r.r === "NC" ? "D" : r.r}>{r.r === "NC" ? "N" : r.r}</i></span>
+      <div style={{ minWidth: 0, flex: 1 }}>
+        {r.oid && w.fighters[r.oid] ? <FighterLink w={w} id={r.oid} /> : <b>{r.opp}</b>}
+        <div className="tiny dim">{r.method}{r.round ? `, R${r.round}${r.time && r.time !== "N/A" ? ` ${r.time}` : ""}` : ""}</div>
+      </div>
+      <span className="tiny dim nowrap">{r.event}{r.date ? ` · ${fmtDate(dayFrom(r.date))}` : ""}</span>
+    </div>
+  );
+}
+
+/** Day number of an ISO date, for the game's date format. */
+function dayFrom(iso: string): number {
+  const [y, m, d] = iso.split("-").map(Number);
+  return dayOf(y, (m || 1) - 1, d || 1);
+}
+
+/** The real fights before the world began. */
+function RealHistory({ w, f, hist }: { w: World; f: Fighter; hist: FighterHistory | null | undefined }) {
+  if (hist === undefined) return <section className="sec"><div className="sec-h"><h2>Before this world</h2><span className="hint">Loading the real record…</span></div></section>;
+  if (!hist) {
+    return (
+      <section className="sec">
+        <div className="sec-h"><h2>Before this world</h2><span className="hint">Real record {f.rec.w + f.rec.l + f.rec.d > 0 ? `${recordBefore(w, f)}` : ""}</span></div>
+        <div className="panel"><div className="panel-b small muted">The fight-by-fight record isn't available for {f.first} {f.surname}. The totals above are the real ones as of 1 October 2026.</div></div>
+      </section>
+    );
+  }
+  const n = { w: 0, l: 0, d: 0, nc: 0 };
+  for (const r of hist.rows) if (r.r === "W") n.w++; else if (r.r === "L") n.l++; else if (r.r === "D") n.d++; else n.nc++;
+  return (
+    <section className="sec">
+      <div className="sec-h">
+        <h2>Before this world</h2>
+        <span className="hint">{n.w}-{n.l}{n.d ? `-${n.d}` : ""}{n.nc ? ` (${n.nc} NC)` : ""} in {hist.rows.length} real fights · from <a href={`https://en.wikipedia.org/wiki/${encodeURIComponent(hist.title.replace(/ /g, "_"))}`} target="_blank" rel="noreferrer">Wikipedia</a> (CC BY-SA 4.0){hist.off ? " · a few fights may be missing" : ""}</span>
+      </div>
+      <div className="panel">
+        <div className="tbl-wrap">
+          <table className="tbl">
+            <thead><tr><th>Date</th><th>Opponent</th><th>Res.</th><th>Method</th><th className="c">Rnd</th><th className="c">Time</th><th>Event</th><th>Notes</th></tr></thead>
+            <tbody>
+              {hist.rows.map((r, i) => (
+                <tr key={i}>
+                  <td className="nowrap">{r.date ? fmtDate(dayFrom(r.date)) : ""}</td>
+                  <td>{r.oid && w.fighters[r.oid] ? <FighterLink w={w} id={r.oid} /> : r.opp}</td>
+                  <td><span className="form"><i className={r.r === "NC" ? "D" : r.r}>{r.r === "NC" ? "N" : r.r}</i></span></td>
+                  <td>{r.method}</td>
+                  <td className="c">{r.round || ""}</td>
+                  <td className="c">{r.time && r.time !== "N/A" ? r.time : ""}</td>
+                  <td className="small">{r.event}</td>
+                  <td className="small muted">{r.notes ?? ""}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </section>
+  );
+}
+
+/** The real record as it stood when the world began: today's, less the world's own fights. */
+function recordBefore(w: World, f: Fighter): string {
+  const r = { ...f.rec };
+  for (const b of boutsOf(w, f)) {
+    if (b.status !== "done" || !b.res || PROMOTIONS[b.promo]?.tier === "amateur") continue;
+    const x = resultFor(b, f.id);
+    if (x === "W") r.w--;
+    else if (x === "L") r.l--;
+    else if (x === "D") r.d--;
+  }
+  return `${r.w}-${r.l}${r.d ? `-${r.d}` : ""}`;
 }
 
 function Stats({ w, f }: { w: World; f: Fighter }) {
@@ -409,6 +510,50 @@ function Techniques({ f }: { f: Fighter }) {
           </table>
         )}
       </div>
+    </section>
+  );
+}
+
+function StyleCard({ f, id, m, kind }: { f: Fighter; id: StyleId; m: number; kind: "Striking" | "Grappling" }) {
+  const sd = FIGHT_STYLES[id];
+  const fit = styleFit(f.attrs, id);
+  return (
+    <div className="panel style-card">
+      <div className="panel-b">
+        <div className="label">{kind} style · from {sd.from}</div>
+        <div className="style-name">{sd.name}</div>
+        <div className="style-m">
+          <div className="bar"><i style={{ width: `${m}%`, background: "var(--ink)" }} /></div>
+          <span><b className="num">{Math.round(m)}</b> {masteryName(m)}</span>
+        </div>
+        <p className="small" style={{ marginTop: 10 }}>{sd.desc}</p>
+        <ul className="style-how">{sd.how.map((h) => <li key={h}>{h}</li>)}</ul>
+        <div className="small dim" style={{ marginTop: 8 }}>
+          Built on {sd.keys.map((k) => ATTR_INFO[k].name.toLowerCase()).join(", ")}: {fit >= 70 ? "a natural fit" : fit >= 45 ? "a good fit" : "not where the strengths are"} ({fit}%).
+        </div>
+        <div className="row tight" style={{ marginTop: 10 }}>
+          {sd.tech.map((t) => (
+            <span key={t} className={`badge${(f.tech[t] ?? 0) > 0 ? " info" : ""}`} title={TECHNIQUES[t].desc}>{TECHNIQUES[t].name}{(f.tech[t] ?? 0) > 0 ? ` ${"★".repeat(f.tech[t] ?? 0)}` : ""}</span>
+          ))}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function StyleSection({ f }: { f: Fighter }) {
+  const st = fightStyle(f);
+  const known = Object.entries(st.known ?? {}) as [StyleId, number][];
+  return (
+    <section className="sec">
+      <div className="sec-h"><h2>Fighting style</h2><span className="hint">How {f.first} {f.surname} strikes and grapples. Mastery grows with fights, years in the gym and style coaching.</span></div>
+      <div className="grid">
+        <div className="c6"><StyleCard f={f} id={st.s} m={st.sm} kind="Striking" /></div>
+        <div className="c6"><StyleCard f={f} id={st.g} m={st.gm} kind="Grappling" /></div>
+      </div>
+      {known.length > 0 && (
+        <p className="small dim" style={{ marginTop: 10 }}>Also knows: {known.map(([id, m]) => `${FIGHT_STYLES[id].name} (${Math.round(m)})`).join(", ")}.</p>
+      )}
     </section>
   );
 }

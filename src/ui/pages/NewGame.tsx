@@ -15,6 +15,14 @@ import { go } from "../router";
 import { Flag, Ovr, Panel, Seg } from "../components";
 import { Logo } from "../icons";
 import { fullName, recordText } from "../../world/core";
+import { FIGHT_STYLES, GRAPPLE_STYLES, STRIKE_STYLES, stylesForArt, type GrappleStyle, type StrikeStyle } from "../../data/fightstyles";
+
+/** The styles a background offers first: its own, then the common ones. */
+function styleChoices(art: BaseArt, kind: "strike" | "grapple"): string[] {
+  const own = stylesForArt(art, kind);
+  const common = kind === "strike" ? ["volume", "pressure", "counter", "basic"] : ["scrambler", "sprawl", "chain", "backTaker"];
+  return [...new Set([...own, ...common])].slice(0, 5);
+}
 
 type Step = "mode" | "origin" | "create" | "real" | "review" | "agency" | "clients";
 
@@ -75,7 +83,9 @@ export function NewGame() {
           setStep("create");
           return;
         }
-        await newGame({ name: "Career", seed, mode, difficulty, created: { ...cf, first: cf.first.trim(), surname: cf.surname.trim(), nick: cf.nick?.trim() || undefined } });
+        const strike = (cf.strike ?? styleChoices(cf.art, "strike")[0]) as StrikeStyle;
+        const grapple = (cf.grapple ?? styleChoices(cf.art, "grapple")[0]) as GrappleStyle;
+        await newGame({ name: "Career", seed, mode, difficulty, created: { ...cf, strike, grapple, first: cf.first.trim(), surname: cf.surname.trim(), nick: cf.nick?.trim() || undefined } });
       }
       go("/home");
     } else if (draft) {
@@ -179,7 +189,7 @@ export function NewGame() {
                   {cf.first} {cf.nick ? `"${cf.nick}" ` : ""}
                   {cf.surname}
                 </b>
-                , {cf.age}, {countryOf(cf.country).name}, {DIVISIONS[cf.div].name.toLowerCase()}, {ARTS[cf.art].name.toLowerCase()} background. Starts as a{" "}
+                , {cf.age}, {countryOf(cf.country).name}, {DIVISIONS[cf.div].name.toLowerCase()}, {ARTS[cf.art].name.toLowerCase()} background ({FIGHT_STYLES[(cf.strike ?? styleChoices(cf.art, "strike")[0]) as StrikeStyle].name.toLowerCase()}, {FIGHT_STYLES[(cf.grapple ?? styleChoices(cf.art, "grapple")[0]) as GrappleStyle].name.toLowerCase()}). Starts as a{" "}
                 {START.find((s) => s.v === cf.start)?.label.toLowerCase()} at {(promoFor(countryOf(cf.country).region, cf.start === "amateur" ? "amateur" : cf.start === "debut" ? "local" : "regional") ?? PROMOTIONS.cffc).name}.
               </p>
             )}
@@ -297,12 +307,37 @@ function CreateForm({ cf, setCf, onBack, onNext }: { cf: CreatedFighter; setCf: 
       </div>
       <div className="c5 stack">
         <Panel title="Background">
-          <select className="input" style={{ width: "100%" }} value={cf.art} onChange={(e) => set("art", e.target.value as BaseArt)}>
+          <select className="input" style={{ width: "100%" }} value={cf.art} onChange={(e) => setCf({ ...cf, art: e.target.value as BaseArt, strike: undefined, grapple: undefined })}>
             {ART_IDS.map((a) => (
               <option key={a} value={a}>{ARTS[a].name}</option>
             ))}
           </select>
           <p className="small muted" style={{ marginTop: 8 }}>{ARTS[cf.art].desc}</p>
+          {(["strike", "grapple"] as const).map((kind) => {
+            const opts = styleChoices(cf.art, kind);
+            const cur = (kind === "strike" ? cf.strike : cf.grapple) ?? opts[0];
+            const all = kind === "strike" ? STRIKE_STYLES : GRAPPLE_STYLES;
+            return (
+              <div key={kind} style={{ marginTop: 14 }}>
+                <div className="label" style={{ marginBottom: 6 }}>{kind === "strike" ? "How you strike" : "How you grapple"}</div>
+                <div className="stack" style={{ gap: 6 }}>
+                  {opts.map((id) => (
+                    <button key={id} className={`choice${cur === id ? " on" : ""}`} onClick={() => setCf({ ...cf, [kind]: id })}>
+                      <b>{FIGHT_STYLES[id as StrikeStyle].name}{FIGHT_STYLES[id as StrikeStyle].arts.includes(cf.art) ? "" : " · from another background"}</b>
+                      <span>{FIGHT_STYLES[id as StrikeStyle].desc}</span>
+                    </button>
+                  ))}
+                </div>
+                <select className="input" style={{ width: "100%", marginTop: 6 }} value={opts.includes(cur) ? "" : cur} onChange={(e) => e.target.value && setCf({ ...cf, [kind]: e.target.value })} aria-label={`Other ${kind === "strike" ? "striking" : "grappling"} styles`}>
+                  <option value="">Other styles…</option>
+                  {all.filter((id) => !opts.includes(id)).map((id) => (
+                    <option key={id} value={id}>{FIGHT_STYLES[id].name} ({FIGHT_STYLES[id].from})</option>
+                  ))}
+                </select>
+              </div>
+            );
+          })}
+          <p className="tiny dim" style={{ marginTop: 10 }}>A style from your own background starts deeper; any style can be built later with style coaching.</p>
         </Panel>
         <Panel title="Talent">
           <div className="stack">

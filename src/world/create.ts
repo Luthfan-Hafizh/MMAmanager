@@ -20,8 +20,11 @@ import { currentStreak, potentialNoise, prospectRoom, realFighter, realGym, type
 import { entryElo, updateP4P, updateRankings } from "./rankings";
 import { managerPerson } from "../career/advisor";
 import { initBmf } from "./belts";
+import { grantStyleTech, pickStyles, switchStyle } from "./fightstyle";
+import { dayOfIso, realSignals } from "./real";
+import { styleFit, type GrappleStyle, type StrikeStyle } from "../data/fightstyles";
 
-export const SAVE_VERSION = 4;
+export const SAVE_VERSION = 5;
 /** The oldest save format this version can bring up to date. */
 export const OLDEST_SAVE = 1;
 
@@ -73,6 +76,26 @@ export function migrate(w: World, roster: RosterFile | null): World {
     initBmf(w);
     w.v = 4;
   }
+  if (w.v < 5) {
+    // Format 5: the reigns the world began with start on the real date, with the real defences.
+    for (const promo of ["ufc", "pfl"] as const) {
+      for (const r of w.promos[promo]?.reigns ?? []) {
+        const real = roster?.titles?.[r.fighter];
+        if (!real || r.won >= w.start || r.how !== "won") continue;
+        r.won = Math.min(w.start - 1, dayOfIso(real[0]));
+        r.defenses += real[1];
+      }
+    }
+    // Format 5: fighting styles. Real fighters get theirs from how they really fight.
+    const byId = new Map((roster?.fighters ?? []).map((rf) => [rf.id, rf] as const));
+    for (const f of Object.values(w.fighters)) {
+      if (f.style) continue;
+      const rf = f.real ? byId.get(f.id) : undefined;
+      f.style = pickStyles(f, new Rng(hashString(f.id) ^ w.seed), rf ? realSignals(rf) : null);
+      grantStyleTech(f);
+    }
+    w.v = 5;
+  }
   return w;
 }
 
@@ -92,6 +115,9 @@ export interface CreatedFighter {
   reach: number;
   stance: Stance;
   art: BaseArt;
+  /** The way they strike and grapple, from their background. */
+  strike?: StrikeStyle;
+  grapple?: GrappleStyle;
   talent: Talent;
   start: StartLevel;
   gym?: string;
@@ -355,7 +381,10 @@ export function createWorld(roster: RosterFile, o: NewGameOptions): World {
     if (r.c && w.fighters[r.c]) {
       ups.champs[d] = r.c;
       const f = w.fighters[r.c];
-      ups.reigns.push({ fighter: r.c, promo: "ufc", div: d, won: day - rng.int(120, 700), defenses: 0, how: "won" });
+      // The real reign when the fight histories have it; otherwise an estimate.
+      const est = day - rng.int(120, 700);
+      const real = roster.titles?.[r.c];
+      ups.reigns.push({ fighter: r.c, promo: "ufc", div: d, won: real ? Math.min(day - 1, dayOfIso(real[0])) : est, defenses: real?.[1] ?? 0, how: "won" });
       f.elo = 1860;
     } else ups.champs[d] = null;
     ups.ranks[d] = r.e.filter((id) => w.fighters[id]?.promo === "ufc");
@@ -370,7 +399,9 @@ export function createWorld(roster: RosterFile, o: NewGameOptions): World {
     pps.champs[d] = c && w.fighters[c] ? c : null;
     if (c && w.fighters[c]) {
       w.fighters[c].elo = 1690;
-      pps.reigns.push({ fighter: c, promo: "pfl", div: d, won: day - rng.int(90, 500), defenses: 0, how: "won" });
+      const est = day - rng.int(90, 500);
+      const real = roster.titles?.[c];
+      pps.reigns.push({ fighter: c, promo: "pfl", div: d, won: real ? Math.min(day - 1, dayOfIso(real[0])) : est, defenses: real?.[1] ?? 0, how: "won" });
     }
     const ic = roster.pfl.interim[d];
     pps.interim[d] = ic && w.fighters[ic] ? ic : null;
@@ -525,6 +556,15 @@ export function createPlayerFighter(w: World, cf: CreatedFighter, o: NewGameOpti
     g.best = Math.round(ovrOf(g.attrs));
     return g;
   });
+  // The styles they came up with: as deep as the start level allows.
+  const depth = cf.start === "amateur" ? 26 : cf.start === "debut" ? 34 : 44;
+  if (cf.strike) switchStyle(f, cf.strike);
+  if (cf.grapple) switchStyle(f, cf.grapple);
+  const st = f.style!;
+  st.sm = Math.round(clamp(depth + (styleFit(f.attrs, st.s) - 50) * 0.15, 15, 60));
+  st.gm = Math.round(clamp(depth - 4 + (styleFit(f.attrs, st.g) - 50) * 0.15, 12, 55));
+  st.known = undefined;
+  grantStyleTech(f);
   w.fighters[f.id] = f;
   return f;
 }

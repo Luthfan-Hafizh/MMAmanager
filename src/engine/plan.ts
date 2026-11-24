@@ -19,7 +19,8 @@ export type PlanStyle =
   | "grappler"
   | "submission";
 
-export type Target = "head" | "balanced" | "body" | "legs";
+/** "mix" spreads the attacks so the opponent can't settle; "opening" goes wherever the defence isn't. */
+export type Target = "head" | "balanced" | "body" | "legs" | "mix" | "opening";
 export type TopMode = "gnp" | "balanced" | "control" | "subs";
 export type BottomMode = "getup" | "balanced" | "guard";
 export type DefMode = "normal" | "tdd" | "guard" | "move";
@@ -46,6 +47,9 @@ export interface FightPlan {
   bottom: BottomMode;
   finish: boolean;
   defense: DefMode;
+  /** Corner shouts only: lead with the jab, and lift the shin on the kicks. */
+  jab?: boolean;
+  checkLegs?: boolean;
 }
 
 export const STYLE_NAMES: Record<PlanStyle, string> = {
@@ -111,7 +115,15 @@ export const SCALE_TEXT: Record<string, string[]> = {
   counter: ["Lead always", "Lead", "Mixed", "Counter", "Counter only"],
   clinch: ["Avoid", "Break fast", "Neutral", "Welcome", "Seek it"],
 };
-export const TARGET_TEXT: Record<Target, string> = { head: "Head hunting", balanced: "All levels", body: "Body work", legs: "Attack the legs" };
+export const TARGET_TEXT: Record<Target, string> = { head: "Head hunting", balanced: "All levels", body: "Body work", legs: "Attack the legs", mix: "Mix it up", opening: "Find the opening" };
+export const TARGET_DESC: Record<Target, string> = {
+  head: "Everything upstairs: the knockout, but easier to read.",
+  balanced: "Take what is there.",
+  body: "Drain the gas tank and bring the hands down.",
+  legs: "Chop the legs: slows them down and takes the movement away.",
+  mix: "Head, body and legs in turn: the defence can't settle on one.",
+  opening: "Read the defence and hit what it leaves open.",
+};
 export const TOP_TEXT: Record<TopMode, string> = { gnp: "Ground and pound", balanced: "Balanced", control: "Hold position", subs: "Hunt submissions" };
 export const BOTTOM_TEXT: Record<BottomMode, string> = { getup: "Get up at once", balanced: "Balanced", guard: "Work the guard" };
 export const DEF_TEXT: Record<DefMode, string> = { normal: "Normal", tdd: "Stop the takedown", guard: "High guard", move: "Move and angle off" };
@@ -166,6 +178,13 @@ export function suggestPlan(me: Attrs, opp: Attrs, reachDiff: number): FightPlan
   if (me.cardio < 10) p.tempo = clamp(p.tempo - 1, -2, 2);
   if (opp.chin < 10 && me.power > 13) p.risk = clamp(p.risk + 1, -2, 2);
   if (opp.kicks > 15 && opp.boxing < 12) p.range = clamp(p.range + 1, -2, 2);
+  // Go after the weak spot, as a camp would after watching the film.
+  if (p.target === "balanced") {
+    if (me.kicks >= 13 && opp.toughness < 11 && opp.footwork < 13) p.target = "legs";
+    else if (opp.cardio < 10 && (me.boxing >= 12 || me.kicks >= 13)) p.target = "body";
+    else if (opp.chin < 9 && me.power >= 13) p.target = "head";
+    else if (me.fightIQ >= 15) p.target = "opening";
+  }
   if (me.subs > 15 && myG > opG) p.top = "subs";
   else if (me.groundStrikes > 15) p.top = "gnp";
   return p;
@@ -195,6 +214,12 @@ export interface Dials {
   defTdd: number;
   defGuard: number;
   defMove: number;
+  /** Spread the attacks so the defence can't settle. */
+  mix: boolean;
+  /** Hit whatever the defence leaves open. */
+  exploit: boolean;
+  jab: boolean;
+  checkLegs: boolean;
 }
 
 const TD_RATE = [0, 0.13, 0.4, 0.78, 1.25];
@@ -206,9 +231,9 @@ export function dialsOf(p: FightPlan): Dials {
     risk: p.risk,
     rangePref: p.range / 2,
     kickShare: clamp(0.27 + 0.11 * p.kicks, 0.03, 0.55),
-    targetHead: target === "head" ? 1.35 : target === "balanced" ? 1 : 0.85,
-    targetBody: target === "body" ? 2.0 : target === "balanced" ? 1 : 0.8,
-    targetLegs: target === "legs" ? 2.1 : target === "balanced" ? 1 : 0.7,
+    targetHead: target === "head" ? 1.35 : target === "balanced" || target === "opening" ? 1 : target === "mix" ? 0.86 : 0.85,
+    targetBody: target === "body" ? 2.0 : target === "balanced" || target === "opening" ? 1 : target === "mix" ? 1.3 : 0.8,
+    targetLegs: target === "legs" ? 2.1 : target === "balanced" || target === "opening" ? 1 : target === "mix" ? 1.35 : 0.7,
     counter: clamp(0.5 + p.counter * 0.22, 0.05, 0.95),
     tdRate: TD_RATE[clamp(Math.round(p.takedowns), 0, 4)],
     clinchRate: clamp(0.5 + 0.3 * p.clinch, 0.05, 1.3),
@@ -224,36 +249,93 @@ export function dialsOf(p: FightPlan): Dials {
     defTdd: p.defense === "tdd" ? 1 : 0,
     defGuard: p.defense === "guard" ? 1 : 0,
     defMove: p.defense === "move" ? 1 : 0,
+    mix: target === "mix",
+    exploit: target === "opening",
+    jab: !!p.jab,
+    checkLegs: !!p.checkLegs,
   };
 }
 
-/** Corner shouts: short instructions for the rest of the round. */
-export type Shout = "push" | "calm" | "takedown" | "stand" | "clinch" | "legs" | "body" | "finish" | "defend";
+/** Corner shouts: instructions for the rest of the round, one from each group. */
+export type Shout =
+  | "push" | "calm"
+  | "head" | "body" | "legs" | "mix" | "opening"
+  | "jab" | "pressure" | "circle" | "counter" | "clinch"
+  | "takedown" | "stand" | "getup" | "control" | "gnp" | "subs"
+  | "power" | "finish" | "defend" | "check";
 
-export const SHOUTS: { id: Shout; label: string; desc: string }[] = [
-  { id: "push", label: "Pick it up!", desc: "More pace and pressure for the rest of the round." },
-  { id: "calm", label: "Slow down, breathe", desc: "Lower the pace, save the gas tank." },
-  { id: "takedown", label: "Take him down!", desc: "Shoot more often." },
-  { id: "stand", label: "Stay on the feet", desc: "Stop shooting, defend the takedown, get up." },
-  { id: "clinch", label: "Tie him up", desc: "Clinch to slow the fight or to recover." },
-  { id: "legs", label: "Chop the legs", desc: "Target the legs." },
-  { id: "body", label: "Go to the body", desc: "Target the body." },
-  { id: "finish", label: "Finish it!", desc: "All-in to end it now." },
-  { id: "defend", label: "Hands up, survive", desc: "Defend first: high guard, safe shots." },
+export type ShoutGroup = "pace" | "target" | "range" | "ground" | "risk";
+
+export const SHOUT_GROUPS: { id: ShoutGroup; label: string }[] = [
+  { id: "pace", label: "Pace" },
+  { id: "target", label: "Target" },
+  { id: "range", label: "Range" },
+  { id: "ground", label: "Grappling" },
+  { id: "risk", label: "Risk and defence" },
 ];
+
+export const SHOUTS: { id: Shout; group: ShoutGroup; label: string; desc: string }[] = [
+  { id: "push", group: "pace", label: "Push the pace!", desc: "More output and pressure for the rest of the round. Costs gas." },
+  { id: "calm", group: "pace", label: "Slow down, breathe", desc: "Lower the pace, pick the shots, save the gas tank." },
+  { id: "head", group: "target", label: "Head hunting", desc: "Everything upstairs: looking for the knockout." },
+  { id: "body", group: "target", label: "Go to the body", desc: "Body shots drain the gas tank and bring the hands down." },
+  { id: "legs", group: "target", label: "Chop the legs", desc: "Low kicks: slow them down and take the movement away." },
+  { id: "mix", group: "target", label: "Mix it up", desc: "Head, body, legs in turn: the defence can't settle on one." },
+  { id: "opening", group: "target", label: "Find the opening", desc: "Read the defence and hit whatever it leaves open." },
+  { id: "jab", group: "range", label: "Use the jab, stay long", desc: "Long range, jab first, take no risks." },
+  { id: "pressure", group: "range", label: "Walk him down", desc: "Close the distance, cut off the cage, pin him on the fence." },
+  { id: "circle", group: "range", label: "Circle off the fence", desc: "Move, take angles, don't get pinned." },
+  { id: "counter", group: "range", label: "Make him miss, counter", desc: "Let him lead and punish the misses." },
+  { id: "clinch", group: "range", label: "Tie him up", desc: "Clinch to slow the fight down or to recover." },
+  { id: "takedown", group: "ground", label: "Take him down!", desc: "Shoot often." },
+  { id: "stand", group: "ground", label: "Keep it standing", desc: "No shooting: defend the takedown and get up." },
+  { id: "getup", group: "ground", label: "Get up now!", desc: "Off the back at once, whatever it costs." },
+  { id: "control", group: "ground", label: "Hold him down", desc: "On top: keep the position and bank the round." },
+  { id: "gnp", group: "ground", label: "Ground and pound", desc: "On top: posture up and punish." },
+  { id: "subs", group: "ground", label: "Hunt the submission", desc: "Attack the neck and the arms from anywhere." },
+  { id: "power", group: "risk", label: "Load up", desc: "Power shots: more damage, less accuracy." },
+  { id: "finish", group: "risk", label: "Finish it!", desc: "All-in to end it now." },
+  { id: "defend", group: "risk", label: "Hands up, survive", desc: "Defence first: high guard, safe shots." },
+  { id: "check", group: "risk", label: "Check the kicks", desc: "Lift the shin: leg kicks hurt the kicker. Leaves a little less upstairs." },
+];
+
+export const SHOUT_BY_ID = Object.fromEntries(SHOUTS.map((s) => [s.id, s])) as Record<Shout, (typeof SHOUTS)[number]>;
 
 export function applyShout(p: FightPlan, s: Shout): FightPlan {
   const q = { ...p };
   switch (s) {
     case "push": q.tempo = clamp(q.tempo + 2, -2, 2); q.counter = clamp(q.counter - 1, -2, 2); break;
     case "calm": q.tempo = clamp(q.tempo - 2, -2, 2); q.risk = clamp(q.risk - 1, -2, 2); break;
+    case "head": q.target = "head"; break;
+    case "body": q.target = "body"; break;
+    case "legs": q.target = "legs"; q.kicks = clamp(q.kicks + 1, -2, 2); break;
+    case "mix": q.target = "mix"; break;
+    case "opening": q.target = "opening"; break;
+    case "jab": q.range = -2; q.risk = clamp(q.risk - 1, -2, 2); q.jab = true; q.clinch = Math.min(q.clinch, -1); break;
+    case "pressure": q.range = clamp(q.range + 1, -2, 2); q.cage = true; q.tempo = clamp(q.tempo + 1, -2, 2); q.counter = clamp(q.counter - 1, -2, 2); break;
+    case "circle": q.defense = "move"; q.range = clamp(q.range - 1, -2, 2); q.cage = false; break;
+    case "counter": q.counter = 2; q.tempo = clamp(q.tempo - 1, -2, 2); break;
+    case "clinch": q.clinch = 2; break;
     case "takedown": q.takedowns = 4; break;
     case "stand": q.takedowns = 0; q.bottom = "getup"; q.defense = "tdd"; break;
-    case "clinch": q.clinch = 2; break;
-    case "legs": q.target = "legs"; q.kicks = clamp(q.kicks + 1, -2, 2); break;
-    case "body": q.target = "body"; break;
+    case "getup": q.bottom = "getup"; break;
+    case "control": q.top = "control"; break;
+    case "gnp": q.top = "gnp"; break;
+    case "subs": q.top = "subs"; q.bottom = "guard"; break;
+    case "power": q.risk = 2; break;
     case "finish": q.risk = 2; q.tempo = 2; q.finish = true; q.counter = -2; break;
     case "defend": q.defense = "guard"; q.risk = -2; q.tempo = clamp(q.tempo - 1, -2, 2); q.clinch = 1; break;
+    case "check": q.checkLegs = true; break;
+  }
+  return q;
+}
+
+/** Every active shout on top of the plan, in group order. */
+export function applyShouts(p: FightPlan, shouts: Partial<Record<ShoutGroup, Shout>>): FightPlan {
+  let q = p;
+  for (const g of SHOUT_GROUPS) {
+    const sh = shouts[g.id];
+    if (sh) q = applyShout(q, sh);
   }
   return q;
 }

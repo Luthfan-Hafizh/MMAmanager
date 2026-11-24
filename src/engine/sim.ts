@@ -15,7 +15,9 @@ import type { BoutResult, Fighter, FightLogLine, Method, RoundStat } from "../mo
 import { DIVISIONS, type DivisionId } from "../data/divisions";
 import type { TechId } from "../data/techniques";
 import { SUB_NAMES } from "../data/techniques";
-import { applyShout, dialsOf, suggestPlan, type Dials, type FightPlan, type Shout } from "./plan";
+import { applyShouts, dialsOf, suggestPlan, SHOUT_BY_ID, type Dials, type FightPlan, type Shout, type ShoutGroup } from "./plan";
+import { traitsOf } from "../world/fightstyle";
+import type { Traits } from "../data/fightstyles";
 import { CLINCH_STRIKES, GROUND_STRIKES, STRIKE_LIST, STRIKES, type StrikeDef, type StrikeId, type Zone } from "./strikes";
 
 export interface Condition {
@@ -75,7 +77,14 @@ export interface Side {
   plan: FightPlan;
   base: FightPlan;
   d: Dials;
-  shout: Shout | null;
+  /** The corner's shouts this round, one from each group. */
+  shouts: Partial<Record<ShoutGroup, Shout>>;
+  /** What the fighter's styles add up to, scaled by mastery. */
+  tr: Traits;
+  /** Where the fighter is guarding: head, body, legs, adding up to 1. It follows what they get hit with. */
+  read: [number, number, number];
+  /** Things the commentary has already pointed out. */
+  noted: Record<string, boolean>;
   sta: number;
   cap: number;
   head: number;
@@ -99,6 +108,62 @@ export interface Side {
   /** Average attribute level, so choices follow a fighter's own strengths at any level. */
   lvl: number;
 }
+
+/** Where a fighter guards on average: measured over thousands of fights, so a normal fight is neutral. */
+export const BASE_READ: [number, number, number] = [0.752, 0.139, 0.109];
+const ZI: Record<Zone, 0 | 1 | 2> = { head: 0, body: 1, leg: 2 };
+export const ZONE_WORD = ["head", "body", "legs"] as const;
+
+interface Hit {
+  name: string;
+  zone: Zone;
+  landed: boolean;
+  /** Landed: how hard ("", "glancing", "hard", "clean"). Missed: why ("slipped", "blocked", "checked", "short", "parried", "missed"). */
+  how: string;
+}
+
+const NUM = ["no", "one", "two", "three", "four", "five", "six"];
+const MISS_TEXT: Record<string, string> = {
+  slipped: "is slipped", blocked: "is blocked", parried: "is parried", short: "falls short", checked: "is checked", evaded: "misses", missed: "misses",
+};
+const FLASHY = new Set(["headKick", "spinKick", "questionMark", "spinFist"]);
+
+function plural(name: string): string {
+  const i = name.indexOf(" to the ");
+  if (i > 0) return plural(name.slice(0, i)) + name.slice(i);
+  return /(ch|sh|s)$/.test(name) ? `${name}es` : `${name}s`;
+}
+function article(phrase: string): string {
+  return /^[aeiou]/i.test(phrase) ? `an ${phrase}` : `a ${phrase}`;
+}
+/** "a jab, two right hands and a leg kick" */
+function listOf(names: string[]): string {
+  const counts: [string, number][] = [];
+  for (const n of names) {
+    const c = counts.find((x) => x[0] === n);
+    if (c) c[1]++;
+    else counts.push([n, 1]);
+  }
+  const parts = counts.map(([n, c]) => (c === 1 ? article(n) : `${NUM[c] ?? c} ${plural(n)}`));
+  return parts.length === 1 ? parts[0] : `${parts.slice(0, -1).join(", ")} and ${parts[parts.length - 1]}`;
+}
+/** "the jab and one of the leg kicks" */
+function landedOf(hits: Hit[]): string {
+  const groups: { name: string; c: number; k: number }[] = [];
+  for (const h of hits) {
+    let g = groups.find((x) => x.name === h.name);
+    if (!g) groups.push((g = { name: h.name, c: 0, k: 0 }));
+    g.c++;
+    if (h.landed) g.k++;
+  }
+  const parts = groups.filter((g) => g.k > 0).map((g) =>
+    g.c === 1 ? `the ${g.name}` : g.k === g.c ? (g.c === 2 ? `both ${plural(g.name)}` : `all ${NUM[g.c]} ${plural(g.name)}`) : `${g.k === 1 ? "one" : NUM[g.k]} of the ${plural(g.name)}`,
+  );
+  return parts.length === 1 ? parts[0] : `${parts.slice(0, -1).join(", ")} and ${parts[parts.length - 1]}`;
+}
+
+/** The counted statistics, without the end-of-round condition. */
+type StatKey = Exclude<keyof RoundStat, "hd" | "bd" | "lg" | "st" | "gd">;
 
 const blankRound = (): RoundStat => ({
   sigL: 0, sigA: 0, totL: 0, totA: 0, head: 0, body: 0, leg: 0, headA: 0, bodyA: 0, legA: 0,
@@ -214,7 +279,7 @@ export class FightSim {
     // A short camp: the gas tank isn't built, more so the later the call.
     const cap = 100 - cond.cut * 22 - (cond.shortNotice ? 1 + 3 * snHurt(cond.notice) : 0) + cond.prep * 3;
     return {
-      f, i, name: f.surname, n, plan, base: plan, d: dialsOf(plan), shout: null,
+      f, i, name: f.surname, n, plan, base: plan, d: dialsOf(plan), shouts: {}, tr: traitsOf(f), read: [...BASE_READ] as [number, number, number], noted: {},
       sta: cap, cap, head: 100, body: 100, legs: 100, stun: 0, cut: 0, kd: 0, cond, chinRes,
       rs: [], imp: [], gimp: [], agg: [], ctl: [], dmgDealt: [], unanswered: 0, lastLanded: 0, wobbled: 0,
       night: 1 + this.rng.normal(0, 0.08 * (1.45 - f.hid.consistency / 20)),
@@ -290,9 +355,15 @@ export class FightSim {
     return this.e(s, k) * (0.66 / s.lvl);
   }
 
+  /** While a combination is thrown, big moments wait here so the summary line comes first. */
+  private buf: FightLogLine[] | null = null;
+  private hits: Hit[] | null = null;
+
   private say(text: string, side?: 0 | 1, big = false, kind?: string) {
     if (!this.logOn) return;
-    this.log.push({ r: this.round, t: Math.round(this.t), text, side, big, kind });
+    const line: FightLogLine = { r: this.round, t: Math.round(this.t), text, side, big, kind };
+    if (this.buf) this.buf.push(line);
+    else this.log.push(line);
   }
 
   private pickText(opts: string[]): string {
@@ -330,6 +401,7 @@ export class FightSim {
     if (dt > left) dt = left;
     this.t += dt;
     this.recover(dt);
+    if (this.logOn) this.cues();
     if (this.pos === "ground") this.s[this.top].ctl[this.round - 1] += dt;
     if (this.pos === "clinch") this.s[this.ctrl].ctl[this.round - 1] += dt * 0.5;
     if (this.pos === "ground") this.rs(this.s[this.top]).ctrl += dt;
@@ -351,7 +423,19 @@ export class FightSim {
   /** Corner time: AI corners adjust, then the next round starts. */
   nextRound() {
     if (!this.between || this.over) return;
-    for (const s of this.s) if (this.aiCorner[s.i]) this.aiAdjust(s);
+    for (const s of this.s) {
+      // Shouts were for that round; a new round starts from the plan.
+      s.shouts = {};
+      if (this.aiCorner[s.i]) this.aiAdjust(s);
+      else {
+        s.plan = s.base;
+        s.d = dialsOf(s.base);
+      }
+      s.noted.up = false;
+      s.noted.down = false;
+      // In the corner they reset their guard a little.
+      for (let k = 0; k < 3; k++) s.read[k] = s.read[k] * 0.65 + BASE_READ[k] * 0.35;
+    }
     this.between = false;
     this.round += 1;
     this.t = 0;
@@ -366,23 +450,73 @@ export class FightSim {
   setPlan(i: 0 | 1, plan: FightPlan) {
     const s = this.s[i];
     s.base = plan;
-    s.plan = s.shout ? applyShout(plan, s.shout) : plan;
+    s.plan = applyShouts(plan, s.shouts);
     s.d = dialsOf(s.plan);
   }
 
   /** A shout from the corner, followed or not depending on discipline and damage. */
   shout(i: 0 | 1, sh: Shout): boolean {
     const s = this.s[i];
+    const def = SHOUT_BY_ID[sh];
     const listen = 0.45 + 0.45 * s.n.discipline - (s.stun > 0 ? 0.25 : 0) - (1 - s.head / 100) * 0.2;
     if (!this.rng.chance(clamp(listen, 0.15, 0.95))) {
-      this.say(`${s.name}'s corner is shouting, but ${s.name} isn't listening.`, s.i, false, "corner");
+      this.say(`${s.name}'s corner is shouting "${def.label.replace(/[!.]$/, "")}", but ${s.name} isn't listening.`, s.i, false, "corner");
       return false;
     }
-    s.shout = sh;
-    s.plan = applyShout(s.base, sh);
+    s.shouts = { ...s.shouts, [def.group]: sh };
+    s.plan = applyShouts(s.base, s.shouts);
     s.d = dialsOf(s.plan);
-    this.say(`${s.name} hears the corner and changes it up.`, s.i, false, "corner");
+    if (sh === "check") s.read[2] = Math.min(0.5, s.read[2] + 0.1);
+    if (sh === "defend") s.read[0] = Math.min(0.8, s.read[0] + 0.08);
+    this.normRead(s);
+    this.say(`${s.name} hears the corner: "${def.label.replace(/[!.]$/, "")}".`, s.i, false, "corner");
     return true;
+  }
+
+  /** Take a shout back: the plan for that part of the fight returns. */
+  clearShout(i: 0 | 1, g: ShoutGroup) {
+    const s = this.s[i];
+    if (!s.shouts[g]) return;
+    const next = { ...s.shouts };
+    delete next[g];
+    s.shouts = next;
+    s.plan = applyShouts(s.base, s.shouts);
+    s.d = dialsOf(s.plan);
+  }
+
+  private normRead(s: Side) {
+    const t = s.read[0] + s.read[1] + s.read[2];
+    for (let k = 0; k < 3; k++) s.read[k] /= t;
+  }
+
+  /** How open each level is: above 1 the guard has moved away from it, below 1 it is covered. */
+  openness(s: Side): [number, number, number] {
+    return [0, 1, 2].map((k) => clamp(Math.pow(BASE_READ[k] / s.read[k], 0.45), 0.62, 1.35)) as [number, number, number];
+  }
+
+  /** The defender learns from what comes at them: the guard drifts towards it. */
+  private adapt(def: Side, att: Side, zone: Zone, landed: boolean) {
+    const z = ZI[zone];
+    let a = (0.02 + 0.045 * this.e(def, "fightIQ")) * (1 + 0.8 * def.tr.read) * (1 - 0.45 * att.tr.mix) * (landed ? 1.6 : 1);
+    if (att.d.mix) a *= 0.55;
+    if (def.d.checkLegs && z === 2) a *= 1.3;
+    const r = def.read;
+    for (let k = 0; k < 3; k++) r[k] = r[k] * (1 - a) + (k === z ? a : 0);
+    if (!this.logOn) return;
+    const ratio = r[z] / BASE_READ[z];
+    const key = `read${z}`;
+    if (ratio > (z === 0 ? 1.25 : 1.65) && !def.noted[key]) {
+      def.noted[key] = true;
+      const she = def.f.sex === "F";
+      this.say(
+        z === 2
+          ? `${def.name} has read the low kicks: ${she ? "she's" : "he's"} lifting the shin early now.`
+          : z === 1
+            ? `${def.name} is keeping the elbows tight: the body shots have been noticed.`
+            : `${def.name} shells up high: ${she ? "she's" : "he's"} had enough of the head shots.`,
+        def.i, false, "read",
+      );
+    } else if (ratio < (z === 0 ? 1.1 : 1.35)) def.noted[key] = false;
   }
 
   private expireShouts() {
@@ -399,7 +533,7 @@ export class FightSim {
 
   private aiAdjust(s: Side) {
     // Reset any shout, then tweak for the state of the fight.
-    s.shout = null;
+    s.shouts = {};
     const o = this.other(s);
     const p = { ...s.base };
     const behind = this.scoreDiff(s) < -0.5;
@@ -420,8 +554,43 @@ export class FightSim {
     // Legs chopped: stop kicking, move in.
     if (s.legs < 55 && p.range < 1) p.range += 1;
     if (o.legs < 60 && s.n.kicks > 0.55) p.target = "legs";
+    // A smart corner sees where the guard has gone and sends the shots elsewhere.
+    const open = this.openness(o);
+    const t: 0 | 1 | 2 | null = p.target === "legs" ? 2 : p.target === "body" ? 1 : p.target === "head" ? 0 : null;
+    if (t !== null && open[t] < 0.85 && s.n.fightIQ > 0.45) p.target = "opening";
     s.plan = p;
     s.d = dialsOf(p);
+  }
+
+  /** What the corner sees between rounds: plain advice from the state of the fight. */
+  cornerNotes(i: 0 | 1): { text: string; shout?: Shout }[] {
+    const me = this.s[i];
+    const o = this.other(me);
+    const notes: { text: string; shout?: Shout }[] = [];
+    const he = o.f.sex === "F" ? "she" : "he";
+    const his = o.f.sex === "F" ? "her" : "his";
+    const open = this.openness(o);
+    const covered = [0, 1, 2].filter((z) => open[z] < 0.85);
+    const opens = [0, 1, 2].filter((z) => open[z] > 1.1).sort((a, b) => open[b] - open[a]);
+    if (covered.length && opens.length) {
+      notes.push({ text: `${o.name} is guarding the ${ZONE_WORD[covered[0]]} now. The ${ZONE_WORD[opens[0]]} ${opens[0] === 2 ? "are" : "is"} open: go there.`, shout: opens[0] === 0 ? "head" : opens[0] === 1 ? "body" : "legs" });
+    }
+    if (o.legs < 55 && open[2] >= 0.9) notes.push({ text: `${his.charAt(0).toUpperCase() + his.slice(1)} lead leg is hurt (${Math.round(o.legs)}%). Keep chopping it.`, shout: "legs" });
+    if (o.body < 60) notes.push({ text: `The body shots are working: ${he}'s slowing down.`, shout: "body" });
+    if (o.sta < 45 && me.sta > o.sta + 10) notes.push({ text: `${o.name} is tired. Push the pace now.`, shout: "push" });
+    if (me.sta < 40) notes.push({ text: `You're running on fumes. Slow it down and pick your shots.`, shout: "calm" });
+    if (me.head < 55) notes.push({ text: `You're getting hit clean too often. Hands up, move the head.`, shout: "defend" });
+    if (me.legs < 60 && o.rs.reduce((a, r) => a + r.leg, 0) >= 8) notes.push({ text: `${he.charAt(0).toUpperCase() + he.slice(1)}'s chopping your leg. Check the kicks.`, shout: "check" });
+    const tdAgainst = o.rs.reduce((a, r) => a + r.tdL, 0);
+    const myTd = me.rs.reduce((a, r) => a + r.tdL, 0);
+    if (tdAgainst >= 2) notes.push({ text: `${he.charAt(0).toUpperCase() + he.slice(1)}'s taking you down. Stay off the fence and keep it standing.`, shout: "stand" });
+    else if (myTd >= 2) notes.push({ text: `The wrestling is working. Keep taking ${o.f.sex === "F" ? "her" : "him"} down.`, shout: "takedown" });
+    const lead = this.scoreDiff(me);
+    const left = this.rounds - this.round;
+    if (lead < -0.4) notes.push({ text: left <= 1 ? `You're behind on the cards. You need a finish or a big round.` : `You're behind on the cards. You need this round.`, shout: left <= 1 ? "finish" : "push" });
+    else if (lead > 1 && left <= 1) notes.push({ text: `You're ahead. Stay safe, don't give it away.` });
+    if (!notes.length) notes.push({ text: `It's going to plan. Same again.` });
+    return notes.slice(0, 4);
   }
 
   /** Rough round-by-round lead from this side's view, in rounds. */
@@ -441,6 +610,7 @@ export class FightSim {
     const o = this.other(s);
     let v = (0.42 + 0.62 * this.ce(s, "aggression") + 0.28 * this.ce(s, "workRate") + 0.12 * this.ce(s, "speed")) * s.d.tempo * this.paceMul;
     v *= 1.12 - 0.5 * (s.d.counter - 0.5);
+    v *= 1 + 0.08 * s.tr.volume - 0.06 * s.tr.counter + (this.range === 0 ? 0.08 * s.tr.blitz : 0);
     if (s.stun > 0) v *= 0.35;
     if (o.stun > 0) v *= s.d.finish ? 2.3 : 1.5;
     if (s.sta < 30) v *= 0.75;
@@ -452,8 +622,8 @@ export class FightSim {
     // Range: each side pulls the fight to its range; footwork and reach decide.
     const prefA = A.d.rangePref + (A.f.reach - B.f.reach) * -0.04;
     const prefB = B.d.rangePref + (B.f.reach - A.f.reach) * -0.04;
-    const fwA = this.e(A, "footwork") + A.d.defMove * 0.08;
-    const fwB = this.e(B, "footwork") + B.d.defMove * 0.08;
+    const fwA = this.e(A, "footwork") + A.d.defMove * 0.08 + A.tr.range * 0.08;
+    const fwB = this.e(B, "footwork") + B.d.defMove * 0.08 + B.tr.range * 0.08;
     const winA = this.rng.chance(clamp(0.5 + (fwA - fwB) * 1.2, 0.15, 0.85));
     const pref = winA ? prefA : prefB;
     this.range = pref < -0.35 ? 0 : pref > 0.45 ? 2 : 1;
@@ -463,7 +633,7 @@ export class FightSim {
     if (this.fence === -1) {
       for (const s of this.s) {
         const o = this.other(s);
-        const press = (0.25 + s.d.cage * 0.5 + (s.d.tempo - 1) * 1.2) * (0.6 + this.e(s, "footwork") - this.e(o, "footwork") * 0.8 - o.d.defMove * 0.12);
+        const press = (0.25 + s.d.cage * 0.5 + (s.d.tempo - 1) * 1.2 + s.tr.cage * 0.35) * (0.6 + this.e(s, "footwork") - this.e(o, "footwork") * 0.8 - o.d.defMove * 0.12);
         if (press > 0 && this.rng.chance(clamp(press * 0.18, 0, 0.3))) {
           this.fence = o.i;
           break;
@@ -479,6 +649,7 @@ export class FightSim {
     const idle = clamp(0.23 - 0.3 * (pace - 0.9), 0.05, 0.45);
     if (this.rng.chance(idle)) {
       this.quiet += 1;
+      if (this.logOn && this.crng.chance(0.6)) this.idleText();
       return this.rng.range(2.5, 6.5) / Math.max(0.6, pace);
     }
     this.quiet = 0;
@@ -494,7 +665,10 @@ export class FightSim {
     if (this.fence === def.i) wTd *= 1.35;
     if (def.stun > 0) wTd *= 0.6;
     if (this.range === 0) wTd *= 0.8;
+    wTd *= (1 + 0.3 * att.tr.shot) * (1 - 0.35 * att.tr.sprawl);
+    if (this.fence === def.i) wTd *= 1 + 0.4 * att.tr.fence;
     let wClinch = att.d.clinchRate * 0.19 * (0.4 + this.ce(att, "clinchControl"));
+    wClinch *= Math.max(0.3, 1 + 0.8 * att.tr.clinch - 0.3 * att.tr.flash + (att.d.jab ? -0.4 : 0));
     if (this.fence === def.i) wClinch *= 1.6;
     if (this.range === 2) wClinch *= 1.5;
     if (att.sta < 35 && att.n.clinchControl > 0.5) wClinch *= 1.6;
@@ -510,7 +684,7 @@ export class FightSim {
     s.agg[this.round - 1] += v;
   }
 
-  private pickStrike(att: Side, def: Side, counter: boolean): StrikeDef {
+  private pickStrike(att: Side, def: Side, counter: boolean, k = 0): StrikeDef {
     const kickShare = att.d.kickShare * (0.55 + att.n.kicks) / (0.55 + att.n.boxing * 0.9);
     let best: StrikeDef = STRIKES.jab;
     let total = 0;
@@ -539,6 +713,24 @@ export class FightSim {
       if (counter && (sd.id === "cross" || sd.id === "hook")) w *= 1.6;
       if (att.legs < 50 && sd.kick) w *= att.legs / 50;
       if (def.legs < 55 && sd.zone === "leg") w *= 1.3;
+      // Styles.
+      const t = att.tr;
+      if (sd.id === "jab") w *= 1 + 0.8 * t.jab + (att.d.jab ? 0.9 : 0) - 0.2 * t.power;
+      else if (!sd.kick && sd.power) w *= (1 + 0.25 * t.power) * (att.d.jab ? 0.7 : 1);
+      if (sd.zone === "body") w *= 1 + 0.6 * t.body;
+      if (sd.zone === "leg") w *= k >= 1 ? 1 + 1.4 * t.lowKick : 1 - 0.3 * t.lowKick;
+      if (FLASHY.has(sd.id)) w *= 1 + 1.4 * t.flash;
+      if (sd.id === "teep") w *= 1 + 1.2 * t.teep;
+      else if (sd.id === "bodyKick") w *= 1 + 0.5 * t.teep;
+      if (sd.id === "superman") w *= 1 + t.blitz;
+      // The guard: a smart fighter hits what's left open, and told to, anyone tries.
+      // Told to stay on one target, they mostly do.
+      const z = ZI[sd.zone];
+      const forced = (z === 0 && att.d.targetHead > 1.2) || (z !== 0 && (att.d.targetLegs > 1.5 || att.d.targetBody > 1.5));
+      const iq = att.d.exploit ? 1.1 : att.d.mix ? 0.15 : 0.6 * this.e(att, "fightIQ") * (forced ? 0.35 : 1);
+      w *= Math.pow(clamp(BASE_READ[z] / def.read[z], 0.4, 2.5), iq);
+      // Damage invites more: a hurt body gets hit again by someone who notices.
+      if (sd.zone === "body" && def.body < 60) w *= 1 + 0.3 * this.e(att, "fightIQ");
       weights.push(w);
       total += w;
     }
@@ -555,27 +747,131 @@ export class FightSim {
 
   private combo(att: Side, def: Side): number {
     let n = 1;
-    const cont = clamp(0.33 + 0.22 * this.ce(att, "workRate") + 0.07 * att.d.tempo - 0.06 * att.d.risk + (def.stun > 0 ? 0.25 : 0), 0.12, 0.72);
+    const cont = clamp(0.33 + 0.22 * this.ce(att, "workRate") + 0.07 * att.d.tempo - 0.06 * att.d.risk + 0.07 * att.tr.volume + (def.stun > 0 ? 0.25 : 0), 0.12, 0.76);
     while (n < 5 && this.rng.chance(cont)) n++;
     let prevLanded = false;
     let dt = 1.5 + n * 0.6;
+    const log = this.logOn;
+    const lead: Hit[] = [];
+    const back: Hit[] = [];
+    if (log) {
+      this.buf = [];
+      this.hits = lead;
+    }
     for (let k = 0; k < n && !this.over; k++) {
-      const sd = this.pickStrike(att, def, false);
+      const sd = this.pickStrike(att, def, false, k);
       prevLanded = this.throwStrike(att, def, sd, k, prevLanded, false);
     }
-    if (this.over) return dt;
-    // The counter.
-    const pc = clamp((0.1 + 0.34 * this.ce(def, "counters")) * (0.55 + 0.9 * def.d.counter) * (1 + 0.12 * att.d.risk) * (def.stun > 0 ? 0.3 : 1), 0, 0.62);
-    if (this.rng.chance(pc)) {
-      const m = this.rng.chance(0.3) ? 2 : 1;
-      let pl = false;
-      for (let k = 0; k < m && !this.over; k++) {
-        const sd = this.pickStrike(def, att, true);
-        pl = this.throwStrike(def, att, sd, k, pl, true);
+    if (!this.over) {
+      // The counter.
+      const pc = clamp((0.1 + 0.34 * this.ce(def, "counters")) * (0.55 + 0.9 * def.d.counter) * (1 + 0.12 * att.d.risk) * (1 + 0.5 * def.tr.counter) * (def.stun > 0 ? 0.3 : 1), 0, 0.66);
+      if (this.rng.chance(pc)) {
+        if (log) this.hits = back;
+        const m = this.rng.chance(0.3) ? 2 : 1;
+        let pl = false;
+        for (let k = 0; k < m && !this.over; k++) {
+          const sd = this.pickStrike(def, att, true, k);
+          pl = this.throwStrike(def, att, sd, k, pl, true);
+        }
+        dt += 1.2;
       }
-      dt += 1.2;
     }
-    return dt + this.rng.range(0.5, 3);
+    if (log) {
+      const held = this.buf ?? [];
+      this.buf = null;
+      this.hits = null;
+      this.tellCombo(att, def, lead, back);
+      for (const l of held) this.log.push(l);
+    }
+    return this.over ? dt : dt + this.rng.range(0.5, 3);
+  }
+
+  /** One line for a combination and one for the counter, then anything big. */
+  private tellCombo(att: Side, def: Side, lead: Hit[], back: Hit[]) {
+    if (lead.length) this.say(this.comboLine(att, lead, false), att.i, false, lead.some((h) => h.landed) ? "land" : "miss");
+    if (back.length) this.say(this.comboLine(def, back, true), def.i, false, back.some((h) => h.landed) ? "land" : "miss");
+    // Going where the guard isn't.
+    const up = lead.find((h) => h.landed && h.zone === "head");
+    if (up && def.read[2] / BASE_READ[2] > 1.55 && !def.noted.up && this.crng.chance(0.7)) {
+      def.noted.up = true;
+      this.say(`With ${def.name} guarding low, ${att.name} goes upstairs.`, att.i, false, "read");
+    }
+    const low = lead.find((h) => h.landed && h.zone !== "head");
+    if (low && def.read[0] / BASE_READ[0] > 1.22 && !def.noted.down && this.crng.chance(0.7)) {
+      def.noted.down = true;
+      this.say(`${def.name} is covering up high, so ${att.name} goes ${low.zone === "leg" ? "low" : "to the body"}.`, att.i, false, "read");
+    }
+  }
+
+  private comboLine(a: Side, hits: Hit[], counter: boolean): string {
+    const nm = a.name;
+    if (hits.length === 1) {
+      const h = hits[0];
+      if (h.landed) {
+        const what = article(`${h.how ? `${h.how} ` : ""}${h.name}`);
+        if (counter) return `${nm} counters with ${what}.`;
+        return this.pickText([`${nm} lands ${what}.`, `${nm} connects with ${what}.`, `${nm} finds the target with ${what}.`]);
+      }
+      const miss = MISS_TEXT[h.how] ?? "misses";
+      return counter ? `${nm} tries to counter with ${article(h.name)}, but it ${miss}.` : this.pickText([`${nm}'s ${h.name} ${miss}.`, `${nm} throws ${article(h.name)}; it ${miss}.`]);
+    }
+    const list = listOf(hits.map((h) => h.name));
+    const head = counter ? `${nm} fires back with ${list}` : this.pickText([`${nm} throws ${list}`, `${nm} puts together ${list}`, `${nm} lets go with ${list}`]);
+    const landed = hits.filter((h) => h.landed);
+    if (!landed.length) return `${head}, but nothing lands clean.`;
+    if (landed.length === hits.length) return `${head}, and ${hits.length === 2 ? "both land" : `all ${NUM[hits.length] ?? hits.length} land`}.`;
+    return `${head}: ${landedOf(hits)} ${landed.length === 1 ? "lands" : "land"}.`;
+  }
+
+  /** Why a strike missed, for the commentary only. */
+  private missWhy(def: Side, sd: StrikeDef): string {
+    const r = this.crng.next();
+    if (sd.zone === "leg") return r < 0.5 ? "short" : "evaded";
+    if (sd.kick) return r < 0.55 ? "blocked" : "short";
+    if (this.range === 0 && r < 0.35) return "short";
+    if (def.d.defGuard || def.read[0] > 0.7) return r < 0.7 ? "blocked" : "slipped";
+    if (def.tr.headMove > 0.3 || def.n.strikeDef > 0.6) return r < 0.6 ? "slipped" : r < 0.8 ? "blocked" : "parried";
+    return r < 0.4 ? "blocked" : r < 0.75 ? "slipped" : "missed";
+  }
+
+  /** The quiet moments: feints, footwork, the fence. */
+  private idleText() {
+    const [x, y] = this.crng.chance(0.5) ? [this.s[0], this.s[1]] : [this.s[1], this.s[0]];
+    if (this.fence >= 0) {
+      const wall = this.s[this.fence as 0 | 1];
+      const pin = this.other(wall);
+      this.say(this.pickText([`${pin.name} keeps ${wall.name} near the fence, looking for the opening.`, `${wall.name} is circling along the fence, trying to get back to the centre.`, `${pin.name} cuts off the exit; ${wall.name} is stuck on the fence.`]));
+      return;
+    }
+    const press = this.s.find((q) => q.d.cage || q.d.tempo > 1.1);
+    if (press && this.crng.chance(0.35)) {
+      this.say(`${press.name} walks forward; ${this.other(press).name} circles away.`);
+      return;
+    }
+    this.say(this.pickText(
+      this.range === 0
+        ? [`They circle at long range, both looking for the distance.`, `${x.name} flicks out a feint; ${y.name} doesn't bite.`, `${x.name} pumps the lead hand, measuring the distance.`, `A quiet moment: ${x.name} and ${y.name} reset in the centre.`]
+        : [`${x.name} feints, ${y.name} flinches. Nothing thrown.`, `They're standing in range, both waiting for the other to commit.`, `${x.name} changes levels with a feint.`, `${x.name} switches stance to give a different look.`],
+    ));
+  }
+
+  /** The state of the fighters, said once when it shows. */
+  private cues() {
+    for (const s of this.s) {
+      const she = s.f.sex === "F";
+      const cue = (key: string, cond: boolean, text: string) => {
+        if (cond && !s.noted[key]) {
+          s.noted[key] = true;
+          this.say(text, (1 - s.i) as 0 | 1, false, "state");
+        }
+      };
+      cue("sta45", s.sta < 45, `${s.name} is breathing through the mouth now.`);
+      cue("sta25", s.sta < 25, `${s.name} is exhausted: the hands are dropping.`);
+      cue("leg55", s.legs < 55, `${s.name}'s lead leg is reddening from the kicks.`);
+      cue("leg35", s.legs < 35, `${s.name} is limping: the leg is badly hurt.`);
+      cue("body55", s.body < 55, `${s.name} winces every time ${she ? "she" : "he"} is hit to the body.`);
+      cue("head50", s.head < 50, `${s.name} is badly marked up.`);
+    }
   }
 
   private throwStrike(att: Side, def: Side, sd: StrikeDef, k: number, prevLanded: boolean, counter: boolean): boolean {
@@ -591,7 +887,18 @@ export class FightSim {
     if (sd.zone === "leg") defv = 0.45 * this.e(def, "strikeDef") + 0.35 * this.e(def, "footwork") + 0.2 * this.e(def, "speed");
     else defv = 0.55 * this.e(def, "strikeDef") + 0.25 * this.e(def, "speed") + 0.2 * this.e(def, "footwork");
     defv += def.d.defMove * 0.025 + techOf(def.f, "checkKicks") * (sd.zone === "leg" ? 0.012 : 0);
-    let p = sd.acc * 1.08 * Math.exp(1.55 * (off - defv)) * this.sloppy;
+    if (!sd.kick) defv += 0.035 * def.tr.headMove;
+    if (sd.zone === "leg" && def.d.checkLegs) defv += 0.02;
+    let p = sd.acc * 1.1 * Math.exp(1.55 * (off - defv)) * this.sloppy;
+    // Where the guard is: the level it has moved to is covered, the others are open.
+    const z = ZI[sd.zone];
+    p *= clamp(Math.pow(BASE_READ[z] / def.read[z], 0.45), 0.62, 1.35);
+    const t = att.tr;
+    if (sd.id === "jab") p *= 1 + 0.1 * t.jab;
+    if (sd.power && !sd.kick) p *= 1 - 0.05 * t.power;
+    if (this.range === 0 && !sd.kick) p *= 1 + 0.1 * t.blitz;
+    if (FLASHY.has(sd.id)) p *= 1 + 0.08 * t.flash;
+    if (counter) p *= 1 + 0.08 * t.counter;
     // Reach matters at range for straight shots and kicks.
     const reach = att.f.reach - def.f.reach;
     if (this.range === 0) p *= 1 + clamp(reach, -8, 8) * 0.012;
@@ -606,13 +913,18 @@ export class FightSim {
     if (!counter && def.d.counter > 0.6) p *= 1 - (def.d.counter - 0.6) * 0.18 * def.n.counters;
     p = clamp(p, 0.04, 0.93);
     if (!this.rng.chance(p)) {
-      // Checked leg kick: the kicker eats the shin.
-      if (sd.zone === "leg" && this.rng.chance(0.08 + techOf(def.f, "checkKicks") * 0.07)) {
+      let how = "";
+      // Checked leg kick: the kicker eats the shin. More often when the defender is waiting for it.
+      if (sd.zone === "leg" && this.rng.chance((0.08 + techOf(def.f, "checkKicks") * 0.07) * clamp(def.read[2] / BASE_READ[2], 0.7, 2.2) * (def.d.checkLegs ? 1.4 : 1))) {
         att.legs = clamp(att.legs - 1.6 * (1.1 - 0.4 * att.n.toughness), 0, 100);
-        if (this.logOn && this.crng.chance(0.4)) this.say(`${def.name} checks the ${sd.name}.`, def.i);
+        how = "checked";
       }
+      this.adapt(def, att, sd.zone, false);
+      if (this.hits) this.hits.push({ name: sd.name, zone: sd.zone, landed: false, how: how || this.missWhy(def, sd) });
       return false;
     }
+    this.adapt(def, att, sd.zone, true);
+    if (this.hits) this.hits.push({ name: sd.name, zone: sd.zone, landed: true, how: "" });
     this.landed(att, def, sd.zone, sd.dmg, sd.ko, sd.name, counter, "dist");
     return true;
   }
@@ -631,6 +943,16 @@ export class FightSim {
     const power = (0.5 + 0.9 * this.e(att, "power")) * (0.95 + 0.2 * (att.n.strength - 0.5));
     let force = dmg * power * q * (counter ? 1.18 : 1);
     if (where === "ground") force *= 0.92;
+    const t = att.tr;
+    if (where !== "ground" && !/kick|knee|teep/.test(name)) force *= 1 + 0.12 * t.power;
+    if (zone === "body") force *= 1 + 0.08 * t.body;
+    else if (zone === "leg") force *= 1 + 0.1 * t.lowKick;
+    if (counter) force *= 1 + 0.08 * t.counter;
+    if (where === "ground") force *= 1 + 0.1 * t.gnp;
+    if (this.hits?.length) {
+      const h = this.hits[this.hits.length - 1];
+      if (h.landed && h.name === name) h.how = force < 0.55 ? "glancing" : force > 1.25 ? "clean" : force > 0.95 ? "hard" : "";
+    }
     if (zone === "head") {
       const absorb = 1.18 - 0.36 * def.n.chin;
       def.head = clamp(def.head - force * 2.15 * absorb, 0, 100);
@@ -727,7 +1049,11 @@ export class FightSim {
       this.gpos = this.rng.chance(0.5) ? "half" : this.rng.chance(0.5) ? "guard" : "side";
       this.fence = -1;
       // Immediate ground and pound.
+      const h = this.hits;
+      this.hits = null;
+      this.say(`${att.name} follows ${def.name} down, looking to finish.`, att.i, false, "pass");
       for (let k = 0; k < 2 && !this.over; k++) this.gnpStrike(att, def);
+      this.hits = h;
     }
   }
 
@@ -742,6 +1068,7 @@ export class FightSim {
   }
 
   private finish(att: Side, method: Method, detail: string) {
+    this.recordCondition();
     this.over = true;
     this.winner = att.i;
     this.method = method;
@@ -751,7 +1078,9 @@ export class FightSim {
   }
 
   private strikeText(att: Side, def: Side, name: string, zone: Zone, force: number, where: string) {
-    if (force < 0.75 && !this.crng.chance(0.25)) return;
+    // In a combination the summary line tells the ordinary shots; only the big ones get their own.
+    if (this.hits && force <= 1.25) return;
+    if (!this.hits && force < 0.75 && !this.crng.chance(0.25)) return;
     const big = force > 1.25;
     let t: string;
     if (where === "ground") {
@@ -768,7 +1097,7 @@ export class FightSim {
 
   // ---------- takedowns and the clinch ----------
 
-  private shoot(att: Side, def: Side, fromClinch: boolean): number {
+  private shoot(att: Side, def: Side, fromClinch: boolean, chained = false): number {
     const st = this.rs(att);
     st.tdA++;
     this.spend(att, fromClinch ? 2.2 : 3.1);
@@ -789,8 +1118,10 @@ export class FightSim {
       base = 0.3;
       tech = Math.max(techOf(att.f, "doubleLeg"), techOf(att.f, "singleLeg"));
     }
-    dfn += def.d.defTdd * 0.05 + techOf(def.f, "sprawl") * 0.015;
+    dfn += def.d.defTdd * 0.05 + techOf(def.f, "sprawl") * 0.015 + def.tr.sprawl * 0.04;
     let p = base * Math.exp(2.3 * (off - dfn)) * (1 + tech * 0.05) * this.sloppy;
+    p *= fromClinch ? 1 + 0.1 * att.tr.throw + 0.08 * att.tr.fence : 1 + 0.12 * att.tr.shot;
+    if (chained) p *= 1.06;
     if (this.fence === def.i) p *= 1.2;
     if (def.stun > 0) p *= 1.5;
     if (def.sta < 30) p *= 1.15;
@@ -803,22 +1134,44 @@ export class FightSim {
       const adv = this.e(att, "topControl") - this.e(def, "bottomGame");
       const r = this.rng.next();
       this.gpos = r < 0.48 - adv * 0.4 ? "guard" : r < 0.8 - adv * 0.2 ? "half" : r < 0.93 ? "side" : this.rng.chance(0.5) ? "back" : "mount";
+      // A thrower lands in side control.
+      if (fromClinch && att.tr.throw > 0 && this.gpos !== "back" && this.gpos !== "mount" && this.rng.chance(0.45 * att.tr.throw)) this.gpos = "side";
       this.fence = -1;
       this.quiet = 0;
       const how = fromClinch
-        ? this.pickText(["trips him to the mat", "drags him down off the fence", "finishes the body lock takedown", "hits a hip toss"])
-        : this.pickText(["shoots a double leg and puts him down", "changes levels and finishes the single", "blasts through with a double", "times the shot perfectly"]);
+        ? att.tr.throw > 0.3 || techOf(att.f, "judoThrow") >= 2
+          ? this.pickText(["hits a beautiful hip toss", "throws him with a harai goshi", "turns the body lock into a throw"])
+          : att.tr.fence > 0.3
+            ? this.pickText(["drags him down off the fence", "finishes the body lock against the cage", "mat-returns him off the fence"])
+            : this.pickText(["trips him to the mat", "drags him down off the fence", "finishes the body lock takedown", "hits a hip toss"])
+        : chained
+          ? this.pickText(["switches to the single and finishes", "runs the pipe on the single and gets it", "keeps chaining and finally gets him down"])
+          : att.tr.shot > 0.3
+            ? this.pickText(["explodes through a double leg from the outside", "times the double under the punches", "blasts through with a double"])
+            : this.pickText(["shoots a double leg and puts him down", "changes levels and finishes the single", "blasts through with a double", "times the shot perfectly"]);
       this.say(`${att.name} ${how.replace("him", def.f.sex === "F" ? "her" : "him")}. ${def.name} is in ${GPOS_NAME[this.gpos]}.`, att.i, false, "td");
       return 6 + this.rng.range(2, 6);
     }
     // Defended.
-    this.say(this.pickText([`${def.name} stuffs the takedown.`, `${att.name} shoots, but ${def.name} sprawls.`, `Good takedown defence from ${def.name}.`]), def.i, false, "tdd");
+    this.say(
+      def.tr.sprawl > 0.3
+        ? this.pickText([`${def.name} sprawls hard and stuffs it.`, `${att.name} shoots; ${def.name}'s hips are already back.`])
+        : fromClinch
+          ? this.pickText([`${def.name} defends the takedown against the fence.`, `${def.name} keeps the underhooks and stays up.`])
+          : this.pickText([`${def.name} stuffs the takedown.`, `${att.name} shoots, but ${def.name} sprawls.`, `Good takedown defence from ${def.name}.`]),
+      def.i, false, "tdd",
+    );
     // Front headlock and a choke for a defender who knows it.
     if (!fromClinch) {
       const g = Math.max(techOf(def.f, "guillotine"), techOf(def.f, "darce"));
       if (this.rng.chance((0.012 + g * 0.03) * (0.4 + def.n.subs))) {
         this.subAttempt(def, att, techOf(def.f, "darce") > techOf(def.f, "guillotine") ? "darce" : "guillotine", "front headlock");
         if (this.over) return 4;
+      }
+      // A chain wrestler doesn't stop at one.
+      if (!chained && att.tr.chain > 0 && att.sta > 25 && this.rng.chance(0.42 * att.tr.chain)) {
+        this.say(`${att.name} doesn't let go: ${att.f.sex === "F" ? "she" : "he"} chains straight into another attempt.`, att.i, false, "td");
+        return 2 + this.shoot(att, def, false, true);
       }
       if (this.rng.chance(0.2)) {
         this.pos = "clinch";
@@ -854,18 +1207,24 @@ export class FightSim {
     this.spend(o, 1.0);
     // Wants out?
     const wantsOut = actor.d.clinchRate < 0.45 || (actor === o && actor.d.clinchRate < 0.8);
-    const wStrike = 0.85 + this.ce(actor, "clinchStrikes") * 1.0 + techOf(actor.f, "plumKnees") * 0.15;
-    const wTd = actor.d.tdRate * (0.25 + this.ce(actor, "clinchControl")) * (actor === c ? 1.25 : 0.4) * (this.fence === foe.i ? 1.3 : 1);
+    const wStrike = (0.85 + this.ce(actor, "clinchStrikes") * 1.0 + techOf(actor.f, "plumKnees") * 0.15) * (1 + 0.6 * actor.tr.clinch);
+    const wTd = actor.d.tdRate * (0.25 + this.ce(actor, "clinchControl")) * (actor === c ? 1.25 : 0.4) * (this.fence === foe.i ? 1.3 : 1)
+      * (1 + (this.fence === foe.i ? 0.6 : 0.25) * actor.tr.fence + 0.4 * actor.tr.throw) * (1 - 0.35 * actor.tr.sprawl);
     const wBreak = (wantsOut ? 1.4 : 0.5) * (actor === o ? 1.5 : 0.8);
     const wHold = actor === c ? 0.45 * (0.5 + actor.d.cage) : 0.15;
     const wRev = actor === o ? 0.35 : 0;
     const r = this.rng.next() * (wStrike + wTd + wBreak + wHold + wRev);
     if (r < wStrike) {
       const n = 1 + (this.rng.chance(0.55) ? 1 : 0) + (this.rng.chance(0.2) ? 1 : 0);
+      const hits: Hit[] = [];
+      if (this.logOn) {
+        this.buf = [];
+        this.hits = hits;
+      }
       for (let k = 0; k < n && !this.over; k++) {
         const kind = this.rng.choose({
-          kneeBody: 1.1 + techOf(actor.f, "plumKnees") * 0.3,
-          kneeHead: 0.35 + techOf(actor.f, "plumKnees") * 0.25,
+          kneeBody: (1.1 + techOf(actor.f, "plumKnees") * 0.3) * (1 + 0.6 * actor.tr.clinch),
+          kneeHead: (0.35 + techOf(actor.f, "plumKnees") * 0.25) * (1 + 0.6 * actor.tr.clinch),
           elbow: 0.35 + techOf(actor.f, "elbows") * 0.35,
           dirty: 1.0,
         });
@@ -878,8 +1237,26 @@ export class FightSim {
         this.spend(actor, cs.cost);
         const off = 0.6 * this.e(actor, "clinchStrikes") + 0.25 * this.e(actor, "clinchControl") + 0.15 * this.e(actor, "fightIQ");
         const dfn = 0.45 * this.e(foe, "clinchControl") + 0.35 * this.e(foe, "strikeDef") + 0.2 * this.e(foe, "strength");
-        const p = clamp(cs.acc * Math.exp(1.4 * (off - dfn)) * (actor === c ? 1.08 : 0.9) * this.sloppy, 0.08, 0.9);
-        if (this.rng.chance(p)) this.landed(actor, foe, cs.zone, cs.dmg, cs.ko, cs.name, false, "clinch");
+        const p = clamp(cs.acc * Math.exp(1.4 * (off - dfn)) * (actor === c ? 1.08 : 0.9) * (1 + 0.06 * actor.tr.clinch) * this.sloppy, 0.08, 0.9);
+        if (this.rng.chance(p)) {
+          this.hits?.push({ name: cs.name, zone: cs.zone, landed: true, how: "" });
+          this.landed(actor, foe, cs.zone, cs.dmg, cs.ko, cs.name, false, "clinch");
+        } else this.hits?.push({ name: cs.name, zone: cs.zone, landed: false, how: "blocked" });
+      }
+      if (this.logOn) {
+        const held = this.buf ?? [];
+        this.buf = null;
+        this.hits = null;
+        const landed = hits.filter((h) => h.landed);
+        if (hits.length) {
+          this.say(
+            landed.length
+              ? `In the clinch, ${actor.name} lands ${listOf(landed.map((h) => h.name))}${landed.length < hits.length ? `; ${foe.name} blocks the rest` : ""}.`
+              : `${actor.name} works for ${listOf(hits.map((h) => h.name))} in the clinch, but ${foe.name} blocks ${hits.length === 1 ? "it" : "them"}.`,
+            actor.i, false, landed.length ? "land" : "miss",
+          );
+        }
+        for (const l of held) this.log.push(l);
       }
       // A little dirty work that isn't significant.
       this.rs(actor).totA += 2;
@@ -934,17 +1311,38 @@ export class FightSim {
 
   private topMove(T: Side, B: Side): number {
     const strikerTop = T.plan.takedowns <= 1 && (T.n.boxing + T.n.kicks) / 2 > T.n.topControl + 0.08;
-    const wGnp = 1.0 * T.d.topGnp * (0.35 + this.ce(T, "groundStrikes")) * this.posFactor(this.gpos) * (B.stun > 0 ? 2.2 : 1) * (1 + techOf(T.f, "gnp") * 0.1);
+    const wGnp = 1.0 * T.d.topGnp * (0.35 + this.ce(T, "groundStrikes")) * this.posFactor(this.gpos) * (B.stun > 0 ? 2.2 : 1) * (1 + techOf(T.f, "gnp") * 0.1) * (1 + 0.6 * T.tr.gnp);
     const wPass = this.gpos === "mount" || this.gpos === "back" ? 0.06 : 0.55 * T.d.topPass * (0.4 + this.ce(T, "topControl"));
     const subs = SUB_TOP[this.gpos];
-    const wSub = subs.length ? this.subMul * 0.075 * T.d.topSub * (0.45 + this.ce(T, "subs") * 1.0) * (this.gpos === "back" ? 2.2 : this.gpos === "mount" ? 1.3 : 1) * (B.stun > 0 ? 1.3 : 1) : 0;
+    const wSub = subs.length ? this.subMul * 0.075 * T.d.topSub * (0.45 + this.ce(T, "subs") * 1.0) * (this.gpos === "back" ? 2.2 * (1 + 0.5 * T.tr.back) : this.gpos === "mount" ? 1.3 : 1) * (B.stun > 0 ? 1.3 : 1) * (1 + 0.4 * T.tr.pass) : 0;
     const wHold = 0.3 * T.d.topHold;
     const wUp = strikerTop ? 0.6 : 0.03;
     const r = this.rng.next() * (wGnp + wPass + wSub + wHold + wUp);
     T.gimp[this.round - 1] += 0.12 * this.posFactor(this.gpos);
     if (r < wGnp) {
       const n = 1 + (this.rng.chance(0.55) ? 1 : 0) + (this.rng.chance(0.3) ? 1 : 0) + (B.stun > 0 ? 2 : 0);
+      const hits: Hit[] = [];
+      const where = GPOS_NAME[this.gpos];
+      if (this.logOn) {
+        this.buf = [];
+        this.hits = hits;
+      }
       for (let k = 0; k < n && !this.over; k++) this.gnpStrike(T, B);
+      if (this.logOn) {
+        const held = this.buf ?? [];
+        this.buf = null;
+        this.hits = null;
+        const landed = hits.filter((h) => h.landed).length;
+        if (hits.length) {
+          this.say(
+            landed
+              ? `${T.name} drops ${listOf(hits.map((h) => h.name))} from ${where}: ${landed === hits.length ? (hits.length === 1 ? "it lands" : hits.length === 2 ? "both land" : "all of them land") : `${NUM[landed]} ${landed === 1 ? "lands" : "land"}`}.`
+              : `${T.name} rains down shots from ${where}, but ${B.name} covers up.`,
+            T.i, false, landed ? "land" : "miss",
+          );
+        }
+        for (const l of held) this.log.push(l);
+      }
       this.rs(T).totA += 2;
       this.rs(T).totL += 1;
       this.quiet = 0;
@@ -952,16 +1350,18 @@ export class FightSim {
     }
     if (r < wGnp + wPass) {
       this.spend(T, 1.2);
-      const p = clamp(0.2 * Math.exp(2.1 * (this.e(T, "topControl") - this.e(B, "bottomGame"))) * this.sloppy, 0.04, 0.6);
+      const p = clamp(0.2 * Math.exp(2.1 * (this.e(T, "topControl") - this.e(B, "bottomGame"))) * (1 + 0.3 * T.tr.pass) * this.sloppy, 0.04, 0.6);
       if (this.rng.chance(p)) {
         const prev = this.gpos;
         const backTake = techOf(T.f, "backTake");
         if (this.gpos === "guard") this.gpos = this.rng.chance(0.78) ? "half" : "side";
-        else if (this.gpos === "half") this.gpos = this.rng.chance(0.66 - backTake * 0.05) ? "side" : this.rng.chance(0.55) ? "mount" : "back";
-        else if (this.gpos === "side") this.gpos = this.rng.chance(0.58 - backTake * 0.06) ? "mount" : "back";
+        else if (this.gpos === "half") this.gpos = this.rng.chance(0.66 - backTake * 0.05 - T.tr.back * 0.12) ? "side" : this.rng.chance(0.55 - T.tr.back * 0.2) ? "mount" : "back";
+        else if (this.gpos === "side") this.gpos = this.rng.chance(0.58 - backTake * 0.06 - T.tr.back * 0.15) ? "mount" : "back";
         T.gimp[this.round - 1] += this.gpos === "mount" || this.gpos === "back" ? 1.1 : 0.45;
         this.quiet = 0;
         this.say(`${T.name} ${this.gpos === "back" ? "takes the back" : this.gpos === "mount" ? "climbs to full mount" : "passes to " + GPOS_NAME[this.gpos]}${prev === "guard" && this.gpos !== "half" ? "" : ""}.`, T.i, this.gpos === "mount" || this.gpos === "back", "pass");
+      } else if (this.logOn && this.crng.chance(0.35)) {
+        this.say(this.pickText([`${T.name} works to pass, but ${B.name} keeps ${T.f.sex === "F" ? "her" : "him"} in ${GPOS_NAME[this.gpos]}.`, `${B.name} recovers the guard as ${T.name} tries to pass.`]), B.i);
       }
       return 5 + this.rng.range(2, 7);
     }
@@ -972,6 +1372,7 @@ export class FightSim {
     }
     if (r < wGnp + wPass + wSub + wHold) {
       this.quiet++;
+      if (this.logOn && this.crng.chance(0.35)) this.say(this.pickText([`${T.name} keeps heavy pressure in ${GPOS_NAME[this.gpos]}.`, `${T.name} holds ${B.name} down, controlling the wrists.`, `${B.name} is stuck under ${T.name} in ${GPOS_NAME[this.gpos]}.`]), T.i);
       this.rs(T).totA += 2;
       this.rs(T).totL += 1;
       if (this.quiet >= 5 && this.rng.chance(0.18)) this.standUp("The referee stands them up for inactivity.");
@@ -1000,15 +1401,18 @@ export class FightSim {
     const off = 0.65 * this.e(T, "groundStrikes") + 0.35 * this.e(T, "topControl");
     const dfn = 0.55 * this.e(B, "bottomGame") + 0.45 * this.e(B, "strikeDef");
     const p = clamp(gs.acc * Math.exp(1.3 * (off - dfn)) * (0.75 + 0.25 * this.posFactor(this.gpos)) * (B.stun > 0 ? 1.35 : 1) * this.sloppy, 0.12, 0.95);
-    if (this.rng.chance(p)) this.landed(T, B, kind === "body" ? "body" : "head", gs.dmg, gs.ko, gs.name, false, "ground");
+    if (this.rng.chance(p)) {
+      this.hits?.push({ name: gs.name, zone: kind === "body" ? "body" : "head", landed: true, how: "" });
+      this.landed(T, B, kind === "body" ? "body" : "head", gs.dmg, gs.ko, gs.name, false, "ground");
+    } else this.hits?.push({ name: gs.name, zone: kind === "body" ? "body" : "head", landed: false, how: "blocked" });
   }
 
   private bottomMove(B: Side, T: Side): number {
     const esc: Record<GPos, number> = { guard: 1.25, half: 1, side: 0.65, mount: 0.38, back: 0.32 };
-    const wUp = 1.25 * B.d.botUp * esc[this.gpos] * (0.5 + B.n.bottomGame * 0.3 + B.n.scrambles * 0.3);
-    const wSweep = this.gpos === "guard" || this.gpos === "half" ? 0.28 * B.d.botSweep : 0.06;
+    const wUp = 1.25 * B.d.botUp * esc[this.gpos] * (0.5 + B.n.bottomGame * 0.3 + B.n.scrambles * 0.3) * Math.max(0.2, 1 + 0.3 * B.tr.scramble + 0.3 * B.tr.sprawl - 0.4 * B.tr.guard);
+    const wSweep = (this.gpos === "guard" || this.gpos === "half" ? 0.28 * B.d.botSweep : 0.06) * (1 + 0.4 * B.tr.guard + 0.2 * B.tr.scramble);
     const subs = SUB_BOTTOM[this.gpos];
-    const wSub = subs.length ? this.subMul * 0.065 * B.d.botSub * (0.35 + this.ce(B, "subs") * 1.2) : 0;
+    const wSub = subs.length ? this.subMul * 0.065 * B.d.botSub * (0.35 + this.ce(B, "subs") * 1.2) * (1 + 0.8 * B.tr.guard + 0.6 * B.tr.legs) : 0;
     const wStrike = this.gpos === "guard" ? 0.3 : 0.08;
     const wTie = 0.25;
     const r = this.rng.next() * (wUp + wSweep + wSub + wStrike + wTie);
@@ -1017,7 +1421,8 @@ export class FightSim {
       const base: Record<GPos, number> = { guard: 0.56, half: 0.46, side: 0.3, mount: 0.15, back: 0.17 };
       const off = 0.4 * this.e(B, "bottomGame") + 0.3 * this.e(B, "scrambles") + 0.3 * this.e(B, "strength");
       const dfn = 0.7 * this.e(T, "topControl") + 0.3 * this.e(T, "strength");
-      let p = base[this.gpos] * Math.exp(2.1 * (off - dfn)) * (1 + techOf(B.f, "wallWalk") * 0.08) * (B.stun > 0 ? 0.4 : 1) * (1 - techOf(T.f, "legRide") * 0.05);
+      let p = base[this.gpos] * Math.exp(2.1 * (off - dfn)) * (1 + techOf(B.f, "wallWalk") * 0.08) * (B.stun > 0 ? 0.4 : 1) * (1 - techOf(T.f, "legRide") * 0.05)
+        * (1 + 0.25 * B.tr.scramble + 0.15 * B.tr.sprawl) * (1 - 0.12 * T.tr.pass);
       if (this.gpos === "back") p *= 1 - techOf(T.f, "bodyTriangle") * 0.12;
       p = clamp(p, 0.02, 0.75);
       if (this.rng.chance(p)) {
@@ -1037,16 +1442,18 @@ export class FightSim {
       if (this.gpos === "mount" && this.rng.chance(0.2)) {
         this.gpos = "back";
         this.say(`${B.name} gives up the back trying to escape.`, T.i);
-      } else if ((this.gpos === "half" || this.gpos === "side" || this.gpos === "guard") && this.rng.chance(0.06 + techOf(T.f, "backTake") * 0.035 + this.e(T, "scrambles") * 0.04)) {
+      } else if ((this.gpos === "half" || this.gpos === "side" || this.gpos === "guard") && this.rng.chance(0.06 + techOf(T.f, "backTake") * 0.035 + this.e(T, "scrambles") * 0.04 + T.tr.back * 0.06)) {
         this.gpos = "back";
         T.gimp[this.round - 1] += 1;
         this.say(`${B.name} turns to get up and ${T.name} takes the back!`, T.i, true, "pass");
+      } else if (this.logOn && this.crng.chance(0.5)) {
+        this.say(this.pickText([`${B.name} tries to stand, but ${T.name} drags ${B.f.sex === "F" ? "her" : "him"} back down.`, `${B.name} gets to a knee; ${T.name} flattens ${B.f.sex === "F" ? "her" : "him"} out again.`]), T.i);
       }
       return 6 + this.rng.range(1, 6);
     }
     if (r < wUp + wSweep) {
       this.spend(B, 1.8);
-      const p = clamp(0.1 * Math.exp(2 * (0.55 * this.e(B, "bottomGame") + 0.45 * this.e(B, "scrambles") - this.e(T, "topControl"))), 0.02, 0.4);
+      const p = clamp(0.1 * Math.exp(2 * (0.55 * this.e(B, "bottomGame") + 0.45 * this.e(B, "scrambles") - this.e(T, "topControl"))) * (1 + 0.15 * B.tr.guard + 0.15 * B.tr.scramble), 0.02, 0.4);
       if (this.rng.chance(p)) {
         this.top = B.i;
         this.gpos = this.rng.chance(0.7) ? "guard" : "half";
@@ -1054,6 +1461,8 @@ export class FightSim {
         B.gimp[this.round - 1] += 1.1;
         this.quiet = 0;
         this.say(`${B.name} sweeps and comes up on top!`, B.i, true, "sweep");
+      } else if (this.logOn && this.crng.chance(0.4)) {
+        this.say(`${B.name} looks for a sweep, but ${T.name} stays heavy.`, T.i);
       }
       return 6 + this.rng.range(1, 5);
     }
@@ -1072,12 +1481,13 @@ export class FightSim {
       return 4 + this.rng.range(1, 4);
     }
     this.quiet++;
+    if (this.logOn && this.crng.chance(0.3)) this.say(`${B.name} ties up ${T.name}'s arms from the bottom.`, B.i);
     return 7 + this.rng.range(2, 8);
   }
 
   private pickSub(s: Side, list: [string, number][]): string {
     const w: Record<string, number> = {};
-    for (const [id, base] of list) w[id] = base * (1 + techOf(s.f, SUB_TECH[id]) * 0.6) * (s.f.tech[SUB_TECH[id]] === undefined && (id === "heelHook" || id === "darce") ? 0.15 : 1);
+    for (const [id, base] of list) w[id] = base * (1 + techOf(s.f, SUB_TECH[id]) * 0.6) * (s.f.tech[SUB_TECH[id]] === undefined && (id === "heelHook" || id === "darce") ? 0.15 : 1) * (id === "heelHook" || id === "kneebar" ? 1 + 2.5 * s.tr.legs : 1);
     return this.rng.choose(w);
   }
 
@@ -1096,6 +1506,9 @@ export class FightSim {
     if (def.stun > 0) p *= 1.6;
     if (def.sta < 25) p *= 1.25;
     if (sub === "rnc" && techOf(att.f, "bodyTriangle") > 0) p *= 1.08;
+    if (sub === "rnc") p *= 1 + 0.08 * att.tr.back;
+    if (sub === "heelHook" || sub === "kneebar") p *= 1 + 0.1 * att.tr.legs;
+    p *= this.pos === "ground" && this.top === att.i ? 1 + 0.06 * att.tr.pass : 1 + 0.08 * att.tr.guard;
     p = clamp(p, 0.02, 0.82);
     att.gimp[this.round - 1] += 0.6;
     const deep = this.rng.chance(clamp(p * 1.6, 0, 0.95));
@@ -1132,7 +1545,20 @@ export class FightSim {
 
   // ---------- rounds and judging ----------
 
+  /** The state of both fighters, kept with the round's statistics. */
+  private recordCondition() {
+    for (const s of this.s) {
+      const st = this.rs(s);
+      st.hd = Math.round(s.head);
+      st.bd = Math.round(s.body);
+      st.lg = Math.round(s.legs);
+      st.st = Math.round(s.sta);
+      st.gd = s.read.map((x) => Math.round(x * 100)) as [number, number, number];
+    }
+  }
+
   private finishRound() {
+    this.recordCondition();
     const r = this.round - 1;
     // Doctor check on a bad cut.
     for (const s of this.s) {
@@ -1240,7 +1666,7 @@ export class FightSim {
     const [A, B] = this.s;
     const sum = (s: Side) => {
       const t = blankRound();
-      for (const r of s.rs) for (const k of Object.keys(t) as (keyof RoundStat)[]) t[k] += r[k];
+      for (const r of s.rs) for (const k of Object.keys(t) as StatKey[]) t[k] += r[k];
       return t;
     };
     const tA = sum(A);

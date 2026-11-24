@@ -12,6 +12,8 @@ import type { Fighter, Gym, SessionId, TrainingPlan, World } from "../model/type
 import { TECHNIQUES, type TechId } from "../data/techniques";
 import { growthRate, monthsToPeak } from "../world/development";
 import { defOf, trainingInjury } from "../data/injuries";
+import { FIGHT_STYLES, styleFit, type StyleId } from "../data/fightstyles";
+import { fightStyle } from "../world/fightstyle";
 
 export interface SessionDef {
   id: SessionId;
@@ -101,7 +103,27 @@ export interface WeekResult {
   sharp: number;
   injury?: { id: string; name: string; days: number; severity: number; area: string };
   drilled?: { tech: TechId; level: number; progress: number };
+  /** Style coaching: the style's mastery before and after the week, and a signature move worked on. */
+  styled?: { id: StyleId; before: number; after: number; tech?: TechId; progress?: number };
   load: number;
+}
+
+/** Which sessions build a style, and how much each counts. */
+export function styleSessions(id: StyleId): Partial<Record<SessionId, number>> {
+  switch (id) {
+    case "outBoxer": case "pressure": case "counter": case "slugger": return { boxing: 1, sparring: 0.6, kickboxing: 0.3, drilling: 0.5, film: 0.3 };
+    case "dutch": return { kickboxing: 1, boxing: 0.6, muaythai: 0.4, sparring: 0.6, drilling: 0.5 };
+    case "point": case "flash": return { kickboxing: 1, sparring: 0.6, boxing: 0.3, drilling: 0.6, film: 0.3 };
+    case "khao": case "femur": return { muaythai: 1, kickboxing: 0.5, sparring: 0.6, drilling: 0.5 };
+    case "volume": return { boxing: 0.7, kickboxing: 0.7, sparring: 0.8, conditioning: 0.3, drilling: 0.4 };
+    case "brawler": return { sparring: 1, boxing: 0.6, drilling: 0.3 };
+    case "basic": return { boxing: 0.6, sparring: 0.8, drilling: 0.4 };
+    case "chain": case "blast": case "grinder": case "pounder": return { wrestling: 1, sparring: 0.5, bjj: 0.3, drilling: 0.5 };
+    case "scrambler": return { wrestling: 0.8, bjj: 0.8, sparring: 0.5, drilling: 0.4 };
+    case "passer": case "guard": case "backTaker": case "legLocker": return { bjj: 1, wrestling: 0.3, sparring: 0.4, drilling: 0.5 };
+    case "thrower": return { wrestling: 0.8, bjj: 0.5, sparring: 0.4, drilling: 0.5 };
+    case "sprawl": return { wrestling: 0.8, sparring: 0.6, drilling: 0.3 };
+  }
 }
 
 /** Exposure of each attribute in a week: how much of the week trains it. */
@@ -180,17 +202,43 @@ export function trainingWeek(w: World, f: Fighter, plan: TrainingPlan, rng: Rng,
       drilled = { tech: plan.drill, level: lvl, progress: step };
     }
   }
+  // Style coaching: the coaches build one of the fighter's two styles.
+  let styled: WeekResult["styled"];
+  if (plan.style) {
+    const def = FIGHT_STYLES[plan.style];
+    const st = fightStyle(f);
+    const active = def.kind === "strike" ? st.s === plan.style : st.g === plan.style;
+    if (active) {
+      const cur = def.kind === "strike" ? st.sm : st.gm;
+      const weights = styleSessions(plan.style);
+      const rel = plan.week.reduce((a, s) => a + (weights[s] ?? 0), 0);
+      const coach = coachQuality(gym, def.kind === "strike" ? "striking" : def.id === "chain" || def.id === "blast" || def.id === "grinder" || def.id === "pounder" || def.id === "sprawl" ? "wrestling" : "grappling");
+      const step = rel * 0.3 * (0.5 + styleFit(f.attrs, plan.style) / 100) * (0.55 + coach / 110) * (0.75 + f.attrs.fightIQ / 40) * INT_GROWTH[plan.intensity] * (1 - cur / 125) * hurtTrain * fatPenalty;
+      const after = clamp(cur + step, 0, 99);
+      styled = { id: plan.style, before: cur, after };
+      // A signature move gets worked on too, the least known first.
+      const tech = def.tech.filter((t) => (f.tech[t] ?? 0) < 3).sort((a, b) => (f.tech[a] ?? 0) - (f.tech[b] ?? 0))[0];
+      if (tech && tech !== plan.drill && rel > 0) {
+        styled.tech = tech;
+        styled.progress = (rel / 10) * 0.5 / (TECHNIQUES[tech].weeks * (1 + (f.tech[tech] ?? 0) * 0.6));
+      }
+      if (apply) {
+        if (def.kind === "strike") st.sm = Math.round(after * 10) / 10;
+        else st.gm = Math.round(after * 10) / 10;
+      }
+    }
+  }
   if (apply) {
     for (const k of ATTRS) if (growth[k]) f.attrs[k] = clamp(Math.round((f.attrs[k] + growth[k]!) * 1000) / 1000, 1, 20);
     f.fatigue = Math.round(fatigue);
     f.sharp = Math.round(sharp);
   }
-  return { growth, fatigue, sharp, injury, drilled, load };
+  return { growth, fatigue, sharp, injury, drilled, styled, load };
 }
 
 /** Rough weekly overall change this plan would give. */
 export function planPreview(w: World, f: Fighter, plan: TrainingPlan): { ovr: number; fatigue: number; risk: number; top: [AttrKey, number][] } {
-  const clone: Fighter = { ...f, attrs: { ...f.attrs } };
+  const clone: Fighter = { ...f, attrs: { ...f.attrs }, style: f.style ? { ...f.style } : undefined };
   const r = trainingWeek(w, clone, plan, new Rng(1), true);
   const top = (Object.entries(r.growth) as [AttrKey, number][]).sort((a, b) => b[1] - a[1]).slice(0, 5);
   return { ovr: ovrOf(clone.attrs) - ovrOf(f.attrs), fatigue: r.fatigue, risk: weekRisk(f, plan, ageAt(f.birth, w.day)), top };

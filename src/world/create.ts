@@ -82,6 +82,8 @@ export function migrate(w: World, roster: RosterFile | null): World {
     for (const f of Object.values(w.fighters)) {
       if (f.style) continue;
       const rf = f.real ? byId.get(f.id) : undefined;
+      // The real background, where the snapshot names it, replaces the old guess.
+      if (rf?.ba && rf.ba in ARTS) f.base = rf.ba as BaseArt;
       f.style = pickStyles(f, new Rng(hashString(f.id) ^ w.seed), rf ? realSignals(rf) : null);
       grantStyleTech(f);
     }

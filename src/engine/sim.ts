@@ -1403,7 +1403,7 @@ export class FightSim {
     if (this.rng.chance(pOut)) {
       const what = this.koName(name);
       this.finish(att, "KO", what);
-      this.say(this.pickText([`${def.name} is out cold! What a ${name}!`, `KNOCKOUT! The ${name} put ${def.name} down and out!`, `Lights out! ${att.name} lands the ${name} and ${def.name} is finished.`]), att.i, true, "finish");
+      this.say(this.pickText([`${def.name} is out cold! What ${/^[aeiou]/i.test(name) ? "an" : "a"} ${name}!`, `KNOCKOUT! The ${name} put ${def.name} down and out!`, `Lights out! ${att.name} lands the ${name} and ${def.name} is finished.`]), att.i, true, "finish");
       return;
     }
     def.stun = 6 + this.rng.next() * 7;

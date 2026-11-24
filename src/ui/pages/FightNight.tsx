@@ -434,7 +434,7 @@ function LiveFight({ w, b, onDone }: { w: World; b: Bout; onDone: (o: FightOutco
           <FighterMeters sim={sim} i={0} />
           <div className="mid">
             <div className="rd">Round {sim.round} of {sim.rounds}</div>
-            <div className="clock">{clock(Math.max(0, Math.floor(sim.roundSec - shownT)))}</div>
+            <div className="clock">{clock(Math.max(0, sim.roundSec - shownT))}</div>
             <div className="clock-bar" aria-hidden="true"><i style={{ width: `${clamp(shownT / sim.roundSec, 0, 1) * 100}%` }} /></div>
             {sim.roundSec !== 300 && <div className="rd-fmt">{Math.round(sim.roundSec / 60)}-minute rounds{PROMOTIONS[b.promo].tier === "amateur" ? " · amateur rules" : ""}</div>}
             <div className="pos">{out ? (out.method === "DEC" || out.method === "DRAW" ? "To the judges" : `Stopped · R${out.round} ${clock(out.time)}`) : sim.between ? `End of round ${sim.round}` : posText}</div>

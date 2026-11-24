@@ -1,4 +1,5 @@
 import { fmtDate, weeksText, ageYears, DOW, MONTHS, ymd } from "../../core/time";
+import { SpotlightPanel } from "./Media";
 import { FIGHT_STYLES } from "../../data/fightstyles";
 import { fightStyle } from "../../world/fightstyle";
 import { money } from "../../core/util";
@@ -288,6 +289,7 @@ function FighterHome({ w, f }: { w: World; f: Fighter }) {
             </Panel>
           </div>
           <div className="c4 stack">
+            {f.status === "active" && <SpotlightPanel w={w} f={f} />}
             <TopStories w={w} items={storiesFor(w)} />
             {ps && f.promo && PROMOTIONS[f.promo].rankSize > 0 && (
               <Panel title={`${PROMOTIONS[f.promo].short} ${DIVISIONS[f.div].name}`} acts={<Link to={`/rankings/${f.promo}`} className="textlink">Rankings</Link>} flush>

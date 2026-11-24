@@ -24,6 +24,9 @@ import { rankAchievements } from "../career/achievements";
 import { monthlySponsors, weeklySponsors } from "../career/sponsors";
 import { monthlyAgency } from "../career/agency";
 import { fightWeekDaily } from "../career/fightweek";
+import { pressDaily } from "../career/media";
+import { lifeAfterEvent, lifeWeekly } from "../career/life";
+import { coolHeat } from "../career/rivals";
 import { walkMonthly } from "../career/moves";
 import { legacyMonthly } from "../world/legacy";
 import { retirementTalk } from "../career/retire";
@@ -110,6 +113,8 @@ function weekly(w: World, rng: Rng): void {
     if (f.fatigue >= 80) notify(w, { kind: "training", fighter: f.id, from: "Strength coach", subject: `${fullName(f)} is overtrained`, body: `Fatigue is at ${f.fatigue}. Growth is suffering and the injury risk is high. Take a light week.` });
   }
   weeklySponsors(w);
+  coolHeat(w);
+  lifeWeekly(w, rng);
 }
 
 function monthly(w: World, rng: Rng): void {
@@ -185,6 +190,7 @@ export function advanceDay(w: World): Stop[] {
     bookingPass(w, rng);
     if (w.day % 3 === 0) fillGaps(w, rng);
     fightWeekDaily(w, rng);
+    pressDaily(w, rng);
     if (isMonday(w.day)) weekly(w, rng);
     if (isFirstOfMonth(w.day)) monthly(w, rng);
     for (const ev of eventsOn(w, w.day)) {
@@ -198,6 +204,7 @@ export function advanceDay(w: World): Stop[] {
         continue;
       }
       runEvent(w, rng, ev);
+      lifeAfterEvent(w, ev);
     }
     // The day before a player's fight: the weigh-in.
     for (const ev of eventsOn(w, w.day + 1)) {

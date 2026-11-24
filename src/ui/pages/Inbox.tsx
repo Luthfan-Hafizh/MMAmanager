@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from "react";
 import { fmtDate } from "../../core/time";
 import type { Message } from "../../model/types";
 import { answer } from "../../career/actions";
+import { openSession, sessionById } from "../../career/media";
 import { adviseContract, adviseInjury } from "../../career/advisor";
 import { AdviceCard, FightOfferView } from "../advice";
 import { changed, toast, useWorld } from "../../state/store";
@@ -23,11 +24,13 @@ const ICON: Record<Message["kind"], () => JSX.Element> = {
   client: Icons.users,
   weighin: Icons.scale,
   ranking: Icons.trophy,
+  life: Icons.bolt,
+  media: Icons.mic,
 };
 
 const KIND: Record<Message["kind"], string> = {
   offer: "Fight offer", contract: "Contract", info: "Message", result: "Result", injury: "Medical", training: "Training", sponsor: "Sponsor",
-  news: "News", camp: "Camp", money: "Money", client: "Client", weighin: "Weigh-in", ranking: "Rankings",
+  news: "News", camp: "Camp", money: "Money", client: "Client", weighin: "Weigh-in", ranking: "Rankings", life: "Life", media: "Media",
 };
 
 export function Inbox({ id }: { id?: string }) {
@@ -50,6 +53,13 @@ export function Inbox({ id }: { id?: string }) {
     if (!cur) return;
     if (cur.kind === "contract" && a === "negotiate") {
       go(`/contracts/${cur.fighter ?? ""}`);
+      return;
+    }
+    if (a === "press:go") {
+      // The questions are answered in the press room, one at a time.
+      const s = openSession(w, cur);
+      changed();
+      if (s) go(`/media/session/${s.id}`);
       return;
     }
     const text = answer(w, cur.id, a);
@@ -100,6 +110,15 @@ export function Inbox({ id }: { id?: string }) {
               </div>
               {cur.facts && cur.facts.length > 0 && <Facts facts={cur.facts} />}
               <div className="text">{cur.body}</div>
+              {cur.data?.session && (() => {
+                const s = sessionById(w, String(cur.data!.session));
+                return s ? (
+                  <div className="notice" style={{ marginTop: 14 }}>
+                    {s.done ? (s.skipped ? "Skipped." : s.summary) : `${s.questions.filter((q) => q.picked !== undefined).length} of ${s.questions.length} questions answered.`}{" "}
+                    <Link to={`/media/session/${s.id}`} className="textlink">{s.done ? "See it" : "Back to the press room"}</Link>
+                  </div>
+                ) : null;
+              })()}
               {cur.kind === "offer" && cur.ref && !cur.done && (() => {
                 const o = w.career.fightOffers.find((x) => x.id === cur.ref);
                 const f = o ? w.fighters[o.fighter] : null;
@@ -128,7 +147,7 @@ export function Inbox({ id }: { id?: string }) {
                   })()}
                 </div>
               )}
-              {cur.done && <div className="badge" style={{ marginTop: 16 }}>{cur.done}</div>}
+              {cur.done && (cur.done.length > 28 ? <p className="msg-done">{cur.done}</p> : <div className="badge" style={{ marginTop: 16 }}>{cur.done}</div>)}
               {cur.kind === "result" && cur.ref && w.bouts[cur.ref] && (
                 <div style={{ marginTop: 16 }}>
                   <Link to={`/event/${w.bouts[cur.ref].ev}`} className="btn">See the card</Link>

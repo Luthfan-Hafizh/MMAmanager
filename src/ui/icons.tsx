@@ -36,6 +36,7 @@ export const Icons = {
   menu: () => <I><path d="M4 7h16M4 12h16M4 17h16" /></I>,
   star: () => <I><path d="m12 3.5 2.6 5.4 5.9.8-4.3 4.1 1 5.8L12 16.9l-5.2 2.7 1-5.8L3.5 9.7l5.9-.8L12 3.5Z" /></I>,
   medkit: () => <I><rect x="3.5" y="7" width="17" height="12.5" rx="2" /><path d="M9 7V5h6v2M12 10.5v5.5M9.2 13.2h5.6" /></I>,
+  mic: () => <I><rect x="9" y="3" width="6" height="11" rx="3" /><path d="M5.5 11a6.5 6.5 0 0 0 13 0M12 17.5V21M8.5 21h7" /></I>,
   scale: () => <I><path d="M12 4v16M6 20h12M5 8h14" /><path d="M5 8 2.5 13.5a3 3 0 0 0 5 0L5 8ZM19 8l-2.5 5.5a3 3 0 0 0 5 0L19 8Z" /></I>,
 };
 

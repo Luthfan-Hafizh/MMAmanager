@@ -12,6 +12,7 @@ import { fullName } from "../world/core";
 import { notify } from "./inbox";
 import { ledger } from "./money";
 import { boutLimit, cutCheck, noticeHurt } from "./shortnotice";
+import { scaleDay, type ScaleResult } from "./weighin";
 
 export const SPARRING_NAMES = ["Gym partners", "Brought-in partners", "Elite partners"];
 export const NUTRITION_NAMES = ["Do it yourself", "Nutritionist", "Full cut team"];
@@ -112,9 +113,12 @@ export function campPrep(w: World, f: Fighter, b: Bout): number {
   return clamp(-0.45 + full * 0.55 + sharp * 0.5 + fresh + spar + study, -1, 1);
 }
 
-/** Day before the fight: the scale and the final numbers for the engine. */
+/** Day before the fight: both fighters on the scale, the final numbers for the engine, then a decision. */
 export function fightEve(w: World, rng: Rng, b: Bout): void {
-  for (const id of [b.a, b.b]) {
+  if (b.weighIn) return;
+  const mine: Partial<Record<"a" | "b", ScaleResult>> = {};
+  for (const side of ["a", "b"] as const) {
+    const id = b[side];
     const f = w.fighters[id];
     const fc = w.career.fc[id];
     if (!f?.ctrl || !fc) continue;
@@ -124,21 +128,9 @@ export function fightEve(w: World, rng: Rng, b: Bout): void {
     fc.campCut = r.drain;
     fc.campPrep = campPrep(w, f, b);
     fc.campBout = b.id;
-    const lim = boutLimit(b);
-    notify(w, {
-      kind: "weighin",
-      fighter: f.id,
-      from: "Athletic commission",
-      subject: r.made ? `Weigh-in: ${fullName(f)} made weight` : `Weigh-in: ${fullName(f)} missed weight`,
-      body: r.text,
-      facts: [
-        { k: "On the scale", v: `${r.weight.toFixed(1)} lb`, tone: r.made ? "good" : "bad" },
-        { k: "Limit", v: `${lim} lb${b.limit ? " (catchweight)" : ""}${b.kind === "title" || b.kind === "interim" || b.kind === "vacant" ? ", no allowance in a title fight" : ", 1 lb allowance"}` },
-        { k: "The cut", v: `${(f.walk - lim).toFixed(0)} lb from ${f.walk}` },
-        { k: "Fight night", v: r.drain > 0.35 ? "Drained: the gas tank will suffer" : r.drain < 0.12 ? "Fresh" : "Normal recovery", tone: r.drain > 0.35 ? "bad" : r.drain < 0.12 ? "good" : undefined },
-      ],
-    });
+    mine[side] = r;
   }
+  if (mine.a || mine.b) scaleDay(w, rng, b, mine);
 }
 
 export function prepText(p: number): string {

@@ -13,6 +13,7 @@ import { addNews, availableFrom, daysSinceFight, fullName, isControlled, nextId,
 import { lostToRecently, ratingFor } from "./rankings";
 import { setOdds } from "./odds";
 import { calloutFor } from "../career/fightweek";
+import { grudgeBonus, heatOf, rivalsOf } from "../career/rivals";
 import { makeInjury, trainingInjury } from "../data/injuries";
 import { beltBooked, bmfPairing, isBeltFight, stakeLabel, stakeOf } from "./belts";
 import { notify } from "../career/inbox";
@@ -182,6 +183,8 @@ function importance(w: World, b: Bout): number {
   const rs = (r: number | null) => (r === null ? 0 : r === 0 ? 200 : (16 - r) * 12);
   s += rs(ra) + rs(rb);
   s += (fa.pop + fb.pop) * 1.4;
+  // Bad blood sells: a grudge match moves up the card.
+  s += heatOf(w, fa.id, fb.id) * 5;
   if (b.status === "cancelled") s -= 5000;
   return s;
 }
@@ -480,7 +483,17 @@ export function offerFight(w: World, rng: Rng, ev: MMAEvent, f: Fighter, opp?: F
         const rf = rankOf(w, f);
         const rt = rankOf(w, t);
         const gap = (rf ?? 18) - (rt ?? 18);
-        if (rng.chance(gap > 8 ? 0.2 : gap > 4 ? 0.5 : 0.75)) o = t;
+        // Both said yes in public: the matchmaker nearly always makes it.
+        const agreed = !!w.career.fc[f.id]?.callout?.ok;
+        if (rng.chance(agreed ? 0.9 : gap > 8 ? 0.2 : gap > 4 ? 0.5 : 0.75)) o = t;
+      }
+    }
+    if (!o) {
+      // A rivalry with real heat in the division: the fight sells, so it gets made.
+      const hot = rivalsOf(w, f).find((x) => x.r.heat >= 35 && pool.includes(x.f) && !teammates(f, x.f));
+      if (hot) {
+        const gap = Math.abs((rankOf(w, f) ?? 18) - (rankOf(w, hot.f) ?? 18));
+        if (gap <= 8 && rng.chance(hot.r.heat / 130)) o = hot.f;
       }
     }
     if (!o) o = bestOpponent(w, rng, f, pool, ev.promo, new Set());
@@ -499,6 +512,9 @@ export function offerFight(w: World, rng: Rng, ev: MMAEvent, f: Fighter, opp?: F
     replace.pending = "x";
   }
   const pay = extra.stay ? fightOfferPay(w, f, ev.promo, false) : fightOfferPay(w, f, ev.promo, shortNotice);
+  // A grudge match sells, and the promotion pays for it.
+  const grudge = grudgeBonus(w, f, o, pay.show, pay.win);
+  if (grudge) pay.show += grudge;
   if (k === "bmf") {
     // A BMF fight sells: it pays like a main event.
     pay.show = Math.round((pay.show * 1.5) / 1000) * 1000;
@@ -584,7 +600,7 @@ export function offerFight(w: World, rng: Rng, ev: MMAEvent, f: Fighter, opp?: F
     ref: offer.id,
     from: `${p.short} matchmaker`,
     subject: `${p.short} offer: ${fullName(o)}${stakeLabel(bout) ? ` (${stakeLabel(bout)!.toLowerCase()})` : ""}`,
-    body: `${p.name} offers ${you} ${kindText} against ${fullName(o)} (${rec}) at ${ev.name} on ${fmtDate(ev.day)} in ${ev.city}. ${bout.rounds} rounds. ${purse}`,
+    body: `${p.name} offers ${you} ${kindText} against ${fullName(o)} (${rec}) at ${ev.name} on ${fmtDate(ev.day)} in ${ev.city}. ${bout.rounds} rounds. ${purse}${grudge ? ` The bad blood sells: ${money(grudge)} of that is for the grudge.` : ""}`,
     needs: true,
     actions: [
       { id: "accept", label: "Accept", primary: true },

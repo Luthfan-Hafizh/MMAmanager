@@ -13,6 +13,9 @@ import { notify } from "./inbox";
 import { payPurse } from "./money";
 import { checkAchievements } from "./achievements";
 import { clearCallout, offerMicrophone } from "./fightweek";
+import { offerPostFight } from "./media";
+import { addHeat, addMoment, addPop, heatOf, ppvShare, stageMul } from "./rivals";
+import { boutLimit } from "./shortnotice";
 
 export function afterFightCareer(w: World, rng: Rng, b: Bout, o: FightOutcome): void {
   for (const side of ["a", "b"] as const) {
@@ -70,7 +73,17 @@ export function afterFightCareer(w: World, rng: Rng, b: Bout, o: FightOutcome): 
     }
     checkAchievements(w, f, b);
     clearCallout(w, f, opp.id);
+    if (b.kind === "bmf" && fc) fc.bmfCall = undefined;
+    // A rivalry settled in the cage: the winner cashes in, and the heat cools unless it was close.
+    const heat = heatOf(w, f.id, opp.id);
+    if (heat >= 25 && (won || lost)) {
+      if (won) addPop(f, (heat / 25) * stageMul(f));
+      const close = o.verdict === "split" || o.verdict === "majority";
+      addHeat(w, f, opp, close ? -heat * 0.1 : -heat * 0.45, won ? `Beat ${opp.surname}${close ? ", but it was close" : ""}` : `Lost to ${opp.surname}${close ? ", and it was close" : ""}`);
+      addMoment(w, f, "life", won ? `Settled the rivalry with ${opp.surname} in the cage.` : `Lost the grudge match to ${opp.surname}.`, opp.id);
+    }
     if (won) offerMicrophone(w, f, b);
+    offerPostFight(w, f, b);
     void rng;
   }
 }
@@ -85,22 +98,24 @@ export function payControlled(w: World, b: Bout): void {
     const finish = won && (b.res.method === "KO" || b.res.method === "TKO" || b.res.method === "SUB");
     const missedMe = side === "a" ? b.weighIn?.missA : b.weighIn?.missB;
     const missedThem = side === "a" ? b.weighIn?.missB : b.weighIn?.missA;
-    const limit = DIVISIONS[b.div].limit;
+    const limit = boutLimit(b);
+    const other = side === "a" ? "b" : "a";
     const myW = side === "a" ? b.weighIn?.a ?? limit : b.weighIn?.b ?? limit;
-    const fine = missedMe ? (myW - limit > 2.5 ? 0.3 : 0.2) : 0;
+    const fine = missedMe ? b.fineCut?.[side] ?? (myW - limit > 2.5 ? 0.3 : 0.2) : 0;
     let fineIn = 0;
     if (missedThem) {
       const opp = w.fighters[side === "a" ? b.b : b.a];
       const oppW = side === "a" ? b.weighIn?.b ?? limit : b.weighIn?.a ?? limit;
       const oppShow = opp.contract?.show ?? PROMOTIONS[b.promo].showLow;
-      fineIn = oppShow * 2 * (oppW - limit > 2.5 ? 0.3 : 0.2);
+      fineIn = oppShow * 2 * (b.fineCut?.[other] ?? (oppW - limit > 2.5 ? 0.3 : 0.2));
     }
-    const p = payPurse(w, f, b, won, bonusCount, finish, fine, fineIn);
+    const p = payPurse(w, f, b, won, bonusCount, finish, fine, fineIn, ppvShare(w, f, b));
     const parts = [`Show ${money(p.show)}`];
     if (p.win) parts.push(`win ${money(p.win)}`);
     if (p.compliance) parts.push(`compliance pay ${money(p.compliance)}`);
     if (p.bonus) parts.push(`bonus ${money(p.bonus)}`);
     if (p.finish) parts.push(`finish bonus ${money(p.finish)}`);
+    if (p.ppv) parts.push(`pay-per-view share ${money(p.ppv)}`);
     if (p.fine) parts.push(`weight fine -${money(p.fine)}`);
     const body =
       w.career.mode === "fighter"

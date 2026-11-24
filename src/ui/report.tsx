@@ -18,6 +18,8 @@ export interface ReportData {
   detail?: string;
   endRound?: number;
   endTime?: number;
+  /** Round length: key moments are timed on the broadcast clock (time left) when it's known. */
+  roundSec?: number;
 }
 
 export function reportOf(w: World, b: Bout): ReportData | null {
@@ -26,7 +28,7 @@ export function reportOf(w: World, b: Bout): ReportData | null {
   const A = w.fighters[b.a];
   const B = w.fighters[b.b];
   if (!r || !rounds || !A || !B) return null;
-  return { a: A, b: B, rounds, rcards: r.rcards, log: r.log, winner: r.winner, method: r.method, detail: r.detail, endRound: r.round, endTime: r.time };
+  return { a: A, b: B, rounds, rcards: r.rcards, log: r.log, winner: r.winner, method: r.method, detail: r.detail, endRound: r.round, endTime: r.time, roundSec: b.roundSec };
 }
 
 const pct = (l: number, a: number) => (a ? `${Math.round((l / a) * 100)}%` : "–");
@@ -172,7 +174,7 @@ export function FightReport({ data, title = "Fight report" }: { data: ReportData
                 <div className="r">Round {i + 1}</div>
                 {lines.map((l, k) => (
                   <div key={k} className={`fr-moment${l.side !== undefined ? ` s${l.side}` : ""}${l.kind === "finish" ? " finish" : ""}`}>
-                    <span className="t">{clock(l.t)}</span>
+                    <span className="t">{data.roundSec ? clock(Math.max(0, data.roundSec - l.t)) : clock(l.t)}</span>
                     <span>{l.text}</span>
                   </div>
                 ))}

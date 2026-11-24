@@ -95,14 +95,18 @@ export function bmfPairing(w: World, rng: Rng, ev: MMAEvent, ready: (f: Fighter)
   if (!bmf) return null;
   if (bmf.last !== undefined && ev.day - bmf.last < 240) return null;
   if (Object.values(w.bouts).some((b) => b.kind === "bmf" && b.status === "booked")) return null;
-  if (!rng.chance(0.55)) return null;
+  // A player's fighter who has called for it in public is first in line.
+  const called = (f: Fighter) => !!f.ctrl && (w.career.fc[f.id]?.bmfCall ?? -1) >= w.day && f.pop >= 35;
   const pool = rosterOf(w, "ufc", "LW").filter((f) => ready(f) && f.id !== ps.champs.LW && f.id !== ps.interim.LW);
-  const cands = pool.filter((f) => f.id !== bmf.holder && f.pop >= 40).sort((a, b) => bmfScore(w, b) - bmfScore(w, a));
+  if (!rng.chance(pool.some(called) ? 0.85 : 0.55)) return null;
+  const score = (f: Fighter) => bmfScore(w, f) + (called(f) ? 30 : 0);
+  const cands = pool.filter((f) => f.id !== bmf.holder && (f.pop >= 40 || called(f))).sort((a, b) => score(b) - score(a));
   const holder = bmf.holder ? w.fighters[bmf.holder] : null;
   if (holder) {
     if (!pool.includes(holder)) return null;
     const opp = cands.slice(0, 3).filter((f) => f.gym !== holder.gym);
-    return opp.length ? [holder, rng.pick(opp)] : null;
+    const caller = opp.find(called);
+    return opp.length ? [holder, caller ?? rng.pick(opp)] : null;
   }
   const two = cands.filter((f, i) => i === 0 || f.gym !== cands[0].gym).slice(0, 2);
   return two.length === 2 ? [two[0], two[1]] : null;
@@ -280,4 +284,15 @@ export function stripMonthly(w: World): void {
       }
     }
   }
+}
+
+/** The BMF race: the UFC lightweights the promotion would put in a BMF fight, best first. */
+export function bmfRace(w: World, n = 6): { f: Fighter; score: number }[] {
+  const ps = w.promos.ufc;
+  if (!ps?.bmf) return [];
+  return rosterOf(w, "ufc", "LW")
+    .filter((f) => f.status === "active" && f.id !== ps.champs.LW && f.id !== ps.interim.LW && f.id !== ps.bmf!.holder && f.pop >= 25)
+    .map((f) => ({ f, score: Math.round(bmfScore(w, f)) }))
+    .sort((a, b) => b.score - a.score)
+    .slice(0, n);
 }

@@ -10,6 +10,8 @@ import type { Bout, Fighter, World } from "../model/types";
 import { addNews, fullName, rankOf, isChampion, touch, withRng } from "../world/core";
 import { notify, closeMessages } from "./inbox";
 import { ledger } from "./money";
+import { addHeat, addMoment, heatOf } from "./rivals";
+import { bmfEligible, callOut } from "./social";
 
 export type Tone = "respect" | "confident" | "trash" | "skip";
 
@@ -32,6 +34,15 @@ export function mediaPrep(b: Bout, side: "a" | "b", f: Fighter): number {
   if (mine === "skip") p += 0.04;
   if (mine === "trash") p += f.pers.temperament >= 11 ? 0.02 : -0.05;
   if (theirs === "trash") p += 0.05;
+  // The face-off: calm helps, a shove can cost focus, and being shoved fires you up.
+  const fo = b.faceoff?.[side];
+  const fo2 = b.faceoff?.[side === "a" ? "b" : "a"];
+  if (fo === "respect" || fo === "stare") p += 0.01;
+  if (fo === "shove" && f.pers.temperament < 11) p -= 0.02;
+  if (fo2 === "shove") p += 0.03;
+  else if (fo2 === "talk") p += 0.01;
+  // What was said to the press weeks before.
+  p += clamp(b.mprep?.[side] ?? 0, -0.06, 0.06);
   return p;
 }
 
@@ -56,6 +67,7 @@ export function fightWeekDaily(w: World, rng: Rng): void {
     b.media = { ...(b.media ?? {}), [side === "a" ? "b" : "a"]: b.media?.[side === "a" ? "b" : "a"] ?? aiTone(rng, opp) };
     const ev = w.events[b.ev];
     const oppTone = b.media[side === "a" ? "b" : "a"];
+    const heat = heatOf(w, f.id, opp.id);
     const theirLine =
       oppTone === "trash"
         ? `${opp.surname} has already been talking: "${pick(rng, ["I'm going to embarrass him", "He doesn't belong in there with me", "Nobody will remember his name on Sunday", "He's a paper champion in the making"]).replace(/him|his|He/g, (m) => (f.sex === "F" ? { him: "her", his: "her", He: "She" }[m as "him"] ?? m : m))}."`
@@ -63,14 +75,18 @@ export function fightWeekDaily(w: World, rng: Rng): void {
           ? `${opp.surname} says it won't go the distance.`
           : `${opp.surname} has been respectful all week.`;
     notify(w, {
-      kind: "camp",
+      kind: "media",
       fighter: f.id,
       ref: b.id,
       from: `${PROMOTIONS[b.promo].short} media team`,
       subject: `Media day: ${f.surname} vs ${opp.surname}`,
-      body: `Fight week at ${ev?.name ?? "the event"}. The press conference is today. ${theirLine} How do you play it?`,
+      body: `Fight week at ${ev?.name ?? "the event"}: media day is today. ${theirLine}${heat >= 30 ? ` The press know about the bad blood (heat ${heat}).` : ""} Take the questions one by one, or set the tone and let the day run.`,
       needs: true,
-      actions: (Object.keys(TONES) as Tone[]).map((t, i) => ({ id: `media:${t}`, label: TONES[t].label, primary: i === 1, danger: t === "skip" })),
+      actions: [
+        { id: "press:go", label: "Answer the questions", primary: true },
+        ...(Object.keys(TONES) as Tone[]).map((t) => ({ id: `media:${t}`, label: TONES[t].label, danger: t === "skip" })),
+      ],
+      data: { kind: "mediaday", bout: b.id },
     });
   }
 }
@@ -152,9 +168,12 @@ export function offerMicrophone(w: World, f: Fighter, b: Bout): void {
   const champ = ps.champs[f.div];
   const canAskTitle = !!champ && champ !== f.id && r !== null && r > 0 && r <= 5 && f.streak >= 2;
   if (!targets.length && !canAskTitle) return;
-  const actions = targets.map((t) => ({ id: `callout:${t.id}`, label: `Call out ${t.surname}` }));
-  if (canAskTitle) actions.unshift({ id: "titleshot", label: "Ask for the title shot", primary: true } as never);
-  actions.push({ id: "callout:none", label: "Thank the fans" } as never);
+  const actions: { id: string; label: string; primary?: boolean }[] = targets.map((t) => ({ id: `callout:${t.id}`, label: `Call out ${t.surname}` }));
+  if (canAskTitle) actions.unshift({ id: "titleshot", label: "Ask for the title shot", primary: true });
+  const holder = w.promos.ufc?.bmf?.holder;
+  const finish = b.res && b.res.method !== "DEC";
+  if (bmfEligible(w, f) && holder !== f.id && (finish || f.pop >= 55)) actions.push({ id: "bmfcall", label: holder ? `Call for the BMF title (${w.fighters[holder]?.surname ?? "the holder"})` : "Call for the vacant BMF title" });
+  actions.push({ id: "callout:none", label: "Thank the fans" });
   notify(w, {
     kind: "result",
     fighter: f.id,
@@ -170,6 +189,17 @@ export function answerMicrophone(w: World, f: Fighter, action: string): string {
   const fc = w.career.fc[f.id];
   if (!fc || !f.promo) return "";
   const ps = w.promos[f.promo];
+  if (action === "bmfcall") {
+    const holder = w.promos.ufc?.bmf?.holder ? w.fighters[w.promos.ufc.bmf.holder] : null;
+    if (holder && holder.id !== f.id) {
+      const r = withRng(w, (rng) => callOut(w, rng, f, holder, "callout", { viaTalk: true, asBmf: true }));
+      return `${f.surname} wants the BMF title. ${r.reply}`;
+    }
+    fc.bmfCall = w.day + 360;
+    f.pop = clamp(f.pop + 1, 0, 100);
+    addMoment(w, f, "callout", '"Make the BMF fight. The fans want it, and so do I."');
+    return `${f.surname} asks for the vacant BMF title. The promotion likes the sound of it.`;
+  }
   if (action === "titleshot") {
     const r = rankOf(w, f) ?? 99;
     const champId = ps.champs[f.div];
@@ -190,6 +220,8 @@ export function answerMicrophone(w: World, f: Fighter, action: string): string {
   if (!t) return "";
   fc.callout = { target: id, until: w.day + 150 };
   f.pop = clamp(f.pop + 0.8, 0, 100);
+  addHeat(w, f, t, 12, "Called out after a win");
+  addMoment(w, f, "callout", `In the cage: "${t.surname}, you're next."`, t.id);
   const big = PROMOTIONS[f.promo].tier === "major" || PROMOTIONS[f.promo].tier === "league";
   if (big || t.pop > 30) addNews(w, { kind: "booking", promo: f.promo, fighters: [f.id, id], text: `${fullName(f)} calls out ${fullName(t)}${isChampion(w, t) ? ", the champion" : ""}.` });
   return `${f.surname} calls out ${fullName(t)}. The matchmaker will look at it.`;

@@ -1,11 +1,12 @@
-import { Fragment, useState } from "react";
+import { useState } from "react";
 import { fmtDate } from "../../core/time";
 import { money } from "../../core/util";
 import { PROMOTIONS } from "../../data/promotions";
 import type { ContractOffer, Fighter, World } from "../../model/types";
-import { counterOffer, fireManager, hireManager, rejectContract, signContract, valueOf } from "../../career/offers";
-import { adviseContract, adviserOf, managerNegotiate } from "../../career/advisor";
-import { AdviceCard, AskDesk } from "../advice";
+import { counterOffer, rejectContract, signContract } from "../../career/offers";
+import { adviseContract, managerNegotiate } from "../../career/advisor";
+import { AdviceCard } from "../advice";
+import { TeamPanel } from "../team";
 import { fullName, withRng } from "../../world/core";
 import { changed, toast, useWorld } from "../../state/store";
 import { Empty, Panel, PromoBadge } from "../components";
@@ -45,45 +46,7 @@ export function Contracts({ id }: { id?: string }) {
             <Empty title="Free agent">Offers arrive in the inbox at the start of each month.</Empty>
           )}
         </Panel>
-        {fc && (
-          <Panel title="Your team" hint={w.career.mode === "fighter" ? (fc.manager ? `${fc.manager.cut}% of purses` : "no manager") : "your agency"}>
-            {w.career.mode === "fighter" && (fc.manager ? (
-              <div className="team-card">
-                <div className="team-av" aria-hidden="true">{(fc.manager.person ?? fc.manager.name).split(" ").map((x) => x[0]).slice(0, 2).join("")}</div>
-                <div style={{ minWidth: 0 }}>
-                  <div className="dx" style={{ fontSize: 24 }}>{fc.manager.person ?? fc.manager.name}</div>
-                  <div className="small dim">{fc.manager.name} · {fc.manager.cut}% of purses and sponsorship · {fc.manager.style === "bold" ? "likes a gamble" : fc.manager.style === "careful" ? "protects the record" : "plays it straight"}</div>
-                  <div className="small" style={{ marginTop: 6 }}>Negotiates your deals, finds sponsors, and gives advice on every offer.</div>
-                </div>
-                <button className="btn ghost sm" onClick={() => { fireManager(w, f); changed(); }}>Part ways</button>
-              </div>
-            ) : (
-              <>
-                <p className="muted">Without a manager you keep the commission, but promotions open lower, sponsors call less, and only your head coach advises you, on the fights and not the money. Managers in MMA take 10 to 20%.</p>
-                <div className="row">
-                  {[{ q: 30, label: "Local manager (10%)" }, { q: 55, label: "Established agency (15%)" }, { q: 80, label: "Elite agency (20%)" }].map((m) => (
-                    <button key={m.q} className="btn sm" disabled={m.q >= 80 && f.pop < 30} title={m.q >= 80 && f.pop < 30 ? "Elite agencies only take names with a following" : ""} onClick={() => { toast(hireManager(w, f, m.q), "good"); changed(); }}>
-                      {m.label}
-                    </button>
-                  ))}
-                </div>
-              </>
-            ))}
-            <div className="label" style={{ marginTop: 14, marginBottom: 8 }}>Ask {adviserOf(w, f).name.split(",")[0]}</div>
-            <AskDesk w={w} f={f} />
-          </Panel>
-        )}
-        <Panel title="What promotions think you're worth" hint="show money per fight">
-          <dl className="kv">
-            {(["ufc", "pfl"] as const).map((p) => (
-              <Fragment key={p}><dt>{PROMOTIONS[p].short}</dt><dd>{money(valueOf(w, f, p))}</dd></Fragment>
-            ))}
-            {f.promo && f.promo !== "ufc" && f.promo !== "pfl" && (
-              <><dt>{PROMOTIONS[f.promo].short}</dt><dd>{money(valueOf(w, f, f.promo))}</dd></>
-            )}
-          </dl>
-          <p className="tiny dim" style={{ marginTop: 8 }}>Value follows the level, the ranking, popularity and the current run. Rival offers push a promotion's ceiling up.</p>
-        </Panel>
+        {fc && <TeamPanel w={w} f={f} />}
       </div>
       <div className="c7 stack">
         {offers.length === 0 && <Panel title="Offers"><Empty title="No contract offers">They come when a deal ends, when a bigger promotion is interested, or when you're a free agent.</Empty></Panel>}

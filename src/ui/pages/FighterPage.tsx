@@ -23,6 +23,8 @@ import { FIGHT_STYLES, masteryName, styleFit, type StyleId } from "../../data/fi
 import { fightStyle } from "../../world/fightstyle";
 import { useHistory, realTitleWin, type FighterHistory } from "../../state/history";
 import { dayOf } from "../../core/time";
+import { CallOutPanel } from "./Media";
+import { compact, followers, heatOf } from "../../career/rivals";
 
 type Tab = "overview" | "fights" | "stats" | "techniques";
 
@@ -58,7 +60,7 @@ function Hero({ w, f, tabs }: { w: World; f: Fighter; tabs: React.ReactNode }) {
   const div = DIVISIONS[f.div];
   const r = f.rec;
   const champ = isChampion(w, f);
-  const firstRound = boutsOf(w, f).filter((b) => b.res && b.res.round === 1 && b.res.method !== "DEC" && resultFor(b, f.id) === "W").length;
+  const finishRate = r.w ? Math.round(((r.koW + r.subW) / r.w) * 100) : null;
   return (
     <Band
       eyebrow={
@@ -81,23 +83,21 @@ function Hero({ w, f, tabs }: { w: World; f: Fighter; tabs: React.ReactNode }) {
       }
       tabs={tabs}
     >
-      <div className="factgrid">
-        <div><div className="k">Country</div><div className="v row tight"><Flag code={f.country} /> {countryOf(f.country).name}</div></div>
-        <div><div className="k">Hometown</div><div className="v">{f.hometown}</div></div>
-        <div><div className="k">Age</div><div className="v">{ageYears(f.birth, w.day)}</div></div>
-        <div><div className="k">Height / reach</div><div className="v">{heightText(f.height)} ({cmOf(f.height)} cm) / {f.reach}"</div></div>
-        <div><div className="k">Stance / base</div><div className="v">{f.stance.replace(/^./, (c) => c.toUpperCase())} / {ARTS[f.base].name}</div></div>
-        <div><div className="k">Team</div><div className="v ellip">{w.gyms[f.gym]?.name ?? "-"}</div></div>
-        <div><div className="k">Striking style</div><div className="v">{FIGHT_STYLES[fightStyle(f).s].name}</div></div>
-        <div><div className="k">Grappling style</div><div className="v">{FIGHT_STYLES[fightStyle(f).g].name}</div></div>
-        <div><div className="k">Walks around</div><div className="v">{Math.round(f.walk)} lb</div></div>
+      <ul className="bio" aria-label="Bio">
+        <li><Flag code={f.country} /> {countryOf(f.country).name}</li>
+        <li>{ageYears(f.birth, w.day)} years old</li>
+        <li>{heightText(f.height)} · {f.reach}" reach</li>
+        <li>{f.stance.replace(/^./, (c) => c.toUpperCase())}</li>
+      </ul>
+      <div className="bio-styles" aria-label="Fighting styles">
+        <span className="tag" title="Striking style">{FIGHT_STYLES[fightStyle(f).s].name}</span>
+        <span className="tag" title="Grappling style">{FIGHT_STYLES[fightStyle(f).g].name}</span>
       </div>
       <div className="bignums">
-        <div><div className="n">{recordText(f)}</div><div className="k">Pro record (W-L-D)</div></div>
-        <div><div className="n">{r.koW}</div><div className="k">Wins by knockout</div></div>
+        <div><div className="n">{recordText(f)}</div><div className="k">Record, W-L-D</div></div>
+        <div><div className="n">{r.koW}</div><div className="k">Wins by KO/TKO</div></div>
         <div><div className="n">{r.subW}</div><div className="k">Wins by submission</div></div>
-        <div><div className="n">{firstRound}</div><div className="k">First-round finishes here</div></div>
-        <div><div className="n">{o}</div><div className="k">{ovrBand(o)}</div></div>
+        <div><div className="n">{finishRate === null ? "–" : `${finishRate}%`}</div><div className="k">Finish rate</div></div>
       </div>
     </Band>
   );
@@ -110,6 +110,9 @@ function Overview({ w, f }: { w: World; f: Fighter }) {
   const nextB = f.booked ? w.bouts[f.booked] : null;
   const r = f.rec;
   const wins = Math.max(1, r.w);
+  // Who would do the calling out: the player's fighter (or the client in the same division).
+  const mine = w.career.fighters.map((id) => w.fighters[id]).filter((x) => x && x.status === "active");
+  const caller = f.ctrl || f.status !== "active" ? null : mine.find((x) => x.div === f.div && x.promo === f.promo) ?? (w.career.mode === "fighter" ? mine[0] ?? null : null);
   return (
     <div className="grid">
       <div className="c8 stack">
@@ -127,6 +130,22 @@ function Overview({ w, f }: { w: World; f: Fighter }) {
         </section>
       </div>
       <div className="c4 stack">
+        <Panel title="Bio">
+          <dl className="kv bio-kv">
+            <dt>Country</dt><dd className="row tight"><Flag code={f.country} /> {countryOf(f.country).name}</dd>
+            <dt>Hometown</dt><dd>{f.hometown}</dd>
+            <dt>Age</dt><dd>{ageYears(f.birth, w.day)}</dd>
+            <dt>Height</dt><dd>{heightText(f.height)} ({cmOf(f.height)} cm)</dd>
+            <dt>Reach</dt><dd>{f.reach}" ({Math.round(f.reach * 2.54)} cm)</dd>
+            <dt>Stance</dt><dd>{f.stance.replace(/^./, (c) => c.toUpperCase())}</dd>
+            <dt>Background</dt><dd>{ARTS[f.base].name}</dd>
+            <dt>Striking</dt><dd>{FIGHT_STYLES[fightStyle(f).s].name}</dd>
+            <dt>Grappling</dt><dd>{FIGHT_STYLES[fightStyle(f).g].name}</dd>
+            <dt>Team</dt><dd>{w.gyms[f.gym]?.name ?? "–"}</dd>
+            <dt>Walks around</dt><dd>{Math.round(f.walk)} lb · fights at {DIVISIONS[f.div].limit} lb</dd>
+          </dl>
+        </Panel>
+        {caller && <CallOutPanel w={w} f={caller} target={f} />}
         <Panel title="Record">
           <div className="recbox" style={{ borderColor: "var(--line)", background: "var(--sheet-2)" }}>
             <div style={{ borderColor: "var(--line)" }}><div className="label">W-L-D</div><div className="num" style={{ fontSize: 26 }}>{recordText(f)}</div></div>
@@ -149,7 +168,8 @@ function Overview({ w, f }: { w: World; f: Fighter }) {
             <div className="spread"><span className="label">Rating</span><span className="row tight"><Stars v={ovr(f.attrs)} /> {ovrBand(ovr(f.attrs))}</span></div>
             <div className="spread" style={{ marginTop: 6 }}><span className="label">Outlook</span><span>{potentialText(f, w.day, f.ctrl ? 1 : 0.5)}</span></div>
             <div className="spread" style={{ marginTop: 6 }}><span className="label">Career stage</span><span>{primeText(f, w.day)}</span></div>
-            <div className="spread" style={{ marginTop: 6 }}><span className="label">Popularity</span><span>{Math.round(f.pop)}/100</span></div>
+            <div className="spread" style={{ marginTop: 6 }}><span className="label">Popularity</span><span>{Math.round(f.pop)}/100 · {compact(followers(f.pop))} followers</span></div>
+            {caller && heatOf(w, caller.id, f.id) > 0 && <div className="spread" style={{ marginTop: 6 }}><span className="label">Heat with {caller.surname}</span><span>{heatOf(w, caller.id, f.id)}/100</span></div>}
           </div>
         </Panel>
         <Rivals w={w} f={f} />

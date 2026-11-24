@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useReducer, useRef, useState } from "react";
 import { clock, fmtDate } from "../../core/time";
 import { DIVISIONS } from "../../data/divisions";
+import { PROMOTIONS } from "../../data/promotions";
 import type { Bout, FightLogLine, Fighter, RoundStat, World } from "../../model/types";
 import { FightSim, GPOS_NAME, methodText, type CornerCall, type FightOutcome, type LiveAdvice } from "../../engine/sim";
 import { clamp } from "../../core/util";
@@ -91,7 +92,7 @@ export function FightNight() {
               </div>
               {b.weighIn && (
                 <p className="small dim" style={{ marginTop: 8 }}>
-                  Weigh-in: {a.surname} {b.weighIn.a.toFixed(1)} lb{b.weighIn.missA ? " (missed)" : ""}, {c.surname} {b.weighIn.b.toFixed(1)} lb{b.weighIn.missB ? " (missed)" : ""}. {b.rounds} rounds, {DIVISIONS[b.div].name.toLowerCase()}{b.catchweight ? `, catchweight ${b.catchweight} lb` : ""}.
+                  Weigh-in: {a.surname} {b.weighIn.a.toFixed(1)} lb{b.weighIn.missA ? " (missed)" : ""}, {c.surname} {b.weighIn.b.toFixed(1)} lb{b.weighIn.missB ? " (missed)" : ""}. {b.rounds} rounds of {Math.round(b.roundSec / 60)} minutes{PROMOTIONS[b.promo].tier === "amateur" ? " (amateur rules)" : ""}, {DIVISIONS[b.div].name.toLowerCase()}{b.catchweight ? `, catchweight ${b.catchweight} lb` : ""}.
                 </p>
               )}
               <div className="row" style={{ marginTop: 10 }}>
@@ -133,13 +134,13 @@ export function FightNight() {
   );
 }
 
-type Speed = "watch" | "quick" | "fast" | "bell";
+type Speed = "watch" | "quick" | "fast";
 const SPEEDS: { v: Speed; label: string }[] = [
   { v: "watch", label: "Watch" },
   { v: "quick", label: "Quick" },
   { v: "fast", label: "Fast" },
-  { v: "bell", label: "To the bell" },
 ];
+const FINISH_FLAG: Record<string, string> = { KO: "Knockout", TKO: "TKO", SUB: "Submission", DQ: "Disqualification", NC: "No contest" };
 const ZONES = ["Head", "Body", "Legs"] as const;
 
 /** What happens to the corner's calls: you choose, the corner decides, or the fighter's instinct does. */
@@ -158,7 +159,7 @@ interface CallCard extends LiveAdvice {
   good?: boolean;
 }
 /** How long a call stays up, urgent and normal, in milliseconds. */
-const CALL_TTL: Record<Speed, [number, number]> = { watch: [7000, 11000], quick: [5000, 8000], fast: [2600, 3600], bell: [0, 0] };
+const CALL_TTL: Record<Speed, [number, number]> = { watch: [7000, 11000], quick: [5000, 8000], fast: [2600, 3600] };
 
 function LiveFight({ w, b, onDone }: { w: World; b: Bout; onDone: (o: FightOutcome) => void }) {
   const mine: 0 | 1 = w.fighters[b.a].ctrl ? 0 : 1;
@@ -173,12 +174,15 @@ function LiveFight({ w, b, onDone }: { w: World; b: Bout; onDone: (o: FightOutco
   const [, tick] = useReducer((x: number) => x + 1, 0);
   const [speed, setSpeed] = useState<Speed>(() => {
     try {
-      return (localStorage.getItem("mma.fightSpeed") as Speed) || "watch";
+      const s = localStorage.getItem("mma.fightSpeed");
+      return s === "quick" || s === "fast" ? s : "watch";
     } catch {
       return "watch";
     }
   });
   const [paused, setPaused] = useState(false);
+  /** Skip to the bell: this round only. */
+  const [skip, setSkip] = useState(false);
   const [focus, setFocus] = useState<"recover" | "cut" | "tactics" | "head">("recover");
   const [used, setUsed] = useState<string[]>([]);
   const [sideTab, setSideTab] = useState<"moves" | "stats" | "read">("moves");
@@ -301,18 +305,51 @@ function LiveFight({ w, b, onDone }: { w: World; b: Bout; onDone: (o: FightOutco
     return () => window.removeEventListener("keydown", onKey);
   });
 
+  // ---------- the clock: it runs through each exchange while its line is on screen ----------
+  const clockRef = useRef<{ from: number; to: number; at: number; dur: number; pausedAt?: number }>({ from: 0, to: 0, at: 0, dur: 0 });
+  const clockTo = (from: number, to: number, dur: number) => {
+    clockRef.current = { from, to, at: performance.now(), dur };
+  };
+  const [, frame] = useReducer((x: number) => x + 1, 0);
+  useEffect(() => {
+    if (paused || sim.over || sim.between) return;
+    const iv = window.setInterval(frame, 200);
+    return () => window.clearInterval(iv);
+  }, [paused, sim.over, sim.between]);
+  const shownT = (() => {
+    const c = clockRef.current;
+    if (sim.over || sim.between || c.to !== sim.t || c.dur <= 0) return sim.t;
+    const now = paused ? c.pausedAt ?? performance.now() : performance.now();
+    return c.from + (c.to - c.from) * clamp((now - c.at) / c.dur, 0, 1);
+  })();
+  const togglePause = () => {
+    const c = clockRef.current;
+    const now = performance.now();
+    if (!paused) c.pausedAt = now;
+    else if (c.dur > 0) {
+      const frac = clamp(((c.pausedAt ?? now) - c.at) / c.dur, 0, 1);
+      clockRef.current = { from: c.from + (c.to - c.from) * frac, to: c.to, at: now, dur: 300 };
+    }
+    setPaused((p) => !p);
+  };
+
   // The broadcast: in Watch, every line stays up long enough to read.
   useEffect(() => {
     if (paused || sim.over || sim.between) return;
     let timer = 0;
     const run = () => {
       if (sim.over || sim.between) return;
-      if (speed === "bell") {
+      const start = sim.t;
+      const n0 = sim.log.length;
+      if (skip) {
+        // To the bell, for this round only: the next round goes back to the chosen speed.
         let g = 0;
         while (!sim.over && !sim.between && g++ < 5000) {
           sim.step();
           poll(true);
         }
+        clockTo(sim.t, sim.t, 0);
+        setSkip(false);
         tick();
         return;
       }
@@ -321,24 +358,30 @@ function LiveFight({ w, b, onDone }: { w: World; b: Bout; onDone: (o: FightOutco
         let g = 0;
         while (!sim.over && !sim.between && sim.t < target && g++ < 400) sim.step();
         poll(false);
+        // The action slows down for the big moments, so a knockdown doesn't fly past.
+        const big = sim.log.slice(n0).some((l) => l.big);
+        const delay = big ? 1500 : 110;
+        clockTo(start, sim.t, big ? 400 : delay);
         tick();
-        timer = window.setTimeout(run, 100);
+        timer = window.setTimeout(run, delay);
         return;
       }
-      const n0 = sim.log.length;
       let g = 0;
       while (!sim.over && !sim.between && sim.log.length === n0 && g++ < 80) sim.step();
       poll(false);
-      tick();
       const fresh = sim.log.slice(n0);
       const chars = fresh.reduce((a, l) => a + l.text.length, 0);
       const big = fresh.some((l) => l.big);
       const delay = speed === "watch" ? Math.min(4400, 900 + chars * 26 + (big ? 1000 : 0)) : Math.min(1700, 320 + chars * 9 + (big ? 450 : 0));
+      // The clock starts where the line happens and runs through the exchange while it's read.
+      const first = fresh.find((l) => l.kind !== "round");
+      clockTo(first ? Math.max(start, first.t) : start, sim.t, delay);
+      tick();
       timer = window.setTimeout(run, delay);
     };
     timer = window.setTimeout(run, 300);
     return () => window.clearTimeout(timer);
-  }, [speed, paused, sim, sim.round, sim.between, sim.over]);
+  }, [speed, skip, paused, sim, sim.round, sim.between, sim.over]);
 
   const out = sim.over ? sim.outcome() : null;
   const me = sim.s[mine];
@@ -391,8 +434,10 @@ function LiveFight({ w, b, onDone }: { w: World; b: Bout; onDone: (o: FightOutco
           <FighterMeters sim={sim} i={0} />
           <div className="mid">
             <div className="rd">Round {sim.round} of {sim.rounds}</div>
-            <div className="clock">{clock(Math.max(0, sim.roundSec - sim.t))}</div>
-            <div className="pos">{sim.over ? "Fight over" : sim.between ? "Between rounds" : posText}</div>
+            <div className="clock">{clock(Math.max(0, Math.floor(sim.roundSec - shownT)))}</div>
+            <div className="clock-bar" aria-hidden="true"><i style={{ width: `${clamp(shownT / sim.roundSec, 0, 1) * 100}%` }} /></div>
+            {sim.roundSec !== 300 && <div className="rd-fmt">{Math.round(sim.roundSec / 60)}-minute rounds{PROMOTIONS[b.promo].tier === "amateur" ? " · amateur rules" : ""}</div>}
+            <div className="pos">{out ? (out.method === "DEC" || out.method === "DRAW" ? "To the judges" : `Stopped · R${out.round} ${clock(out.time)}`) : sim.between ? `End of round ${sim.round}` : posText}</div>
             {!sim.over && !sim.between && (
               <div className="edge" title="Who is winning this round, as the corners see it">
                 <div className="edge-bar"><i style={{ width: `${50 + edge0 * 50}%` }} /></div>
@@ -402,13 +447,19 @@ function LiveFight({ w, b, onDone }: { w: World; b: Bout; onDone: (o: FightOutco
           </div>
           <FighterMeters sim={sim} i={1} />
         </div>
-        <div className={`bc-now${last?.side !== undefined ? ` s${last.side}` : ""}${last?.big ? " big" : ""}`} aria-live="polite">
-          {last ? last.text : "The referee brings them to the centre. Touch gloves…"}
+        <div className={`bc-now${last?.side !== undefined ? ` s${last.side}` : ""}${last?.big ? " big" : ""}${out ? " finish" : ""}`} aria-live="polite">
+          {out && <span className="bc-flag">{FINISH_FLAG[out.method] ?? (out.method === "DRAW" ? "Draw" : "Decision")}</span>}
+          <span>
+            {out && !FINISH_FLAG[out.method]
+              ? `${out.winner ? `${fullName(out.winner === "a" ? w.fighters[b.a] : w.fighters[b.b])} wins` : "A draw"}: ${methodText(out.method, out.detail).toLowerCase()}${out.cards ? ` (${out.cards.map(([x, y]) => `${x}-${y}`).join(", ")})` : ""}.`
+              : last ? last.text : "The referee brings them to the centre. Touch gloves…"}
+          </span>
         </div>
         <div className="bc-ctrl fn-ctrl">
           <div className="fn-ctrl-g" role="group" aria-label="Fight speed">
             <Seg value={speed} onChange={pick} options={SPEEDS} />
-            <button className="btn sm" onClick={() => setPaused((p) => !p)} disabled={sim.over || sim.between}>{paused ? "Resume" : "Pause"}</button>
+            <button className="btn sm" onClick={() => setSkip(true)} disabled={sim.over || sim.between || skip} title="Run this round to the bell. The next round goes back to your speed.">Skip to the bell</button>
+            <button className="btn sm" onClick={togglePause} disabled={sim.over || sim.between}>{paused ? "Resume" : "Pause"}</button>
           </div>
           <div className="fn-ctrl-g" role="group" aria-label="Corner calls">
             <span className="fn-ctrl-l">Corner calls</span>
@@ -420,7 +471,7 @@ function LiveFight({ w, b, onDone }: { w: World; b: Bout; onDone: (o: FightOutco
       {!sim.over && !sim.between && (
         <div className="fn-grid">
           <div className="fn-main">
-            <PlayByPlay log={sim.log} live />
+            <PlayByPlay log={sim.log} live roundSec={sim.roundSec} />
           </div>
           <aside className="fn-side" aria-label="Your corner">
             <div className="fn-calls" aria-live="polite" aria-label="Corner calls">
@@ -523,7 +574,7 @@ function LiveFight({ w, b, onDone }: { w: World; b: Bout; onDone: (o: FightOutco
           </div>
           <p className="muted" style={{ marginTop: 6 }}>
             {methodText(out.method, out.detail)}
-            {out.method !== "DEC" && out.method !== "DRAW" ? `, round ${out.round} at ${clock(out.time)}` : ""}
+            {out.method !== "DEC" && out.method !== "DRAW" ? `, round ${out.round} at ${clock(out.time)} (${clock(Math.max(0, sim.roundSec - out.time))} left on the clock)` : ""}
             {out.cards ? `. ${out.method === "DEC" || out.method === "DRAW" ? "Judges" : "Cards at the stoppage"}: ${out.cards.map(([x, y]) => `${x}-${y}`).join(", ")}` : ""}.
           </p>
           <div className="row" style={{ marginTop: 12 }}>
@@ -534,11 +585,11 @@ function LiveFight({ w, b, onDone }: { w: World; b: Bout; onDone: (o: FightOutco
 
       {(sim.between || sim.over) && rounds.length > 0 && (
         <div className="panel"><div className="panel-b">
-          <FightReport data={{ a: sim.s[0].f, b: sim.s[1].f, rounds, rcards, log: out ? sim.log : undefined, winner: out?.winner, method: out?.method, detail: out?.detail, endRound: out?.round, endTime: out?.time }} title={out ? "Fight report" : "The fight so far"} />
+          <FightReport data={{ a: sim.s[0].f, b: sim.s[1].f, rounds, rcards, log: out ? sim.log : undefined, winner: out?.winner, method: out?.method, detail: out?.detail, endRound: out?.round, endTime: out?.time, roundSec: sim.roundSec }} title={out ? "Fight report" : "The fight so far"} />
         </div></div>
       )}
 
-      {(sim.between || sim.over) && <PlayByPlay log={sim.log} live={false} />}
+      {(sim.between || sim.over) && <PlayByPlay log={sim.log} live={false} roundSec={sim.roundSec} />}
     </div>
   );
 }
@@ -546,9 +597,22 @@ function LiveFight({ w, b, onDone }: { w: World; b: Bout; onDone: (o: FightOutco
 type FeedFilter = "all" | "key" | "corner";
 const KEY_KINDS = new Set(["kd", "rock", "finish", "read", "sub", "td", "pass", "sweep", "cut", "state", "call"]);
 
-/** The play by play: newest first while it's live, in order afterwards; all of it, the key moments, or the corners. */
-function PlayByPlay({ log, live }: { log: FightLogLine[]; live: boolean }) {
+/** The play by play, in order with the newest line at the bottom, timed on the scorebug's clock (time left in the round). */
+function PlayByPlay({ log, live, roundSec }: { log: FightLogLine[]; live: boolean; roundSec: number }) {
   const [filter, setFilter] = useState<FeedFilter>("all");
+  const feedRef = useRef<HTMLDivElement | null>(null);
+  // Live, the feed follows the newest line unless the reader scrolls up.
+  const [follow, setFollow] = useState(true);
+  useEffect(() => {
+    const el = feedRef.current;
+    if (live && follow && el) el.scrollTop = el.scrollHeight;
+  }, [log.length, live, follow, filter]);
+  const onScroll = () => {
+    const el = feedRef.current;
+    if (!el) return;
+    const near = el.scrollHeight - el.scrollTop - el.clientHeight < 48;
+    if (near !== follow) setFollow(near);
+  };
   const keep = (l: FightLogLine) => l.kind !== "round" && (filter === "all" || (filter === "key" ? !!l.big || KEY_KINDS.has(l.kind ?? "") : l.kind === "call" || l.kind === "corner"));
   const byRound = new Map<number, FightLogLine[]>();
   for (const l of log) {
@@ -558,25 +622,24 @@ function PlayByPlay({ log, live }: { log: FightLogLine[]; live: boolean }) {
     byRound.set(l.r, list);
   }
   const order = [...byRound.entries()];
-  if (live) {
-    order.reverse();
-    for (const [, lines] of order) lines.reverse();
-  }
   return (
     <Panel title="Play by play" acts={<Seg value={filter} onChange={setFilter} options={[{ v: "all", label: "All" }, { v: "key", label: "Key moments" }, { v: "corner", label: "Corners" }]} />} flush>
-      <div className={`feed${live ? " live" : ""}`}>
+      <div className="feed-wrap">
+      <div className={`feed${live ? " live" : ""}`} ref={feedRef} onScroll={live ? onScroll : undefined}>
         {order.map(([r, lines]) => (
           <div key={r} className="feed-round">
             <div className="feed-r">Round {r}</div>
             {lines.map((l, i) => (
               <div key={i} className={`line${l.big ? " big" : ""}${l.side !== undefined ? ` s${l.side}` : ""}${l.kind === "finish" ? " finish" : ""}${l.kind === "read" ? " read" : ""}${l.kind === "corner" ? " corner" : ""}${l.kind === "call" ? " mine" : ""}${l.kind === "miss" ? " miss" : ""}`}>
-                <span className="t">{clock(l.t)}</span>
+                <span className="t">{clock(Math.max(0, roundSec - l.t))}</span>
                 <span>{l.text}</span>
               </div>
             ))}
           </div>
         ))}
         {!order.length && <div className="empty">{log.length ? "Nothing like that yet." : "The referee brings them to the centre. Touch gloves…"}</div>}
+      </div>
+      {live && !follow && <button className="feed-jump" onClick={() => setFollow(true)}>Latest ↓</button>}
       </div>
     </Panel>
   );

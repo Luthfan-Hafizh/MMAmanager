@@ -72,6 +72,8 @@ export function ledger(w: World, e: Omit<LedgerEntry, "day"> & { day?: number })
 
 export interface PurseBreakdown extends Purse {
   compliance: number;
+  /** A share of the pay-per-view for the stars of a UFC main event. */
+  ppv: number;
   gym: number;
   manager: number;
   fees: number;
@@ -98,7 +100,7 @@ export function payShowOnly(w: World, f: Fighter, b: Bout, why: string): number 
   return show;
 }
 
-export function payPurse(w: World, f: Fighter, b: Bout, won: boolean, bonusCount: number, finishBonus: boolean, fined: number, fineFrom: number): PurseBreakdown {
+export function payPurse(w: World, f: Fighter, b: Bout, won: boolean, bonusCount: number, finishBonus: boolean, fined: number, fineFrom: number, ppvShare = 0): PurseBreakdown {
   const p = PROMOTIONS[b.promo];
   const pay = (b.purses && (b.a === f.id ? b.purses.a : b.purses.b)) ?? null;
   const show = pay?.show ?? f.contract?.show ?? p.showLow;
@@ -108,23 +110,25 @@ export function payPurse(w: World, f: Fighter, b: Bout, won: boolean, bonusCount
   const finish = b.promo === "ufc" && finishBonus ? UFC_FINISH_BONUS : 0;
   const fine = Math.round((show + winMoney) * fined);
   const fineIn = Math.round(fineFrom);
-  const gross = show + winMoney + compliance + bonus + finish - fine + fineIn;
+  const ppv = Math.round(ppvShare);
+  const gross = show + winMoney + compliance + bonus + finish + ppv - fine + fineIn;
   const gym = w.gyms[f.gym];
-  const gymCut = Math.round((show + winMoney + bonus + finish) * ((gym?.fee ?? 10) / 100));
+  const gymCut = Math.round((show + winMoney + bonus + finish + ppv) * ((gym?.fee ?? 10) / 100));
   const fc = w.career.fc[f.id];
-  const manager = fc?.manager ? Math.round((show + winMoney + bonus + finish) * (fc.manager.cut / 100)) : 0;
+  const manager = fc?.manager ? Math.round((show + winMoney + bonus + finish + ppv) * (fc.manager.cut / 100)) : 0;
   const fees = p.tier === "amateur" ? 150 : p.tier === "local" ? 450 : p.tier === "regional" ? 900 : 1800;
   const travel = p.tier === "amateur" ? 400 : p.tier === "local" ? 600 : p.tier === "regional" ? 700 : 0;
   const before = yearPurses(w, f.id);
   const tax = Math.round(Math.max(0, gross - gymCut - manager) * taxRate(before + gross));
   const net = gross - gymCut - manager - fees - travel - tax;
-  const out: PurseBreakdown = { show, win: winMoney, bonus, finish, fine, total: gross, compliance, gym: gymCut, manager, fees, travel, tax, net };
+  const out: PurseBreakdown = { show, win: winMoney, bonus, finish, fine, total: gross, compliance, ppv, gym: gymCut, manager, fees, travel, tax, net };
   if (w.career.mode === "fighter") {
     ledger(w, { amount: show, what: `Show money, ${w.events[b.ev]?.name ?? ""}`, cat: "purse", fighter: f.id });
     if (winMoney) ledger(w, { amount: winMoney, what: "Win money", cat: "purse", fighter: f.id });
     if (compliance) ledger(w, { amount: compliance, what: "UFC fight-week compliance pay", cat: "purse", fighter: f.id });
     if (bonus) ledger(w, { amount: bonus, what: bonusCount > 1 ? "Two performance bonuses" : "Performance bonus", cat: "bonus", fighter: f.id });
     if (finish) ledger(w, { amount: finish, what: "UFC finish bonus", cat: "bonus", fighter: f.id });
+    if (ppv) ledger(w, { amount: ppv, what: "Pay-per-view share", cat: "purse", fighter: f.id });
     if (fine) ledger(w, { amount: -fine, what: "Fine for missing weight", cat: "fine", fighter: f.id });
     if (fineIn) ledger(w, { amount: fineIn, what: "Opponent's weight-miss fine", cat: "purse", fighter: f.id });
     if (gymCut) ledger(w, { amount: -gymCut, what: `${gym?.name ?? "Gym"} and head coach`, cat: "gym", fighter: f.id });
@@ -135,7 +139,7 @@ export function payPurse(w: World, f: Fighter, b: Bout, won: boolean, bonusCount
   } else {
     // The manager takes the agency's cut of the gross.
     const cut = w.career.agency?.cut ?? 15;
-    const comm = Math.round((show + winMoney + bonus + finish) * (cut / 100));
+    const comm = Math.round((show + winMoney + bonus + finish + ppv) * (cut / 100));
     if (comm) ledger(w, { amount: comm, what: `${cut}% of ${fullName(f)}'s purse`, cat: "commission", fighter: f.id });
     // The bookkeeping of the fighter's own purse is shown on their page only.
     w.career.ledger.unshift({ day: w.day, amount: 0, what: `${fullName(f)} earned ${gross.toLocaleString("en-US")} gross`, cat: "other", fighter: f.id });

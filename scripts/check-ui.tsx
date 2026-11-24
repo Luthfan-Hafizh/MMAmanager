@@ -38,6 +38,16 @@ import { neighbourDivisions } from "../src/data/divisions";
 import { adviseFight, ask, QUESTIONS } from "../src/career/advisor";
 import { playerInjured } from "../src/career/injury";
 import { INJURY } from "../src/data/injuries";
+import { Media, PressRoom } from "../src/ui/pages/Media";
+import { callOut, calloutChoices, talkableFights, talkFight } from "../src/career/social";
+import { heatOf } from "../src/career/rivals";
+import { answerQuestion, finishSession, startSession } from "../src/career/media";
+import { scaleDay } from "../src/career/weighin";
+import { forceLife, LIFE_IDS } from "../src/career/life";
+import { boutLimit } from "../src/career/shortnotice";
+import { makeBout } from "../src/world/matchmaking";
+import { bmfPairing } from "../src/world/belts";
+import { Rng } from "../src/core/rng";
 
 const g = globalThis as unknown as Record<string, unknown>;
 g.window = { location: { hash: "" }, addEventListener() {}, removeEventListener() {} };
@@ -99,6 +109,7 @@ function pages(w: World, label: string) {
   check("Title history", <Titles promo="ufc" div="LW" />);
   check("Title history BMF", <Titles promo="ufc" div="bmf" />);
   check("Title history PFL", <Titles promo="pfl" />);
+  check("Media", <Media />);
   // Fight reports: a finished bout's round by round (packed numbers), and a full report with the log.
   const doneBout = Object.values(w.bouts).find((b) => b.status === "done" && b.res?.rx && w.fighters[b.a] && w.fighters[b.b]);
   if (doneBout) {
@@ -142,9 +153,12 @@ function pages(w: World, label: string) {
     }
     const lo = live.outcome();
     const mine = lo.log?.filter((l) => l.kind === "call").length ?? 0;
-    if (calls < 3 || !mine || live.calls.filter((c) => c.i === 0).length !== calls || !live.calls.some((c) => c.i === 1)) {
+    // A fight stopped early has time for fewer calls: about one every three minutes fought.
+    const secs = (lo.round - 1) * 300 + lo.time;
+    const want = secs >= 540 ? 3 : secs >= 240 ? 2 : 1;
+    if (calls < want || !mine || live.calls.filter((c) => c.i === 0).length !== calls || !live.calls.some((c) => c.i === 1)) {
       failures++;
-      console.log(`  FAIL live calls: ${calls} calls, ${mine} logged, ${live.calls.length} recorded, ${follow} follow-ups`);
+      console.log(`  FAIL live calls: ${calls} calls, ${mine} logged, ${live.calls.length} recorded, ${follow} follow-ups (${x.surname} ${x.div} vs ${y.surname} ${y.div}: ${lo.method} R${lo.round} ${lo.time}s)`);
     }
     check("Fight report with your calls", <FightReport data={{ a: x, b: y, rounds: lo.rounds ?? [], rcards: lo.rcards, log: lo.log, winner: lo.winner, method: lo.method, detail: lo.detail, endRound: lo.round, endTime: lo.time }} />);
   }
@@ -292,6 +306,93 @@ pages(tw, "Retired fighter turned manager");
   setWorld(xw);
   check("Title history (stripped)", <Titles promo="ufc" div={div} />);
   check("Fighter (stripped champion)", <FighterPage id={champ.id} tab="fights" />);
+}
+
+// The spotlight: call-outs, fight talk, a press conference, both kinds of weight miss, every life event, the BMF call.
+{
+  const sw2 = createWorld(roster, { name: "UI", seed: 84, mode: "fighter", difficulty: "normal", takeover: "ufc-arman-tsarukyan" });
+  const me = sw2.fighters[sw2.career.fighters[0]];
+  const fail = (what: string) => { failures++; console.log(`  FAIL ${what}`); };
+  setWorld(sw2);
+  // Calling someone out builds heat and leaves a quote.
+  const t = calloutChoices(sw2, me).find((x) => x.id !== sw2.promos.ufc.champs[me.div]) ?? calloutChoices(sw2, me)[0];
+  const r = withRng(sw2, (rng) => callOut(sw2, rng, me, t, "trash"));
+  if (!r.quote || heatOf(sw2, me.id, t.id) <= 0) fail("a call-out left no heat");
+  const again = withRng(sw2, (rng) => callOut(sw2, rng, me, t, "callout"));
+  if (again.quote) fail("the call-out cooldown did not hold");
+  // A fight booked against someone else, for the press and the scale.
+  const ev = sw2.upcoming.map((id) => sw2.events[id]).find((e) => e.promo === "ufc" && e.day - sw2.day > 20)!;
+  const opp = calloutChoices(sw2, me).find((x) => !x.booked && x.id !== t.id && x.id !== sw2.promos.ufc.champs[me.div])!;
+  const b = makeBout(sw2, ev, me, opp, "regular");
+  const s = withRng(sw2, (rng) => startSession(sw2, rng, me, b, "presser"));
+  if (s.questions.length < 3) fail(`a press conference with only ${s.questions.length} questions`);
+  const pop0 = me.pop;
+  s.questions.forEach((q, i) => answerQuestion(sw2, s, i, q.answers.findIndex((a) => a.tone === "confident") >= 0 ? q.answers.findIndex((a) => a.tone === "confident") : 0));
+  const sum = finishSession(sw2, s);
+  if (!s.done || !sum || me.pop <= pop0) fail("the press conference did not settle");
+  console.log(`Press conference: ${s.questions.length} questions ("${s.questions[0].q}"). ${sum}`);
+  check("Press room", <PressRoom sid={s.id} />);
+  // The scale: the player misses (the extra hour), then the opponent misses (take the fine).
+  const lim = boutLimit(b);
+  withRng(sw2, (rng) => scaleDay(sw2, rng, b, { [b.a === me.id ? "a" : "b"]: { weight: lim + 2.4, made: false, drain: 0.2, text: "" } }));
+  const miss = sw2.inbox.find((m) => m.ref === b.id && m.needs && m.data?.step === "miss");
+  if (!miss) fail("no decision when the player missed weight");
+  else {
+    check("Inbox (missed weight)", <Inbox id={miss.id} />);
+    console.log(`Missed weight, the extra hour: ${answer(sw2, miss.id, "miss:hour")}`);
+  }
+  const face = sw2.inbox.find((m) => m.ref === b.id && m.needs && m.data?.step === "faceoff");
+  if (b.status === "booked" && !face) fail("no face-off after the scale");
+  if (face) console.log(`Face-off: ${answer(sw2, face.id, "faceoff:talk")}`);
+  if (b.status === "booked") {
+    b.weighIn = undefined;
+    const os = b.a === me.id ? "b" : "a";
+    withRng(sw2, (rng) => scaleDay(sw2, rng, b, { [os === "a" ? "b" : "a"]: { weight: lim, made: true, drain: 0.1, text: "" } }, { [os]: { weight: lim + 3.2, miss: true } }));
+    const om = sw2.inbox.find((m) => m.ref === b.id && m.needs && m.data?.step === "oppmiss");
+    if (!om) fail("no decision when the opponent missed weight");
+    else {
+      check("Inbox (opponent missed weight)", <Inbox id={om.id} />);
+      console.log(`Opponent missed weight, hold out for more: ${answer(sw2, om.id, "oppmiss:more")}`);
+    }
+  }
+  // Every unexpected event that can happen to this fighter now, answered.
+  let made = 0;
+  for (const id of LIFE_IDS) {
+    const m = forceLife(sw2, me, id);
+    if (!m) continue;
+    made++;
+    if (made === 1) check("Inbox (life event)", <Inbox id={m.id} />);
+    const text = answer(sw2, m.id, m.actions![m.actions!.length - 1].id);
+    if (!text) fail(`life event ${id} gave no answer`);
+  }
+  console.log(`Life events: ${made} of ${LIFE_IDS.length} possible for ${me.surname} right now, all answered`);
+  // Fight talk about the division.
+  play(sw2, 35);
+  const talk = talkableFights(sw2, me, 3);
+  if (talk[0]) console.log(`Fight talk: ${withRng(sw2, (rng) => talkFight(sw2, rng, me, talk[0], "doubt"))}`);
+  // The BMF: a popular lightweight calls for it and is first in line.
+  me.pop = Math.max(me.pop, 60);
+  me.booked = null;
+  const holder = sw2.promos.ufc.bmf?.holder ? sw2.fighters[sw2.promos.ufc.bmf.holder!] : null;
+  if (holder) {
+    const fc = sw2.career.fc[me.id];
+    fc.lastSocial = undefined;
+    withRng(sw2, (rng) => callOut(sw2, rng, me, holder, "callout", { asBmf: true }));
+    if ((fc.bmfCall ?? 0) < sw2.day) fail("the BMF call did not register");
+    const nev = sw2.upcoming.map((id) => sw2.events[id]).find((e) => e.promo === "ufc" && e.kind === "numbered" && (sw2.promos.ufc.bmf!.last ?? 0) + 240 <= e.day);
+    let picked = false;
+    for (let k = 0; k < 12 && nev && !picked; k++) {
+      const pair = bmfPairing(sw2, new Rng(900 + k), nev, () => true);
+      picked = !!pair && pair.some((x) => x.id === me.id);
+    }
+    console.log(`BMF: ${me.surname} called out ${holder.surname}; first in line for the next BMF fight: ${picked}`);
+    if (nev && !picked) fail("a player who called for the BMF title was not picked");
+  }
+  setWorld(sw2);
+  check("Media (rivals, moments, BMF)", <Media />);
+  check("Fighter (call-out panel)", <FighterPage id={t.id} />);
+  check("Contracts (the team)", <Contracts />);
+  check("Home (spotlight)", <Home />);
 }
 
 const mw = createWorld(roster, { name: "UI", seed: 79, mode: "manager", difficulty: "normal", agency: "Check Management" });

@@ -1,17 +1,15 @@
 // The team's advice on screen: a verdict card, the fight-offer sheet with the
 // numbers a fighter weighs, and the desk where you talk to your manager.
 
-import { useState } from "react";
 import { fmtDate } from "../core/time";
 import { money } from "../core/util";
 import { DIVISIONS } from "../data/divisions";
 import { PROMOTIONS } from "../data/promotions";
 import type { FightOffer, Fighter, World } from "../model/types";
-import { adviseFight, ask, boutOfOffer, QUESTIONS, type Advice, type Answer } from "../career/advisor";
+import { adviseFight, boutOfOffer, type Advice } from "../career/advisor";
 import { boutLimit, CUT_TEXT, cutCheck } from "../career/shortnotice";
 import { moneyline } from "../world/odds";
 import { rankLabel, recordText } from "../world/core";
-import { changed } from "../state/store";
 import { defOf, SEVERITY_TEXT } from "../data/injuries";
 import { Link } from "./router";
 
@@ -105,37 +103,6 @@ export function FightOfferView({ w, o, f, compact }: { w: World; o: FightOffer; 
         </div>
       </div>
       <AdviceCard a={advice} compact={compact} />
-    </div>
-  );
-}
-
-/** Talk to the team: a few questions about the career, answered from where things stand. */
-export function AskDesk({ w, f }: { w: World; f: Fighter }) {
-  const [log, setLog] = useState<Answer[]>([]);
-  const fc = w.career.fc[f.id];
-  return (
-    <div className="ask">
-      <div className="chips">
-        {QUESTIONS.map((q) => (
-          <button key={q.id} className="chip" onClick={() => setLog((l) => [ask(w, f, q.id), ...l].slice(0, 6))}>{q.q}</button>
-        ))}
-      </div>
-      {log.length > 0 && (
-        <div className="chat">
-          {log.map((x, i) => (
-            <div key={i} className="chat-pair">
-              <div className="chat-q">{x.q}</div>
-              <div className="chat-a">{x.a}</div>
-            </div>
-          ))}
-        </div>
-      )}
-      {fc && (
-        <label className="switch" style={{ marginTop: 12 }}>
-          <input type="checkbox" checked={!!fc.shortNotice} onChange={(e) => { fc.shortNotice = e.target.checked; changed(); }} />
-          <span><b>Take short-notice calls.</b> The matchmakers can ring when someone pulls out, from three weeks to a day before a fight, at the weight or a division up.</span>
-        </label>
-      )}
     </div>
   );
 }

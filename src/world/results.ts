@@ -102,13 +102,61 @@ export function fightInputFor(w: World, b: Bout, rng: Rng, seed: number, log: bo
   };
 }
 
+/** The allowance over the limit: a pound, none in a title fight. */
+export function weightAllowance(b: Bout): number {
+  return b.kind === "title" || b.kind === "vacant" || b.kind === "interim" ? 0 : 1;
+}
+
+/** One AI fighter on the scale: a few percent miss, more for big cutters and late replacements. */
+export function aiScale(rng: Rng, b: Bout, f: Fighter): { weight: number; miss: boolean } {
+  const limit = boutLimit(b);
+  const allow = weightAllowance(b);
+  const pct = (f.walk - limit) / limit;
+  const sub = b.shortNotice && b.sub === f.id;
+  const risk = sub ? cutCheck(f, limit, b.notice ?? 14).risk : "normal";
+  const p = clamp(0.012 + Math.max(0, pct - 0.1) * 0.35 + (sub ? (risk === "hard" ? 0.12 : risk === "normal" ? 0.04 : 0.01) : 0) + (DIVISIONS[b.div].sex === "F" ? 0.008 : 0), 0, 0.3);
+  if (rng.chance(p)) return { weight: Math.round((limit + allow + 0.3 + rng.next() * rng.next() * 5) * 10) / 10, miss: true };
+  return { weight: Math.round((limit - rng.next() * 0.8 + allow * 0.4) * 10) / 10, miss: false };
+}
+
+/**
+ * A champion who misses weight is stripped on the scale; the fight goes ahead
+ * and only the opponent can win the belt (the title is vacant).
+ */
+export function stripAtScale(w: World, b: Bout, f: Fighter): boolean {
+  const ps = w.promos[b.promo];
+  const d = b.div;
+  const opp = w.fighters[b.a === f.id ? b.b : b.a];
+  const ev = w.events[b.ev];
+  const belt = `${PROMOTIONS[b.promo].short} ${DIVISIONS[d].name.toLowerCase()} title`;
+  const end = (interim: boolean) => {
+    const r = [...ps.reigns].reverse().find((x) => x.fighter === f.id && x.div === d && x.lost === undefined && !!x.interim === interim);
+    if (r) {
+      r.lost = w.day;
+      r.ended = "stripped";
+    }
+  };
+  if (b.kind === "title" && ps.champs[d] === f.id) {
+    end(false);
+    ps.champs[d] = null;
+    b.kind = "vacant";
+    b.stake = undefined;
+  } else if (b.kind === "interim" && ps.interim[d] === f.id) {
+    end(true);
+    ps.interim[d] = null;
+    b.stake = undefined;
+  } else return false;
+  addNews(w, { kind: "title", promo: b.promo, ev: b.ev, fighters: [f.id, opp.id], big: true, text: `${fullName(f)} misses weight and is stripped of the ${b.kind === "interim" ? "interim " : ""}${belt}. Only ${fullName(opp)} can win it${ev ? ` at ${ev.name}` : ""}.` });
+  return true;
+}
+
 /** Weigh-ins for the AI: a few percent miss, more for big cutters. */
 export function weighIns(w: World, rng: Rng, ev: MMAEvent): void {
   for (const id of ev.bouts) {
     const b = w.bouts[id];
     if (b.status !== "booked" || b.weighIn) continue;
     const limit = boutLimit(b);
-    const allow = b.kind === "title" || b.kind === "vacant" || b.kind === "interim" ? 0 : 1;
+    const allow = weightAllowance(b);
     const out: NonNullable<Bout["weighIn"]> = { a: limit + allow * 0.5, b: limit + allow * 0.5 };
     for (const side of ["a", "b"] as const) {
       const f = w.fighters[b[side]];
@@ -118,23 +166,15 @@ export function weighIns(w: World, rng: Rng, ev: MMAEvent): void {
         if (wt > limit + allow) out[side === "a" ? "missA" : "missB"] = true;
         continue;
       }
-      const pct = (f.walk - limit) / limit;
-      const sub = b.shortNotice && b.sub === f.id;
-      const risk = sub ? cutCheck(f, limit, b.notice ?? 14).risk : "normal";
-      const p = clamp(0.012 + Math.max(0, pct - 0.1) * 0.35 + (sub ? (risk === "hard" ? 0.12 : risk === "normal" ? 0.04 : 0.01) : 0) + (DIVISIONS[b.div].sex === "F" ? 0.008 : 0), 0, 0.3);
-      if (rng.chance(p)) {
-        const over = Math.round((allow + 0.3 + rng.next() * rng.next() * 5) * 10) / 10;
-        out[side] = limit + over;
-        out[side === "a" ? "missA" : "missB"] = true;
-      } else {
-        out[side] = Math.round((limit - rng.next() * 0.8 + allow * 0.4) * 10) / 10;
-      }
+      const r = aiScale(rng, b, f);
+      out[side] = r.weight;
+      if (r.miss) out[side === "a" ? "missA" : "missB"] = true;
     }
     b.weighIn = out;
     if (out.missA || out.missB) {
       const f = w.fighters[out.missA ? b.a : b.b];
       b.catchweight = Math.ceil(Math.max(out.a, out.b));
-      if (ev.promo === "ufc" || ev.promo === "pfl" || f.ctrl) {
+      if (!stripAtScale(w, b, f) && (ev.promo === "ufc" || ev.promo === "pfl" || f.ctrl)) {
         addNews(w, { kind: "booking", promo: ev.promo, ev: ev.id, fighters: [f.id], text: `${fullName(f)} missed weight for ${ev.name} (${(out.missA ? out.a : out.b).toFixed(1)} lb) and forfeits part of the purse. The fight goes ahead at a catchweight.` });
       }
     }

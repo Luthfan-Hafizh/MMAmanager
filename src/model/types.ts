@@ -297,6 +297,14 @@ export interface Bout {
   awaiting?: boolean;
   /** What each fighter said on media day. */
   media?: { a?: string; b?: string };
+  /** How each fighter played the face-off at the weigh-ins. */
+  faceoff?: { a?: string; b?: string };
+  /** Preparation gained or lost in front of the press (press conference, media day). */
+  mprep?: { a?: number; b?: number };
+  /** A weight-miss fine agreed above the usual share, per side that missed. */
+  fineCut?: { a?: number; b?: number };
+  /** The side that used the extra hour to make weight. */
+  extraHour?: "a" | "b";
 }
 
 export type EventKind = "numbered" | "fightnight" | "standard" | "tryout" | "amateur";
@@ -388,7 +396,7 @@ export interface Message {
   from: string;
   subject: string;
   body: string;
-  kind: "offer" | "contract" | "info" | "result" | "injury" | "training" | "sponsor" | "news" | "camp" | "money" | "client" | "weighin" | "ranking";
+  kind: "offer" | "contract" | "info" | "result" | "injury" | "training" | "sponsor" | "news" | "camp" | "money" | "client" | "weighin" | "ranking" | "life" | "media";
   fighter?: string;
   ref?: string;
   read: boolean;
@@ -397,6 +405,8 @@ export interface Message {
   done?: string;
   /** The key facts, shown as a panel above the text. */
   facts?: Fact[];
+  /** What a decision needs to remember (the event behind it, the people in it). */
+  data?: Record<string, string | number>;
 }
 
 export interface Fact {
@@ -534,7 +544,8 @@ export interface FighterCareer {
   campBout?: string;
   asked?: boolean;
   morale?: number;
-  callout?: { target: string; until: number };
+  /** A call-out the matchmaker knows about; ok when the other fighter said yes. */
+  callout?: { target: string; until: number; ok?: boolean };
   walkTarget?: number;
   adapt?: number;
   /** Day of the last short-notice call, so the phone doesn't ring every week. */
@@ -547,6 +558,70 @@ export interface FighterCareer {
   stripWarned?: number;
   /** Advice taken and ignored, for the manager's mood. */
   trust?: number;
+  /** Bad blood with other fighters, 0..100, and the moments that made it. */
+  rivals?: Record<string, Rivalry>;
+  /** Fights already talked about, so each gets one reaction. */
+  talked?: string[];
+  /** Day of the last call-out, so the timeline isn't all call-outs. */
+  lastSocial?: number;
+  /** What the fighter said and did in public, newest first. */
+  moments?: Moment[];
+  /** Unexpected events: the last one, and when each kind last happened. */
+  life?: { last: number; seen: Record<string, number> };
+  /** A call for the BMF title, alive until this day. */
+  bmfCall?: number;
+  /** Invited cageside at an event (where a face-off with the champion can happen). */
+  cageside?: { ev: string; champ?: string };
+}
+
+export interface Rivalry {
+  heat: number;
+  since: number;
+  last: number;
+  notes: { day: number; text: string }[];
+}
+
+export interface Moment {
+  day: number;
+  kind: "callout" | "talk" | "press" | "faceoff" | "life" | "reply";
+  text: string;
+  with?: string;
+}
+
+export type MediaKind = "presser" | "mediaday" | "postfight";
+export type AnswerTone = "respect" | "confident" | "trash" | "funny" | "deflect";
+
+export interface MediaQuestion {
+  who: string;
+  outlet: string;
+  q: string;
+  answers: { tone: AnswerTone; text: string; callout?: string }[];
+  picked?: number;
+  /** The room's reaction, or the opponent's comeback, once answered. */
+  reply?: string;
+}
+
+export interface MediaSession {
+  id: string;
+  kind: MediaKind;
+  fighter: string;
+  bout: string;
+  opp: string;
+  day: number;
+  questions: MediaQuestion[];
+  /** What the opponent says in the session. */
+  oppLines: string[];
+  done: boolean;
+  skipped?: boolean;
+  /** The running effect of the answers. */
+  pop: number;
+  heat: number;
+  prep: number;
+  fine: number;
+  scuffle?: boolean;
+  /** The inbox message that asked for it. */
+  msg?: string;
+  summary?: string;
 }
 
 export interface Agency {
@@ -575,6 +650,8 @@ export interface Career {
   achievements: { id: string; day: number; fighter: string }[];
   pendingUfcOffer?: string;
   retiredFighter?: string;
+  /** Press conferences, media days and post-fight pressers, the latest last. */
+  media?: MediaSession[];
 }
 
 export interface World {

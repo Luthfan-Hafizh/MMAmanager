@@ -31,6 +31,7 @@ import { Settings } from "./pages/Settings";
 import { Agency, Scouting } from "./pages/Agency";
 import { Legacy } from "./pages/Legacy";
 import { Titles } from "./pages/Titles";
+import { Media, PressRoom } from "./pages/Media";
 import type { World } from "../model/types";
 
 export function App() {
@@ -80,6 +81,8 @@ function pageFor(parts: string[]): PageDef {
       return { title: mode === "manager" ? "Fights" : "Next fight", el: <NextFight id={p1} />, custom: true };
     case "fightnight":
       return { title: "Fight night", el: <FightNight />, custom: true };
+    case "media":
+      return p1 === "session" && p2 ? { title: "Press conference", el: <PressRoom sid={p2} />, custom: true } : { title: "Media", el: <Media id={p1} />, custom: true };
     case "contracts":
       return { title: "Contracts", eyebrow: "Business", sub: "Deals, offers, counter offers and the manager.", el: <Contracts id={p1} /> };
     case "finances":
@@ -230,6 +233,7 @@ function Shell() {
               {nav("/fighter", "Profile")}
               {nav("/training", "Training")}
               {nav("/fight", "Fight")}
+              {nav("/media", "Media")}
               {nav("/contracts", "Contracts")}
               {nav("/finances", "Money")}
             </>
@@ -239,6 +243,7 @@ function Shell() {
               {nav("/scouting", "Scouting")}
               {nav("/training", "Training")}
               {nav("/fight", "Fights")}
+              {nav("/media", "Media")}
               {nav("/contracts", "Contracts")}
               {nav("/finances", "Money")}
             </>

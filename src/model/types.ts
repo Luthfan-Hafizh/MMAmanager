@@ -264,6 +264,11 @@ export interface Bout {
   purses?: { a?: Purse; b?: Purse };
   why?: string;
   replaced?: string;
+  /** The fighter who stepped in on short notice, and how many days' notice they had. */
+  sub?: string;
+  notice?: number;
+  /** The contracted weight when it isn't the division's limit (a catchweight, or a fighter moving up). */
+  limit?: number;
   /** An offer to a player fighter that has not been answered yet. */
   pending?: string;
   /** Held for the player to watch or simulate on fight night. */
@@ -372,6 +377,16 @@ export interface FightOffer {
   note?: string;
   replaceBout?: string;
   counter?: number;
+  /** Days' notice when the call came. */
+  notice?: number;
+  /** The contracted weight, when it isn't the division's limit. */
+  limit?: number;
+  /** A bigger promotion's call: accepting signs the deal (its first fight is this one). */
+  debut?: PromoId;
+  /** The player's own fight with a new opponent: accept, or the fight is off. */
+  stay?: boolean;
+  /** Who pulled out. */
+  replaced?: string;
 }
 
 export interface ContractOffer {
@@ -456,7 +471,7 @@ export interface FighterCareer {
   week?: { growth: Partial<Record<AttrKey, number>>; fatigue: number; injury?: string };
   progress: { day: number; ovr: number }[];
   dayJob: boolean;
-  manager: { cut: number; quality: number; name: string } | null;
+  manager: { cut: number; quality: number; name: string; person?: string; style?: "bold" | "careful" | "steady" } | null;
   mediaStyle: "humble" | "confident" | "trash";
   shortNotice: boolean;
   lastAsk?: number;
@@ -470,6 +485,10 @@ export interface FighterCareer {
   callout?: { target: string; until: number };
   walkTarget?: number;
   adapt?: number;
+  /** Day of the last short-notice call, so the phone doesn't ring every week. */
+  lastCall?: number;
+  /** Advice taken and ignored, for the manager's mood. */
+  trust?: number;
 }
 
 export interface Agency {

@@ -81,6 +81,23 @@ export interface PurseBreakdown extends Purse {
 }
 
 /** Work out and pay a controlled fighter's purse after a fight. */
+/** The fight fell through in fight week, through no fault of the fighter's: the promotion pays the show money. */
+export function payShowOnly(w: World, f: Fighter, b: Bout, why: string): number {
+  const pay = (b.purses && (b.a === f.id ? b.purses.a : b.purses.b)) ?? null;
+  const show = pay?.show ?? f.contract?.show ?? 0;
+  if (!show || PROMOTIONS[b.promo].tier === "amateur") return 0;
+  const fc = w.career.fc[f.id];
+  if (w.career.mode === "fighter") {
+    ledger(w, { amount: show, what: `Show money (${why})`, cat: "purse", fighter: f.id });
+    const mgr = fc?.manager ? Math.round((show * fc.manager.cut) / 100) : 0;
+    if (mgr) ledger(w, { amount: -mgr, what: `Manager (${fc!.manager!.cut}%)`, cat: "manager", fighter: f.id });
+  } else {
+    const cut = w.career.agency?.cut ?? 15;
+    ledger(w, { amount: Math.round((show * cut) / 100), what: `${cut}% of ${fullName(f)}'s show money`, cat: "commission", fighter: f.id });
+  }
+  return show;
+}
+
 export function payPurse(w: World, f: Fighter, b: Bout, won: boolean, bonusCount: number, finishBonus: boolean, fined: number, fineFrom: number): PurseBreakdown {
   const p = PROMOTIONS[b.promo];
   const pay = (b.purses && (b.a === f.id ? b.purses.a : b.purses.b)) ?? null;

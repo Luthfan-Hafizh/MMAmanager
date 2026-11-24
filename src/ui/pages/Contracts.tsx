@@ -4,6 +4,8 @@ import { money } from "../../core/util";
 import { PROMOTIONS } from "../../data/promotions";
 import type { ContractOffer, Fighter, World } from "../../model/types";
 import { counterOffer, fireManager, hireManager, rejectContract, signContract, valueOf } from "../../career/offers";
+import { adviseContract, adviserOf, managerNegotiate } from "../../career/advisor";
+import { AdviceCard, AskDesk } from "../advice";
 import { fullName, withRng } from "../../world/core";
 import { changed, toast, useWorld } from "../../state/store";
 import { Empty, Panel, PromoBadge } from "../components";
@@ -43,16 +45,21 @@ export function Contracts({ id }: { id?: string }) {
             <Empty title="Free agent">Offers arrive in the inbox at the start of each month.</Empty>
           )}
         </Panel>
-        {w.career.mode === "fighter" && fc && (
-          <Panel title="Your manager">
-            {fc.manager ? (
-              <>
-                <p><b>{fc.manager.name}</b> takes <b>{fc.manager.cut}%</b> of your purses and bonuses, and finds better deals and sponsors.</p>
-                <button className="btn danger sm" onClick={() => { fireManager(w, f); changed(); }}>Part ways</button>
-              </>
+        {fc && (
+          <Panel title="Your team" hint={w.career.mode === "fighter" ? (fc.manager ? `${fc.manager.cut}% of purses` : "no manager") : "your agency"}>
+            {w.career.mode === "fighter" && (fc.manager ? (
+              <div className="team-card">
+                <div className="team-av" aria-hidden="true">{(fc.manager.person ?? fc.manager.name).split(" ").map((x) => x[0]).slice(0, 2).join("")}</div>
+                <div style={{ minWidth: 0 }}>
+                  <div className="dx" style={{ fontSize: 24 }}>{fc.manager.person ?? fc.manager.name}</div>
+                  <div className="small dim">{fc.manager.name} · {fc.manager.cut}% of purses and sponsorship · {fc.manager.style === "bold" ? "likes a gamble" : fc.manager.style === "careful" ? "protects the record" : "plays it straight"}</div>
+                  <div className="small" style={{ marginTop: 6 }}>Negotiates your deals, finds sponsors, and gives advice on every offer.</div>
+                </div>
+                <button className="btn ghost sm" onClick={() => { fireManager(w, f); changed(); }}>Part ways</button>
+              </div>
             ) : (
               <>
-                <p className="muted">Fighting without a manager saves the commission, but promotions open lower and sponsors don't call as often. Managers in MMA take 10 to 20%.</p>
+                <p className="muted">Without a manager you keep the commission, but promotions open lower, sponsors call less, and only your head coach advises you, on the fights and not the money. Managers in MMA take 10 to 20%.</p>
                 <div className="row">
                   {[{ q: 30, label: "Local manager (10%)" }, { q: 55, label: "Established agency (15%)" }, { q: 80, label: "Elite agency (20%)" }].map((m) => (
                     <button key={m.q} className="btn sm" disabled={m.q >= 80 && f.pop < 30} title={m.q >= 80 && f.pop < 30 ? "Elite agencies only take names with a following" : ""} onClick={() => { toast(hireManager(w, f, m.q), "good"); changed(); }}>
@@ -61,7 +68,9 @@ export function Contracts({ id }: { id?: string }) {
                   ))}
                 </div>
               </>
-            )}
+            ))}
+            <div className="label" style={{ marginTop: 14, marginBottom: 8 }}>Ask {adviserOf(w, f).name.split(",")[0]}</div>
+            <AskDesk w={w} f={f} />
           </Panel>
         )}
         <Panel title="What promotions think you're worth" hint="show money per fight">
@@ -102,6 +111,15 @@ function OfferCard({ w, o, f }: { w: World; o: ContractOffer; f: Fighter }) {
     toast(withRng(w, (rng) => signContract(w, rng, o.id)), "good");
     changed();
   };
+  const advice = adviseContract(w, f, o);
+  const negotiate = () => {
+    const lines = withRng(w, (rng) => managerNegotiate(w, rng, o.id));
+    setLog((l) => [...l, ...lines]);
+    setShow(o.show);
+    setWin(o.win);
+    setFights(o.fights);
+    changed();
+  };
   return (
     <Panel title={`${p.short}${o.renewal ? " · new deal" : ""}`} hint={`expires ${fmtDate(o.expires)}`} className={o.promo === "ufc" ? "accent" : ""}>
       {o.note && <p className="muted">{o.note}</p>}
@@ -113,8 +131,15 @@ function OfferCard({ w, o, f }: { w: World; o: ContractOffer; f: Fighter }) {
       <p className="small dim" style={{ marginTop: 8 }}>
         +{money(o.escal)} after each win{o.signBonus ? ` · ${money(o.signBonus)} to sign` : ""} · {Math.round(o.termDays / 365)} years{o.champClause ? " · champion's clause" : ""}
       </p>
+      <div style={{ marginTop: 12 }}><AdviceCard a={advice} /></div>
       <hr className="sep" />
-      <div className="small dim" style={{ marginBottom: 6 }}>Counter offer ({o.rounds} so far)</div>
+      <div className="spread" style={{ marginBottom: 6 }}>
+        <span className="small dim">Counter offer ({o.rounds} so far)</span>
+        <span className="row tight">
+          {advice.counter && <button className="btn sm ghost" onClick={() => { setShow(advice.counter!.show); setWin(advice.counter!.win); setFights(advice.counter!.fights); }}>Use the suggestion</button>}
+          {advice.role !== "coach" && advice.verdict !== "sign" && <button className="btn sm" onClick={negotiate}>Let {advice.who.split(/[ ,]/)[0]} negotiate</button>}
+        </span>
+      </div>
       <div className="grid" style={{ gap: 10 }}>
         <label className="field c4">Show money<input className="input" type="number" step={500} value={show} onChange={(e) => setShow(Number(e.target.value))} /></label>
         {o.win > 0 && <label className="field c4">Win money<input className="input" type="number" step={500} value={win} onChange={(e) => setWin(Number(e.target.value))} /></label>}

@@ -7,7 +7,7 @@ import { createWorld, starterClients, addControlled } from "../src/world/create"
 import type { RosterFile } from "../src/world/real";
 import { setWorld } from "../src/state/store";
 import { advance, fightNight, openFightNight, quickSim, resolvePlayerBout } from "../src/sim/advance";
-import { autoAnswer } from "../src/career/actions";
+import { answer, autoAnswer } from "../src/career/actions";
 import type { World } from "../src/model/types";
 import { Home } from "../src/ui/pages/Home";
 import { Inbox } from "../src/ui/pages/Inbox";
@@ -27,6 +27,11 @@ import { FightNight } from "../src/ui/pages/FightNight";
 import { Legacy } from "../src/ui/pages/Legacy";
 import { retirePlayer } from "../src/career/retire";
 import { becomeManager } from "../src/career/retire";
+import { hireManager, makeContractOffer } from "../src/career/offers";
+import { withdraw } from "../src/world/matchmaking";
+import { withRng } from "../src/world/core";
+import { neighbourDivisions } from "../src/data/divisions";
+import { adviseFight, ask, QUESTIONS } from "../src/career/advisor";
 
 const g = globalThis as unknown as Record<string, unknown>;
 g.window = { location: { hash: "" }, addEventListener() {}, removeEventListener() {} };
@@ -107,6 +112,51 @@ retirePlayer(tw, top);
 pages(tw, "Retired fighter");
 becomeManager(tw, "Topuria Management");
 pages(tw, "Retired fighter turned manager");
+
+// A short-notice call and a contract offer, with a manager to advise.
+{
+  const sw = createWorld(roster, { name: "UI", seed: 80, mode: "fighter", difficulty: "normal", takeover: "ufc-bilal-hasan" });
+  const me = sw.fighters[sw.career.fighters[0]];
+  hireManager(sw, me, 80);
+  const divs = [me.div, neighbourDivisions(me.div).up].filter(Boolean);
+  const open = () => sw.career.fightOffers.find((o) => o.status === "open" && o.shortNotice);
+  // Let the cards fill up (turning down the regular offers so the phone can ring), then pull someone out.
+  for (let week = 0; week < 20 && !open(); week++) {
+    for (const m of sw.inbox) if (m.needs && !m.done) answer(sw, m.id, m.kind === "offer" ? "decline" : m.actions?.[0]?.id ?? "ok");
+    advance(sw, 7);
+    if (me.booked) continue;
+    for (const id of sw.upcoming) {
+      if (open()) break;
+      const ev = sw.events[id];
+      const days = ev.day - sw.day;
+      if (ev.promo !== "ufc" || days < 2 || days > 21) continue;
+      for (const bid of [...ev.bouts]) {
+        const b = sw.bouts[bid];
+        if (b.status !== "booked" || b.pending || !divs.includes(b.div) || b.a === me.id || b.b === me.id) continue;
+        withRng(sw, (rng) => withdraw(sw, rng, b, b.a, "illness"));
+        if (open()) break;
+      }
+    }
+  }
+  const offer = open();
+  if (!offer) {
+    failures++;
+    console.log("  FAIL no short-notice call came in the check world");
+  } else {
+    const a = adviseFight(sw, me, offer);
+    console.log(`Short-notice call: ${offer.notice} days, ${offer.limit ? `${offer.limit} lb catchweight` : offer.div}, advice "${a.label}": ${a.headline}`);
+  }
+  withRng(sw, (rng) => makeContractOffer(sw, rng, me, "ufc", { renewal: true }));
+  setWorld(sw);
+  const msg = sw.inbox.find((m) => m.kind === "offer" && m.needs);
+  const cmsg = sw.inbox.find((m) => m.kind === "contract" && m.needs);
+  console.log("Short notice and a contract offer, with a manager");
+  check("Home (offer)", <Home />);
+  if (msg) check("Inbox (short-notice call)", <Inbox id={msg.id} />);
+  if (cmsg) check("Inbox (contract)", <Inbox id={cmsg.id} />);
+  check("Contracts (offer, manager)", <Contracts />);
+  for (const q of QUESTIONS) if (!ask(sw, me, q.id).a) { failures++; console.log(`  FAIL no answer to "${q.q}"`); }
+}
 
 const mw = createWorld(roster, { name: "UI", seed: 79, mode: "manager", difficulty: "normal", agency: "Check Management" });
 for (const f of starterClients(mw, 3)) addControlled(mw, f);

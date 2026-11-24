@@ -29,7 +29,7 @@ export function ageOf(w: World, f: Fighter): number {
 }
 
 export function fullName(f: Fighter): string {
-  return `${f.first} ${f.surname}`;
+  return f.first ? `${f.first} ${f.surname}` : f.surname;
 }
 
 export function tierOf(f: Fighter): Tier | null {

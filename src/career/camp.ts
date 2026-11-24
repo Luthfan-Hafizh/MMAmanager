@@ -11,6 +11,7 @@ import { suggestPlan } from "../engine/plan";
 import { fullName } from "../world/core";
 import { notify } from "./inbox";
 import { ledger } from "./money";
+import { boutLimit, cutCheck, noticeHurt } from "./shortnotice";
 
 export const SPARRING_NAMES = ["Gym partners", "Brought-in partners", "Elite partners"];
 export const NUTRITION_NAMES = ["Do it yourself", "Nutritionist", "Full cut team"];
@@ -74,15 +75,18 @@ export function campWeek(w: World, f: Fighter, filmSessions: number, sparSession
 export function weighInPlayer(w: World, rng: Rng, f: Fighter, b: Bout): { weight: number; made: boolean; drain: number; text: string } {
   const fc = w.career.fc[f.id];
   const camp = fc?.camp;
-  const limit = DIVISIONS[b.div].limit;
+  const limit = boutLimit(b);
   const title = b.kind === "title" || b.kind === "interim" || b.kind === "vacant";
   const allow = title ? 0 : 1;
   const over = (f.walk - limit) / limit; // how far the walking weight is above the limit
   const weeks = camp ? (b.day - camp.start) / 7 : 2;
   const nut = camp?.nutrition ?? 0;
   const style = camp?.cut ?? "standard";
+  // On short notice the clock matters most: what can come off in the days there were.
+  const sub = !!b.shortNotice && b.sub === f.id;
+  const rush = sub ? { none: -0.4, easy: 0, normal: 0.5, hard: 1.3, "too much": 2.4 }[cutCheck(f, limit, b.notice ?? Math.round(weeks * 7)).risk] + 0.4 * noticeHurt(b.notice) : 0;
   // The bigger the cut, the shorter the camp and the worse the support, the harder it is.
-  let difficulty = over * 10 - (nut * 0.5) - Math.min(weeks, 10) * 0.07 + (b.shortNotice ? 0.8 : 0) + (style === "late" ? 0.25 : style === "early" ? -0.2 : 0);
+  let difficulty = over * 10 - (nut * 0.5) - Math.min(weeks, 10) * 0.07 + rush + (style === "late" ? 0.25 : style === "early" ? -0.2 : 0);
   difficulty = clamp(difficulty, -1, 4);
   const pMiss = clamp(0.015 + Math.max(0, difficulty - 0.6) * 0.09, 0.005, 0.6) * (1 - f.pers.professionalism / 60);
   const miss = rng.chance(pMiss);

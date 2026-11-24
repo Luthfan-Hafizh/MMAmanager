@@ -10,6 +10,7 @@ import { ageAt } from "../core/time";
 import { ATTRS, ovrOf, type AttrKey } from "../model/attributes";
 import type { Fighter, Gym, SessionId, TrainingPlan, World } from "../model/types";
 import { TECHNIQUES, type TechId } from "../data/techniques";
+import { growthRate, monthsToPeak } from "../world/development";
 
 export interface SessionDef {
   id: SessionId;
@@ -78,16 +79,20 @@ export function coachQuality(g: Gym | undefined, area: SessionDef["area"]): numb
   return g.coaches[area];
 }
 
+/** How readily the body and the mind still take in new work. */
 export function ageGrowth(age: number): number {
-  if (age < 21) return 1.35;
-  if (age < 24) return 1.2;
-  if (age < 27) return 1.05;
-  if (age < 29) return 0.85;
-  if (age < 31) return 0.6;
-  if (age < 33) return 0.4;
-  if (age < 35) return 0.25;
-  return 0.12;
+  if (age < 21) return 1.1;
+  if (age < 24) return 1.05;
+  if (age < 27) return 1;
+  if (age < 29) return 0.95;
+  if (age < 31) return 0.85;
+  if (age < 33) return 0.7;
+  if (age < 35) return 0.55;
+  return 0.4;
 }
+
+/** Converts the world's monthly growth rate into the training pace (over a real career, with camps, injuries and light weeks, a pace of 1 is worth about 1.4 overall a year). */
+export const PACE_SCALE = 8.5;
 
 export interface WeekResult {
   growth: Partial<Record<AttrKey, number>>;
@@ -137,17 +142,30 @@ export function trainingWeek(w: World, f: Fighter, plan: TrainingPlan, rng: Rng,
   const age = ageAt(f.birth, w.day);
   const gym = w.gyms[f.gym];
   const cur = ovrOf(f.attrs);
-  const room = clamp((f.hid.pot - cur) / 9, 0.05, 2);
+  // The pace of development: the room to the potential spread over the years to
+  // the peak (and a year past it, for what training still teaches), as for the
+  // world's fighters but without their late slow-down: a fighter who keeps doing
+  // the work can reach the ceiling. Good weeks, coaches and habits beat the pace.
+  const room = clamp((f.hid.pot - cur) * growthRate(monthsToPeak(f, age) + 12, age, false) * PACE_SCALE, 0.05, 2.8);
   const pro = 0.75 + f.pers.professionalism / 40;
   const fatPenalty = f.fatigue > 70 ? 0.65 : f.fatigue > 55 ? 0.85 : 1;
   const injured = f.injury && f.injury.until > w.day;
   const growth: Partial<Record<AttrKey, number>> = {};
   const fac = gym ? 0.8 + gym.facilities / 250 : 0.9;
+  // Weak attributes improve faster than strong ones; the pace sets the overall rate.
+  const topOf = (k: AttrKey) => clamp((20.6 - f.attrs[k]) / 8, 0.05, 1.3);
+  let tw = 0;
+  let tv = 0;
+  for (const s of plan.week) for (const [k, v] of Object.entries(SESSIONS[s].attrs) as [AttrKey, number][]) {
+    tw += v * topOf(k);
+    tv += v;
+  }
+  const meanTop = tv > 0 ? Math.max(0.2, tw / tv) : 1;
   for (const s of plan.week) {
     const sd = SESSIONS[s];
     const q = 0.55 + coachQuality(gym, sd.area) / 110;
     for (const [k, v] of Object.entries(sd.attrs) as [AttrKey, number][]) {
-      const top = clamp((20.6 - f.attrs[k]) / 8, 0.05, 1.3);
+      const top = topOf(k) / meanTop;
       const g = 0.0105 * mul * v * q * fac * INT_GROWTH[plan.intensity] * ageGrowth(age) * room * pro * fatPenalty * top * (injured ? 0.35 : 1);
       growth[k] = (growth[k] ?? 0) + g;
     }

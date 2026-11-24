@@ -1,10 +1,11 @@
-// Growth and aging. Young fighters close the gap to their potential; past the
-// prime the body goes first (speed, cardio, recovery) while fight IQ holds.
+// Growth and aging. Fighters improve steadily through their twenties toward
+// their potential, closing most of the gap by the prime; past it the body goes
+// first (speed, cardio, recovery) while fight IQ holds.
 // The decline is tuned to the UFC's win rate by age (about 58% for fighters
 // under 25, falling to 38% at 37 and older), with personal clocks: one in four
 // ages early, one in eight late, and heavier fighters peak later.
 
-import type { Rng } from "../core/rng";
+import { hashString, type Rng } from "../core/rng";
 import { clamp } from "../core/util";
 import { ageAt } from "../core/time";
 import { DIVISIONS, type DivisionId } from "../data/divisions";
@@ -37,15 +38,49 @@ export function yearlyDecline(f: Fighter, age: number): number {
   return d;
 }
 
-/** Monthly catch-up toward potential for fighters the world develops. */
+/** Months a fighter keeps developing: until about half a year past the start of the fade. */
+export function monthsToPeak(f: Fighter, age: number): number {
+  return (fadeStart(f) + 0.5 - age) * 12;
+}
+
+/** The young learn fastest: up to half again the pace at 20, tapering to the usual by 25. */
+export function youngBoost(age: number): number {
+  return 1 + 0.6 * clamp((25 - age) / 5, 0, 1);
+}
+
+/** Early and late developers: a personal pace, 0.82 to 1.18. */
+export function devPace(f: Fighter): number {
+  return 0.82 + ((hashString(`${f.id}:dev`) % 1000) / 1000) * 0.36;
+}
+
+/**
+ * The share of the room left that a fighter closes in a month, before coaching,
+ * habits and personal pace. The room is spread over the months to the peak, so
+ * a prospect improves a few points a year rather than in one jump; the young
+ * learn fastest, and in the last two and a half years before the peak the gains
+ * slow down (UFC fighters win most often in their early-to-mid twenties, while
+ * they are still improving, and break even by about 30).
+ */
+export function growthRate(months: number, age: number, taper = true): number {
+  if (months <= 0) return 0;
+  return (0.85 / Math.max(12, months)) * (taper ? clamp(months / 30, 0.35, 1) : 1) * youngBoost(age);
+}
+
+/** The share of the room a fighter can expect to fill in the months left to develop. */
+export function reachable(months: number, age: number, taper = true): number {
+  let left = 1;
+  let a = age;
+  for (let m = Math.floor(months); m > 0; m--, a += 1 / 12) left *= 1 - growthRate(m, a, taper);
+  return 1 - left;
+}
+
+/** Monthly growth toward the potential for the fighters the world develops. */
 export function monthlyGrowth(f: Fighter, age: number, gymRep: number): number {
-  const cur = ovrOf(f.attrs);
-  const room = f.hid.pot - cur;
+  const room = f.hid.pot - ovrOf(f.attrs);
   if (room <= 0) return 0;
-  const rate = age < 21 ? 0.05 : age < 23 ? 0.042 : age < 25 ? 0.034 : age < 27 ? 0.024 : age < 29 ? 0.012 : age < 31 ? 0.005 : 0;
   const coach = 0.8 + gymRep / 250;
   const pro = 0.75 + f.pers.professionalism / 40;
-  return room * rate * coach * pro;
+  return room * growthRate(monthsToPeak(f, age), age) * coach * pro * devPace(f);
 }
 
 const DECLINE_W: Partial<Record<AttrKey, number>> = {
@@ -103,13 +138,13 @@ export function monthlyDevelopment(w: World, rng: Rng): void {
 
 /**
  * The growth a fighter can still expect: the room to the potential, times the
- * share of it left to fill at this age (the world's fighters stop growing at
- * about 31; the player's keep learning from their training a little longer).
+ * share of it left to fill before the peak (the player's fighters keep learning
+ * from their training about a year longer).
  */
 export function outlookRoom(f: Fighter, day: number): number {
   const age = ageAt(f.birth, day);
-  const left = clamp((f.ctrl ? 34 : 31) - age, 0, 8) / 8;
-  return Math.max(0, f.hid.pot - ovrOf(f.attrs)) * left;
+  const months = monthsToPeak(f, age) + (f.ctrl ? 12 : 0);
+  return Math.max(0, f.hid.pot - ovrOf(f.attrs)) * reachable(months, age, !f.ctrl);
 }
 
 export function potentialText(f: Fighter, day: number, scouted = 0.7): string {
@@ -118,7 +153,7 @@ export function potentialText(f: Fighter, day: number, scouted = 0.7): string {
   if (room > 11) return fuzz > 2 ? "Huge potential" : "Could be special";
   if (room > 6) return "Plenty of room to grow";
   if (room > 2) return "Still improving";
-  return ageAt(f.birth, day) >= 31 ? "Fully developed" : "At or near the ceiling";
+  return monthsToPeak(f, ageAt(f.birth, day)) <= 0 ? "Fully developed" : "At or near the ceiling";
 }
 
 export function primeText(f: Fighter, day: number): string {

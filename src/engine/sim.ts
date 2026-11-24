@@ -25,7 +25,14 @@ export interface Condition {
   prep: number; // -1..1, camp preparation
   home: boolean;
   shortNotice: boolean;
+  /** Days' notice for a fighter who stepped in. */
+  notice?: number;
+  /** The size gap on the night, -1..1, when someone fights outside their division. */
+  size?: number;
 }
+
+/** How a short camp tells: 1 with a day's notice, 0 with three weeks. */
+const snHurt = (days?: number) => 1 - clamp(days ?? 21, 0, 21) / 21;
 
 export interface FightInput {
   a: Fighter;
@@ -201,8 +208,9 @@ export class FightSim {
     for (const k of ATTRS) n[k] = norm(f.attrs[k]);
     const cond: Condition = { rust: 0, cut: 0, injury: 0, prep: 0, home: false, shortNotice: false, ...c };
     const wear = clamp((f.dmg - 60) / 500, 0, 0.3);
-    const chinRes = (0.5 + 0.9 * n.chin) * (1 - cond.cut * 0.18) * (1 - wear * 0.5);
-    const cap = 100 - cond.cut * 22 - (cond.shortNotice ? 6 : 0) + cond.prep * 3;
+    const chinRes = (0.5 + 0.9 * n.chin) * (1 - cond.cut * 0.18) * (1 - wear * 0.5) * (1 + 0.05 * (cond.size ?? 0));
+    // A short camp: the gas tank isn't built, more so the later the call.
+    const cap = 100 - cond.cut * 22 - (cond.shortNotice ? 1 + 3 * snHurt(cond.notice) : 0) + cond.prep * 3;
     return {
       f, i, name: f.surname, n, plan, base: plan, d: dialsOf(plan), shout: null,
       sta: cap, cap, head: 100, body: 100, legs: 100, stun: 0, cut: 0, kd: 0, cond, chinRes,
@@ -251,6 +259,15 @@ export class FightSim {
     if (k === "strikeDef" || k === "subDef" || k === "tdd") v *= this.defMul;
     if (k === "subDef") v *= this.subDefMul;
     if (k === "strength") v *= 1 - s.cond.cut * 0.08;
+    if (k === "cardio" && s.cond.shortNotice) v *= 1 - 0.02 * snHurt(s.cond.notice);
+    const z = s.cond.size;
+    if (z) {
+      // Up a weight class: the bigger man is stronger and hits harder; the smaller one is a touch quicker.
+      if (k === "strength") v *= 1 + 0.1 * z;
+      else if (k === "power") v *= 1 + 0.06 * z;
+      else if (k === "takedowns" || k === "tdd" || k === "clinchControl" || k === "topControl") v *= 1 + 0.05 * z;
+      else if (k === "speed") v *= 1 - 0.03 * z;
+    }
     return v;
   }
 

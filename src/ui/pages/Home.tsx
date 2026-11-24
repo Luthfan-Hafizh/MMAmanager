@@ -22,6 +22,7 @@ import { primeText } from "../../world/development";
 import { useState } from "react";
 import { becomeManager, careerRecap } from "../../career/retire";
 import { moneyline } from "../../world/odds";
+import { FightOfferView } from "../advice";
 
 export function Home() {
   const w = useWorld();
@@ -99,28 +100,17 @@ export function NextFightCard({ w, f }: { w: World; f: Fighter }) {
   }
   if (offer) {
     const opp = w.fighters[offer.opp];
-    const ev = w.events[offer.ev];
     const msg = w.inbox.find((m) => m.ref === offer.id && m.needs);
+    const yes = msg?.actions?.find((a) => a.id === "accept")?.label ?? "Accept";
+    const no = msg?.actions?.find((a) => a.id === "decline")?.label ?? "Decline";
     return (
-      <Panel title="Fight offer" hint={`answer by ${fmtDate(offer.expires)}`} className="gold">
-        <div className="vs-card" style={{ marginBottom: 14 }}>
-          <div><div className="label">You</div><div className="who">{f.surname}</div><div className="small dim">{recordText(f)}</div></div>
-          <div className="vs">VS</div>
-          <div className="r2"><div className="label">{PROMOTIONS[offer.promo].short} offers</div><div className="who"><Link to={`/fighter/${opp.id}`}>{opp.surname}</Link></div><div className="small dim">{recordText(opp)} · {rankLabel(w, opp) || "Unranked"}</div></div>
-        </div>
-        <p className="small muted">
-          <Link to={`/event/${ev.id}`}><b>{ev.name}</b></Link> · {fmtDate(offer.day)} ({weeksText(offer.day - w.day)}) · {offer.rounds} rounds{offer.shortNotice ? " · short notice" : ""} · {offer.show ? `${money(offer.show)} to show${offer.win ? `, ${money(offer.win)} to win` : ""}` : "no purse"}
-          {(() => {
-            const bt = Object.values(w.bouts).find((x) => x.pending === offer.id);
-            if (!bt || bt.odds === undefined) return null;
-            const p = bt.a === f.id ? bt.odds : 1 - bt.odds;
-            return <> · the books make you <b>{moneyline(p)}</b> ({Math.round(p * 100)}%)</>;
-          })()}
-        </p>
+      <Panel title={offer.stay ? "New opponent" : offer.shortNotice ? "Short-notice call" : `${PROMOTIONS[offer.promo].short} fight offer`} hint={offer.expires <= w.day ? "answer today" : `answer by ${fmtDate(offer.expires)}`} className={offer.shortNotice ? "accent" : "gold"}>
+        <FightOfferView w={w} o={offer} f={f} compact />
         {msg && (
-          <div className="row">
-            <button className="btn primary" onClick={() => { toast(answer(w, msg.id, "accept"), "good"); changed(); }}>Accept</button>
-            <button className="btn danger" onClick={() => { toast(answer(w, msg.id, "decline")); changed(); }}>Decline</button>
+          <div className="row" style={{ marginTop: 14 }}>
+            <button className="btn primary" onClick={() => { toast(answer(w, msg.id, "accept"), "good"); changed(); }}>{yes}</button>
+            <button className="btn danger" onClick={() => { toast(answer(w, msg.id, "decline")); changed(); }}>{no}</button>
+            <Link to={`/inbox/${msg.id}`} className="textlink">All the reasons</Link>
             <Link to={`/fighter/${opp.id}`} className="textlink">Scout {opp.surname}</Link>
           </div>
         )}

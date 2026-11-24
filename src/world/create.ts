@@ -18,18 +18,22 @@ import { addNews, fullName, nextId, rankOf, touch, withRng } from "./core";
 import { generateFighter, makeRecord, pickCountry } from "./generate";
 import { currentStreak, potentialNoise, prospectRoom, realFighter, realGym, type RosterFile } from "./real";
 import { entryElo, updateP4P, updateRankings } from "./rankings";
+import { managerPerson } from "../career/advisor";
 
-export const SAVE_VERSION = 2;
+export const SAVE_VERSION = 3;
 /** The oldest save format this version can bring up to date. */
 export const OLDEST_SAVE = 1;
 
 /** Bring a save from an older format up to date (the roster fills in what it did not keep). */
 export function migrate(w: World, roster: RosterFile | null): World {
-  if (w.v < 2) {
+  if (w.v < 3) {
     // Format 2: real fighters are scouted as prospects. Their potential used
     // to sit barely above their level, so young real fighters never grew.
     // Their fights on the big stage before the world began, and the streaks
     // the snapshot was missing, come from the roster.
+    // Format 3: a second scouting with more room for prospects and fighters in
+    // their prime; short-notice calls on (there was no way to turn them on);
+    // managers get a name.
     const byId = new Map((roster?.fighters ?? []).map((rf) => [rf.id, rf] as const));
     for (const f of Object.values(w.fighters)) {
       if (!f.real) continue;
@@ -53,7 +57,15 @@ export function migrate(w: World, roster: RosterFile | null): World {
       const pot = Math.round(clamp(cur + prospectRoom(view, cur, potentialNoise(f.id, w.seed)), cur, 94));
       if (pot > f.hid.pot) f.hid.pot = pot;
     }
-    w.v = 2;
+    withRng(w, (rng) => {
+      for (const id of Object.keys(w.career.fc)) {
+        const fc = w.career.fc[id];
+        const f = w.fighters[id];
+        if (w.v < 3) fc.shortNotice = true;
+        if (fc.manager && !fc.manager.person && f) Object.assign(fc.manager, managerPerson(rng, f));
+      }
+    });
+    w.v = 3;
   }
   return w;
 }
@@ -426,7 +438,7 @@ export function addControlled(w: World, f: Fighter): void {
     dayJob: false,
     manager: null,
     mediaStyle: "confident",
-    shortNotice: false,
+    shortNotice: true,
   };
 }
 
@@ -478,6 +490,9 @@ export function createPlayerFighter(w: World, cf: CreatedFighter, o: NewGameOpti
     g.reach = cf.reach;
     g.stance = cf.stance;
     g.hid.pot = pot;
+    // A created fighter gets an ordinary body clock: no hidden early fade.
+    g.hid.aging = "normal";
+    g.hid.peak = Math.round(clamp(rng.normal(29.5, 0.8), 28, 31) * 10) / 10;
     g.hid.consistency = Math.max(g.hid.consistency, 11);
     g.pers.professionalism = Math.max(g.pers.professionalism, 13);
     g.gym = cf.gym && w.gyms[cf.gym] ? cf.gym : pickGym(w, rng, cf.country, level + 8).id;

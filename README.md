@@ -10,10 +10,12 @@ A browser MMA career and management simulator. Take a fighter from the amateur c
 
 **Two careers**
 
-- **Fighter.** Create a fighter (country, weight class, body, martial arts background, talent; start as an amateur, a pro debutant or a regional prospect) or take over any real fighter on the UFC or PFL roster. Plan the training week, drill techniques, accept or turn down fights, run the camp and the weight cut, negotiate contracts, corner yourself live, and chase the belt.
+- **Fighter.** Create a fighter (country, weight class, body, martial arts background, talent; start as an amateur, a pro debutant or a regional prospect) or take over any real fighter on the UFC or PFL roster. Plan the training week, drill techniques, accept or turn down fights, run the camp and the weight cut, negotiate contracts, corner yourself live, and chase the belt. Hire a manager (10-20%) and they advise on every fight and contract offer, answer questions about your value, your readiness, your weight and the plan, and negotiate for you; without one, your head coach talks about the fights but not the money.
 - **Manager.** Run an MMA management company. Sign clients at every level (your reputation, your cut and the stable you already have decide who says yes), take 10-20% of their purses and 20% of their sponsorship, negotiate their deals, plan their camps and build a stable.
 
 **A world of real promotions.** The UFC and the PFL with their real rosters, rankings and champions; the Contender Series every August; and in each of eight regions a regional promotion (LFA, Jungle Fight, Cage Warriors, KSW, Pancrase, EFC, Brave CF, Eternal MMA), a local show and an IMMAF amateur circuit. About 3,700 fighters; promotions sign the best from the level below (the UFC and the PFL want a winning record as well as the talent), release fighters on losing runs, and fighters develop, age, get hurt and retire. Real fighters are scouted like prospects: the young ones with an unbeaten record, finishes, a ranking already or a fast rise to the top level have the most room to grow, so the real prospects of 2026 can become the contenders of 2029.
+
+**How fighters develop.** Nobody jumps ten points in a year. A fighter's room to grow is spread over the years to the prime: a few points a year, fastest in the early twenties, slowing in the late twenties, with early and late developers. Most of the gap to the potential closes by the prime (about 85-90%); good coaching, good habits and, for your own fighter, a well-planned training week beat the pace. A phenom who debuts at 20 is at UFC level around 24-25 and a contender by 29-30, about the age real champions win their belts. The pace is tuned so the UFC's win rate by age (58% under 25, falling to 38% at 37 and over) comes out as it does in the real sport.
 
 **The fight engine.** Fights are played exchange by exchange: range and footwork, the fence, combinations and counters, the clinch, takedowns and sprawls, ground positions from guard to back control, submissions, ground and pound. Damage is tracked for the head, body and legs; stamina drains with work and body shots; knockdowns, referee stoppages, cuts and doctor stoppages end fights; three judges score every round on the ten-point must system, with 10-8 rounds and split decisions. Calibrated against the UFC:
 
@@ -26,12 +28,15 @@ A browser MMA career and management simulator. Take a fighter from the amateur c
 | Share of finishes in round 1 | 46% | about 45-50% |
 | Strikes landed to head / body / legs | 63 / 21 / 16 | 64 / 21 / 15 |
 | Split and majority share of decisions | 16% | about 15-20% |
+| Short-notice replacements who win (world, UFC and PFL) | 42% | 37-42% |
 
 Lower levels are sloppier: more finishes on the local shows and in the regional promotions; amateurs fight three-minute rounds.
 
 **Fight plans.** Twelve styles to start from and a dozen instructions (tempo, risk, range, kicks, lead or counter, takedowns, clinch, fence pressure, target, top and bottom game, defence). The coaches comment on the plan against this opponent. In the live fight, shout instructions from the corner (discipline decides if they're heard) and change the plan between rounds.
 
 **Camps and the scale.** Sparring partners, a nutritionist or a full cut team, the cut strategy, film study. Preparation on the night comes from the camp's length, sharpness, freshness and the partners. Weight is checked the day before; a miss costs 20-30% of the purse and the fight goes ahead at a catchweight.
+
+**Short notice.** When someone pulls out late, the phone rings: from three weeks to the day before, at the weight, at a catchweight when the cut can't be made in time, or a division up against the bigger man, and sometimes from a bigger promotion that needs a name (a UFC debut on short notice comes with the contract). The call shows the days left, the cut from your walking weight and your manager's advice, and needs an answer fast. A short camp costs cardio and preparation, more the later the call, and a fast cut drains the body; but the money is better, the matchmaker remembers who said yes, and a short-notice loss costs half as much in the rankings. When your own opponent drops out, you choose whether to take the new name; in fight week the big promotions pay your show money if the fight falls through. Switch the calls off on the Contracts page.
 
 **Money as the sport pays it (2026).** UFC newcomers on $12,000 to show and $12,000 to win, rising with each win; fight-week compliance pay; $100,000 Fight and Performance of the Night bonuses and $25,000 for every finish (the bonuses introduced with the Paramount deal in 2026). Out of the purse: the gym and head coach, the manager, licences and medicals, travel, and tax.
 
@@ -45,7 +50,7 @@ Lower levels are sloppier: more finishes on the local shows and in the regional 
 
 **Legacy and life after fighting.** Every career builds a legacy score from belts and defences at the top, wins over the best, finishes and time on the pound-for-pound list; real champions start with their UFC title history. The Legacy page ranks the greatest of all time, keeps the records and the Hall of Fame, which inducts a class each July at International Fight Week. Retire whenever you choose (the team will tell you when they think it's time), read the career recap, then open a management company in the same world or watch the sport go on.
 
-**Everything else.** Medical suspensions as commissions set them (up to 120 days after a heavy knockout), injuries in camp and in fights, short-notice replacements, interim and vacant titles, immediate rematches after close title fights, title strips for refusing to defend, ring rust after long layoffs, an aging curve with early and late agers, sponsorship deals, achievements.
+**Everything else.** Medical suspensions as commissions set them (up to 120 days after a heavy knockout), injuries in camp and in fights, interim and vacant titles, immediate rematches after close title fights, title strips for refusing to defend, ring rust after long layoffs, an aging curve with early and late agers, sponsorship deals, achievements.
 
 ## The interface
 

@@ -77,7 +77,7 @@ function FightHeader({ w, b, f, opp }: { w: World; b: Bout; f: Fighter; opp: Fig
       eyebrow={<>{title && <span className="tag gold">{b.kind === "interim" ? "Interim title" : "Title fight"}</span>}<span>{ev?.name}</span><span className="dim">·</span><span>{fmtDate(b.day, { dow: true })}</span></>}
       first={`${f.surname} vs`}
       title={opp.surname}
-      sub={`${ev?.venue}, ${ev?.city} · ${b.rounds} × ${b.roundSec / 60} min · ${DIVISIONS[b.div].name} (${DIVISIONS[b.div].limit} lb)${b.shortNotice ? " · short notice" : ""}`}
+      sub={`${ev?.venue}, ${ev?.city} · ${b.rounds} × ${b.roundSec / 60} min · ${b.limit ? `${b.limit} lb catchweight` : `${DIVISIONS[b.div].name} (${DIVISIONS[b.div].limit} lb)`}${b.shortNotice && b.sub === f.id ? ` · stepped in on ${b.notice ?? "short"} days' notice` : b.shortNotice ? " · new opponent on short notice" : ""}`}
       word={opp.surname}
       right={
         odds ? (

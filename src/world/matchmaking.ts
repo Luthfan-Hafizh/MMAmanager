@@ -14,7 +14,8 @@ import { lostToRecently, ratingFor } from "./rankings";
 import { setOdds } from "./odds";
 import { calloutFor } from "../career/fightweek";
 import { notify } from "../career/inbox";
-import { fightOfferPay } from "../career/money";
+import { fightOfferPay, payShowOnly } from "../career/money";
+import { CUT_TEXT, cutCheck, findCall, type Call } from "../career/shortnotice";
 import { fmtDate } from "../core/time";
 import { money } from "../core/util";
 
@@ -391,10 +392,19 @@ export function wantsOffer(w: World, f: Fighter, ev: MMAEvent): boolean {
   return true;
 }
 
-export function offerFight(w: World, rng: Rng, ev: MMAEvent, f: Fighter, opp?: Fighter, kind?: BoutKind, shortNotice = false, replace?: Bout): FightOffer | null {
+export interface OfferExtra {
+  notice?: number;
+  limit?: number;
+  debut?: PromoId;
+  stay?: boolean;
+  replaced?: string;
+}
+
+export function offerFight(w: World, rng: Rng, ev: MMAEvent, f: Fighter, opp?: Fighter, kind?: BoutKind, shortNotice = false, replace?: Bout, extra: OfferExtra = {}): FightOffer | null {
   const p = PROMOTIONS[ev.promo];
   const ps = w.promos[ev.promo];
-  const d = f.div;
+  // A replacement spot is at the bout's weight, which may be a division up.
+  const d = replace ? replace.div : f.div;
   let k: BoutKind = kind ?? "regular";
   let o = opp ?? null;
   if (!o) {
@@ -445,7 +455,10 @@ export function offerFight(w: World, rng: Rng, ev: MMAEvent, f: Fighter, opp?: F
     f.booked = replace.id;
     replace.pending = "x";
   }
-  const pay = fightOfferPay(w, f, ev.promo, shortNotice);
+  const pay = extra.stay ? fightOfferPay(w, f, ev.promo, false) : fightOfferPay(w, f, ev.promo, shortNotice);
+  const days = ev.day - w.day;
+  // Short notice can't wait: two days to answer with a week or more to go, a day inside a week, the same day at the end.
+  const expires = shortNotice ? w.day + (days >= 8 ? 2 : days >= 4 ? 1 : 0) : Math.min(ev.day - 10, w.day + 5);
   const offer: FightOffer = {
     id: nextId(w, "fo"),
     fighter: f.id,
@@ -460,19 +473,51 @@ export function offerFight(w: World, rng: Rng, ev: MMAEvent, f: Fighter, opp?: F
     win: pay.win,
     shortNotice,
     made: w.day,
-    expires: Math.min(ev.day - 10, w.day + (shortNotice ? 2 : 5)),
+    expires,
     status: "open",
+    notice: shortNotice ? days : undefined,
+    limit: extra.limit,
+    debut: extra.debut,
+    stay: extra.stay,
+    replaced: extra.replaced,
   };
   bout.pending = offer.id;
   w.career.fightOffers.push(offer);
-  const kindText = bout.kind === "title" ? "a title fight" : bout.kind === "vacant" ? "a fight for the vacant title" : bout.kind === "interim" ? "an interim title fight" : bout.kind === "tryout" ? "a Contender Series fight" : shortNotice ? "a short-notice fight" : "a fight";
+  const you = f.ctrl && w.career.mode === "manager" ? fullName(f) : "you";
+  const rec = `${o.rec.w}-${o.rec.l}${o.rec.d ? `-${o.rec.d}` : ""}`;
+  const purse = pay.show ? `Purse: ${money(pay.show)} to show${pay.win ? ` and ${money(pay.win)} to win` : ""}.` : "Amateur bout: no purse.";
+  const out = extra.replaced ? w.fighters[extra.replaced] : undefined;
+  if (shortNotice) {
+    const limit = extra.limit ?? DIVISIONS[d].limit;
+    const weight = extra.limit ? `at a ${limit} lb catchweight` : d !== f.div ? `up at ${DIVISIONS[d].name.toLowerCase()} (${limit} lb)` : `at ${DIVISIONS[d].name.toLowerCase()} (${limit} lb)`;
+    const cut = cutCheck(f, limit, days);
+    const when = days <= 1 ? "tomorrow" : `in ${days} days`;
+    const big = p.tier === "major" || p.tier === "league";
+    notify(w, {
+      kind: "offer",
+      fighter: f.id,
+      ref: offer.id,
+      from: `${p.short} matchmaker`,
+      subject: extra.stay ? `New opponent: ${fullName(o)}, ${days} day${days === 1 ? "" : "s"} out` : `Short notice: ${fullName(o)} ${when}${bout.kind === "title" || bout.kind === "interim" ? " (title)" : ""}`,
+      body: extra.stay
+        ? `${out ? `${fullName(out)} is out of the fight. ` : ""}${p.short} has ${fullName(o)} (${rec}) ready to step in on ${days} days' notice: same date, same card, ${weight}. Take the new opponent, or the fight is off${days <= 7 && big ? " (in fight week the promotion still pays your show money)" : ""}.`
+        : `${out ? `${fullName(out)} has pulled out of ${ev.name}. ` : ""}${p.name} wants ${you} ${extra.debut ? "on its card for the first time, " : ""}against ${fullName(o)} (${rec}) ${when}, ${fmtDate(ev.day)} in ${ev.city}, ${weight}. ${bout.rounds} rounds. ${purse} ${days <= 3 ? "They need an answer today." : `Answer by ${fmtDate(expires)}.`} The camp is ${days} day${days === 1 ? "" : "s"}; the weight, from ${f.walk} lb, is ${CUT_TEXT[cut.risk]}.${extra.debut ? ` Taking it signs the ${p.short} deal.` : ""}`,
+      needs: true,
+      actions: [
+        { id: "accept", label: extra.stay ? "Take the new opponent" : "Take the fight", primary: true },
+        { id: "decline", label: extra.stay ? "Call it off" : "Turn it down", danger: true },
+      ],
+    });
+    return offer;
+  }
+  const kindText = bout.kind === "title" ? "a title fight" : bout.kind === "vacant" ? "a fight for the vacant title" : bout.kind === "interim" ? "an interim title fight" : bout.kind === "tryout" ? "a Contender Series fight" : "a fight";
   notify(w, {
     kind: "offer",
     fighter: f.id,
     ref: offer.id,
     from: `${p.short} matchmaker`,
     subject: `${p.short} offer: ${fullName(o)}${bout.kind === "title" ? " (title)" : ""}`,
-    body: `${p.name} offers ${f.ctrl && w.career.mode === "manager" ? fullName(f) : "you"} ${kindText} against ${fullName(o)} (${o.rec.w}-${o.rec.l}${o.rec.d ? `-${o.rec.d}` : ""}) at ${ev.name} on ${fmtDate(ev.day)} in ${ev.city}. ${bout.rounds} rounds. ${pay.show ? `Purse: ${money(pay.show)} to show${pay.win ? ` and ${money(pay.win)} to win` : ""}.` : "Amateur bout: no purse."}`,
+    body: `${p.name} offers ${you} ${kindText} against ${fullName(o)} (${rec}) at ${ev.name} on ${fmtDate(ev.day)} in ${ev.city}. ${bout.rounds} rounds. ${purse}`,
     needs: true,
     actions: [
       { id: "accept", label: "Accept", primary: true },
@@ -482,8 +527,32 @@ export function offerFight(w: World, rng: Rng, ev: MMAEvent, f: Fighter, opp?: F
   return offer;
 }
 
-/** A fighter is out of a booked fight: find a replacement or scrap it. */
-export function withdraw(w: World, rng: Rng, b: Bout, outId: string, why: string): void {
+/** The matchmaker calls one of the player's fighters to fill a spot. True if the call was made. */
+function callPlayer(w: World, rng: Rng, ev: MMAEvent, b: Bout, outId: string, stay: Fighter, days: number): boolean {
+  const c: Call | null = findCall(w, ev, b, stay, days);
+  if (!c || !rng.chance(c.chance)) return false;
+  if (b.a === outId) b.a = c.f.id;
+  else b.b = c.f.id;
+  b.replaced = outId;
+  b.sub = c.f.id;
+  b.notice = days;
+  b.shortNotice = true;
+  b.limit = c.limit;
+  c.f.booked = b.id;
+  setOdds(w, b);
+  const fc = w.career.fc[c.f.id];
+  if (fc) fc.lastCall = w.day;
+  offerFight(w, rng, ev, c.f, stay, b.kind, true, b, { notice: days, limit: c.limit, debut: c.debut, replaced: outId });
+  return true;
+}
+
+/**
+ * A fighter is out of a booked fight. The matchmaker rings round (the player's
+ * fighters who said they'd take short notice first, if they fit), then looks
+ * for someone on the roster; with no one, the fight is off. When the player's
+ * own opponent drops out, the new name is the player's call.
+ */
+export function withdraw(w: World, rng: Rng, b: Bout, outId: string, why: string, opts: { quiet?: boolean } = {}): void {
   const ev = w.events[b.ev];
   const out = w.fighters[outId];
   const stayId = b.a === outId ? b.b : b.a;
@@ -491,47 +560,65 @@ export function withdraw(w: World, rng: Rng, b: Bout, outId: string, why: string
   if (out.booked === b.id) out.booked = null;
   if (!ev || ev.status === "done") return;
   const days = ev.day - w.day;
-  // The player's fighter is the one pulling out: the opponent may get a new name.
-  const pool = rosterOf(w, ev.promo, b.div).filter((x) => x.id !== stayId && x.id !== outId && readyFor(w, x, ev, { shortNotice: true }));
-  // A player's fighter in the division willing to take short notice gets the call first.
-  const playerSub = pool.find((x) => x.ctrl && w.career.fc[x.id]?.shortNotice && !w.career.fightOffers.some((o) => o.fighter === x.id && o.status === "open"));
-  if (playerSub && days >= 5 && !stay.ctrl) {
-    if (b.a === outId) b.a = playerSub.id;
-    else b.b = playerSub.id;
-    b.replaced = outId;
-    b.shortNotice = true;
-    playerSub.booked = b.id;
-    setOdds(w, b);
-    offerFight(w, rng, ev, playerSub, stay, b.kind === "title" ? "title" : b.kind, true, b);
-    addNews(w, { kind: "booking", promo: ev.promo, fighters: [outId], text: `${fullName(out)} is out of ${ev.name} (${why}).` });
+  const p = PROMOTIONS[ev.promo];
+  const big = p.tier === "major" || p.tier === "league";
+  const titleFight = b.kind === "title" || b.kind === "interim" || b.kind === "vacant";
+  const champOut = titleFight && w.promos[ev.promo].champs[b.div] === outId;
+  // The phone rings for one of the player's fighters.
+  if (!stay.ctrl && !champOut && callPlayer(w, rng, ev, b, outId, stay, days)) {
+    if (!opts.quiet && (big || p.tier === "regional")) addNews(w, { kind: "booking", promo: ev.promo, fighters: [outId], text: `${fullName(out)} is out of ${ev.name} (${why}).` });
     return;
   }
-  const sub = days >= 4 ? bestOpponent(w, rng, stay, pool.filter((x) => !x.ctrl), ev.promo, new Set()) : null;
-  const titleFight = b.kind === "title" || b.kind === "interim" || b.kind === "vacant";
+  // Champions don't step in on short notice (and can't fight for an interim belt).
+  const ps = w.promos[ev.promo];
+  const pool = rosterOf(w, ev.promo, b.div).filter((x) => x.id !== stayId && x.id !== outId && !x.ctrl && x.id !== ps.champs[b.div] && x.id !== ps.interim[b.div] && readyFor(w, x, ev, { shortNotice: true }));
+  // Who says yes on short notice: the fighters with more to gain than to lose.
+  // Those rated well above the opponent mostly pass, so replacements are usually underdogs.
+  const level = bookedAt(stay, p.tier);
+  const willing = pool.filter((x) => bookedAt(x, p.tier) <= level - 35 || rng.chance(0.1));
+  const sub = days >= 2 ? bestOpponent(w, rng, stay, willing, ev.promo, new Set()) : null;
   if (sub && (!titleFight || rankOf(w, sub) !== null)) {
     if (b.a === outId) b.a = sub.id;
     else b.b = sub.id;
     b.replaced = outId;
+    b.sub = sub.id;
+    b.notice = days;
     b.shortNotice = true;
+    b.limit = undefined;
     sub.booked = b.id;
     setOdds(w, b);
-    if (titleFight && w.promos[ev.promo].champs[b.div] === outId) b.kind = "interim";
-    addNews(w, { kind: "booking", promo: ev.promo, fighters: [outId, sub.id, stayId], text: `${fullName(out)} is out of ${ev.name} (${why}). ${fullName(sub)} steps in on short notice against ${fullName(stay)}.` });
+    if (champOut) b.kind = "interim";
     if (stay.ctrl) {
-      notify(w, { kind: "camp", fighter: stay.id, from: `${PROMOTIONS[ev.promo].short} matchmaker`, subject: `New opponent: ${fullName(sub)}`, body: `${fullName(out)} has pulled out (${why}). ${fullName(sub)} (${sub.rec.w}-${sub.rec.l}) takes the fight on short notice. Same date, same card.` });
+      // The player's opponent changed: take the new name, or the fight is off.
+      offerFight(w, rng, ev, stay, sub, b.kind, true, b, { notice: days, stay: true, replaced: outId });
+      return;
     }
+    if (!opts.quiet) addNews(w, { kind: "booking", promo: ev.promo, fighters: [outId, sub.id, stayId], text: `${fullName(out)} is out of ${ev.name} (${why}). ${fullName(sub)} steps in on ${days} days' notice against ${fullName(stay)}.` });
     orderCard(w, ev);
     return;
   }
   cancelBout(w, b, `${fullName(out)} withdrew (${why})`);
-  if (ev.promo === "ufc" || PROMOTIONS[ev.promo].tier !== "amateur") {
+  if (!opts.quiet && p.tier !== "amateur") {
     addNews(w, { kind: "booking", promo: ev.promo, fighters: [outId, stayId], text: `${fullName(out)} vs. ${fullName(stay)} is off ${ev.name}: ${fullName(out)} withdrew (${why}).` });
   }
-  if (stay.ctrl) {
-    notify(w, { kind: "camp", fighter: stay.id, from: `${PROMOTIONS[ev.promo].short} matchmaker`, subject: "Your fight is off", body: `${fullName(out)} has withdrawn (${why}) and there was no replacement in time. Your camp is over; the matchmaker will be in touch about the next date.` });
-    const fc = w.career.fc[stay.id];
-    if (fc) fc.camp = null;
-  }
+  if (stay.ctrl) callOff(w, b, stay, `${fullName(out)} has withdrawn (${why}) and there was no replacement in time.`, days);
+}
+
+/** The player's fight is off: the camp ends, and in fight week the big promotions still pay the show money. */
+export function callOff(w: World, b: Bout, f: Fighter, why: string, days: number): void {
+  const ev = w.events[b.ev];
+  const p = PROMOTIONS[b.promo];
+  const paid = days <= 7 && (p.tier === "major" || p.tier === "league") ? payShowOnly(w, f, b, `${ev?.name ?? "the event"}, the fight fell through`) : 0;
+  notify(w, {
+    kind: "camp",
+    fighter: f.id,
+    from: `${p.short} matchmaker`,
+    subject: "The fight is off",
+    body: `${why} The camp is over; the matchmaker will be in touch about the next date.${paid ? ` ${p.short} pays the show money all the same: ${money(paid)}.` : ""}`,
+  });
+  const fc = w.career.fc[f.id];
+  if (fc) fc.camp = null;
+  if (f.booked === b.id) f.booked = null;
 }
 
 /** Camp injuries for the AI: about one booked fight in ten falls through. */

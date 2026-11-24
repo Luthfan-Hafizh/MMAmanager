@@ -1,0 +1,140 @@
+// The team's advice on screen: a verdict card, the fight-offer sheet with the
+// numbers a fighter weighs, and the desk where you talk to your manager.
+
+import { useState } from "react";
+import { fmtDate } from "../core/time";
+import { money } from "../core/util";
+import { DIVISIONS } from "../data/divisions";
+import { PROMOTIONS } from "../data/promotions";
+import type { FightOffer, Fighter, World } from "../model/types";
+import { adviseFight, ask, boutOfOffer, QUESTIONS, type Advice, type Answer } from "../career/advisor";
+import { boutLimit, CUT_TEXT, cutCheck } from "../career/shortnotice";
+import { moneyline } from "../world/odds";
+import { rankLabel, recordText } from "../world/core";
+import { changed } from "../state/store";
+import { Link } from "./router";
+
+/** The adviser's verdict, the headline and the reasons for and against. */
+export function AdviceCard({ a, compact }: { a: Advice; compact?: boolean }) {
+  const initials = a.who.split(/[\s,]+/).filter((x) => x && x[0] === x[0].toUpperCase()).slice(0, 2).map((x) => x[0]).join("");
+  return (
+    <div className={`advice v-${a.verdict}${compact ? " compact" : ""}`}>
+      <div className="advice-h">
+        <span className="advice-av" aria-hidden="true">{initials || "?"}</span>
+        <span className="advice-who">
+          <span className="label">{a.role === "manager" ? "Manager's advice" : a.role === "coach" ? "Coach's view" : "Analyst's view"}</span>
+          <span className="small">{a.who}</span>
+        </span>
+        <span className={`advice-verdict v-${a.verdict}`}>{a.label}</span>
+      </div>
+      <p className="advice-head">{a.headline}</p>
+      {!compact && a.reasons.length > 1 && (
+        <ul className="advice-list">
+          {a.reasons.map((r, i) => (
+            <li key={i} className={r.good === true ? "pro" : r.good === false ? "con" : "info"}>{r.text}</li>
+          ))}
+        </ul>
+      )}
+      {!compact && a.counter && (
+        <div className="small" style={{ marginTop: 8 }}>
+          Suggested counter: <b>{money(a.counter.show)}</b>{a.counter.win ? <> + <b>{money(a.counter.win)}</b></> : " flat"} over <b>{a.counter.fights}</b> fights.
+        </div>
+      )}
+    </div>
+  );
+}
+
+function campText(days: number): string {
+  if (days >= 56) return "A full camp";
+  if (days >= 28) return "A short camp";
+  if (days >= 8) return "No real camp";
+  return days <= 1 ? "No camp: it's tomorrow" : "No camp at all";
+}
+
+/** A fight offer laid out the way a fighter weighs it, with the team's advice. */
+export function FightOfferView({ w, o, f, compact }: { w: World; o: FightOffer; f: Fighter; compact?: boolean }) {
+  const opp = w.fighters[o.opp];
+  const ev = w.events[o.ev];
+  const b = boutOfOffer(w, o);
+  if (!opp || !ev) return null;
+  const days = Math.max(0, o.day - w.day);
+  const limit = b ? boutLimit(b) : o.limit ?? DIVISIONS[o.div].limit;
+  const cut = cutCheck(f, limit, Math.max(1, days));
+  const p = b && b.odds !== undefined ? (b.a === f.id ? b.odds : 1 - b.odds) : null;
+  const weight = o.limit ? `${limit} lb catchweight` : `${DIVISIONS[o.div].name} · ${limit} lb`;
+  const advice = adviseFight(w, f, o);
+  const answer = o.expires <= w.day ? "Answer today" : `Answer by ${fmtDate(o.expires, { year: false })}`;
+  return (
+    <div className="offer-view">
+      {o.shortNotice && (
+        <div className={`sn-strip${days <= 3 ? " hot" : ""}`}>
+          <b>{o.stay ? "New opponent" : "Short notice"}</b>
+          <span>{days <= 1 ? "Fight tomorrow" : `${days} days out`}</span>
+          {o.debut && <span>{PROMOTIONS[o.debut].short} debut</span>}
+          {f.div !== o.div && <span>Up a division</span>}
+          {o.limit && <span>Catchweight</span>}
+          <span className="sn-ans">{answer}</span>
+        </div>
+      )}
+      <div className="offer-grid">
+        <div>
+          <div className="label">Opponent</div>
+          <div className="dx" style={{ fontSize: 24 }}><Link to={`/fighter/${opp.id}`}>{opp.first} {opp.surname}</Link></div>
+          <div className="small dim">{recordText(opp)} · {rankLabel(w, opp) || "Unranked"}{p !== null ? <> · you're <b>{moneyline(p)}</b></> : null}</div>
+        </div>
+        <div>
+          <div className="label">When</div>
+          <div><b>{ev.name}</b></div>
+          <div className="small dim">{fmtDate(o.day, { dow: true })} · {ev.city}</div>
+        </div>
+        <div>
+          <div className="label">Weight</div>
+          <div><b>{weight}</b></div>
+          <div className={`small ${cut.risk === "hard" || cut.risk === "too much" ? "warn" : "dim"}`}>{cut.lb > 0 ? `${cut.lb} lb to lose: ${CUT_TEXT[cut.risk]}` : "No cut"}</div>
+        </div>
+        <div>
+          <div className="label">Camp</div>
+          <div><b>{o.stay ? "Your camp goes on" : campText(days)}</b></div>
+          <div className="small dim">{o.rounds} rounds{o.kind === "title" || o.kind === "interim" || o.kind === "vacant" ? " · title fight" : o.kind === "eliminator" ? " · eliminator" : ""}</div>
+        </div>
+        <div>
+          <div className="label">Purse</div>
+          <div><b>{o.show ? money(o.show) : "No purse"}</b>{o.win ? <span className="small dim"> + {money(o.win)} to win</span> : null}</div>
+          <div className="small dim">{o.shortNotice && !o.stay ? "Short-notice money" : PROMOTIONS[o.promo].short}</div>
+        </div>
+      </div>
+      <AdviceCard a={advice} compact={compact} />
+    </div>
+  );
+}
+
+/** Talk to the team: a few questions about the career, answered from where things stand. */
+export function AskDesk({ w, f }: { w: World; f: Fighter }) {
+  const [log, setLog] = useState<Answer[]>([]);
+  const fc = w.career.fc[f.id];
+  return (
+    <div className="ask">
+      <div className="chips">
+        {QUESTIONS.map((q) => (
+          <button key={q.id} className="chip" onClick={() => setLog((l) => [ask(w, f, q.id), ...l].slice(0, 6))}>{q.q}</button>
+        ))}
+      </div>
+      {log.length > 0 && (
+        <div className="chat">
+          {log.map((x, i) => (
+            <div key={i} className="chat-pair">
+              <div className="chat-q">{x.q}</div>
+              <div className="chat-a">{x.a}</div>
+            </div>
+          ))}
+        </div>
+      )}
+      {fc && (
+        <label className="switch" style={{ marginTop: 12 }}>
+          <input type="checkbox" checked={!!fc.shortNotice} onChange={(e) => { fc.shortNotice = e.target.checked; changed(); }} />
+          <span><b>Take short-notice calls.</b> The matchmakers can ring when someone pulls out, from three weeks to a day before a fight, at the weight or a division up.</span>
+        </label>
+      )}
+    </div>
+  );
+}

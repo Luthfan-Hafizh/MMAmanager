@@ -10,8 +10,10 @@ import { PROMOTIONS, TIER_RANK, promoFor, type PromoId } from "../data/promotion
 import { countryOf } from "../data/countries";
 import { ovr, ovrOf } from "../model/attributes";
 import type { ContractOffer, FightOffer, Fighter, World } from "../model/types";
-import { addNews, fullName, nextId, rankOf, touch, isChampion } from "../world/core";
-import { cancelBout } from "../world/matchmaking";
+import { addNews, fullName, nextId, rankOf, touch, isChampion, withRng } from "../world/core";
+import { callOff, cancelBout, withdraw } from "../world/matchmaking";
+import { signTo } from "../world/results";
+import { managerPerson } from "./advisor";
 import { entryElo } from "../world/rankings";
 import { startCamp } from "./camp";
 import { closeMessages, notify } from "./inbox";
@@ -31,24 +33,57 @@ export function acceptFight(w: World, offerId: string): string {
   }
   o.status = "accepted";
   b.pending = undefined;
+  // A bigger promotion's short-notice call comes with its contract.
+  if (o.debut && f.promo !== o.debut) {
+    const from = f.promo;
+    withRng(w, (rng) => signTo(w, f, o.debut!, rng));
+    if (o.debut === "ufc") f.tags = [...new Set([...(f.tags ?? []), "ufc-alum"])];
+    addNews(w, { kind: "signing", promo: o.debut, fighters: [f.id], text: `${PROMOTIONS[o.debut].short} signs ${fullName(f)}${from ? ` from ${PROMOTIONS[from].short}` : ""} to step in on short notice.` });
+  }
   b.purses = { ...(b.purses ?? {}), [b.a === f.id ? "a" : "b"]: { show: o.show, win: o.win, bonus: 0, finish: 0, fine: 0, total: 0 } };
-  startCamp(w, f, b);
   const fc = w.career.fc[f.id];
+  const opp = w.fighters[o.opp];
+  const ev = w.events[o.ev];
+  const days = o.day - w.day;
+  if (o.stay && fc?.camp && fc.camp.bout === b.id) {
+    // The camp goes on; the film on the old opponent is wasted.
+    fc.camp.study *= 0.5;
+  } else startCamp(w, f, b);
   if (fc) {
     fc.asked = false;
     fc.lastAsk = undefined;
   }
   closeMessages(w, o.id, "Accepted");
-  const opp = w.fighters[o.opp];
-  const ev = w.events[o.ev];
-  notify(w, {
-    kind: "camp",
-    fighter: f.id,
-    ref: b.id,
-    from: "Head coach",
-    subject: `Camp starts: ${fullName(opp)}, ${fmtDate(o.day)}`,
-    body: `It's signed: ${fullName(f)} vs ${fullName(opp)} at ${ev?.name}. ${Math.round((o.day - w.day) / 7)} weeks to get ready. Set the camp (sparring partners, the cut, the game plan) on the Next fight page, and switch the training week to a fight camp.`,
-  });
+  if (o.shortNotice && !o.stay) {
+    // Stepping up wins friends: the fans and the matchmaker remember it.
+    f.pop = clamp(f.pop + 1.5, 0, 100);
+    notify(w, {
+      kind: "camp",
+      fighter: f.id,
+      ref: b.id,
+      from: "Head coach",
+      subject: `Short-notice camp: ${fullName(opp)}, ${days <= 1 ? "tomorrow" : `${days} days`}`,
+      body: `We're in: ${fullName(f)} vs ${fullName(opp)} at ${ev?.name}. There's no time for a real camp, so forget the long game plan: make the weight safely, stay sharp, and keep the gas tank in mind. Check the cut and the plan on the Next fight page.`,
+    });
+  } else if (o.stay) {
+    notify(w, {
+      kind: "camp",
+      fighter: f.id,
+      ref: b.id,
+      from: "Head coach",
+      subject: `New opponent: ${fullName(opp)}`,
+      body: `It's on against ${fullName(opp)} instead. We prepared for someone else, so look at the game plan again on the Next fight page: ${days} days to adjust.`,
+    });
+  } else {
+    notify(w, {
+      kind: "camp",
+      fighter: f.id,
+      ref: b.id,
+      from: "Head coach",
+      subject: `Camp starts: ${fullName(opp)}, ${fmtDate(o.day)}`,
+      body: `It's signed: ${fullName(f)} vs ${fullName(opp)} at ${ev?.name}. ${Math.round(days / 7)} weeks to get ready. Set the camp (sparring partners, the cut, the game plan) on the Next fight page, and switch the training week to a fight camp.`,
+    });
+  }
   if (PROMOTIONS[o.promo].tier === "major" || PROMOTIONS[o.promo].tier === "league" || o.kind === "title") {
     addNews(w, { kind: "booking", promo: o.promo, ev: o.ev, fighters: [f.id, opp.id], text: `${fullName(f)} vs. ${fullName(opp)} is set for ${ev?.name}${o.kind === "title" ? ", with the title on the line" : ""}.` });
   }
@@ -60,15 +95,23 @@ export function declineFight(w: World, offerId: string, auto = false): string {
   const o = w.career.fightOffers.find((x) => x.id === offerId);
   if (!o || o.status !== "open") return "This offer is no longer open.";
   o.status = auto ? "expired" : "declined";
+  const f = w.fighters[o.fighter];
   const b = Object.values(w.bouts).find((x) => x.pending === o.id);
   if (b && b.status === "booked") {
     b.pending = undefined;
-    cancelBout(w, b, "Declined");
+    const days = (w.events[b.ev]?.day ?? w.day) - w.day;
+    if (o.stay) {
+      // No to the new opponent: the fight is off.
+      cancelBout(w, b, "The replacement was turned down");
+      callOff(w, b, f, auto ? "There was no answer about the new opponent, so the fight is off." : `You turned down ${fullName(w.fighters[o.opp])}.`, days);
+    } else if (o.replaced) {
+      // The spot goes to somebody else.
+      withRng(w, (rng) => withdraw(w, rng, b, f.id, "turned it down", { quiet: true }));
+    } else cancelBout(w, b, "Declined");
   }
   const fc = w.career.fc[o.fighter];
-  if (fc) fc.lastAsk = w.day + (o.kind === "title" ? 10 : 14);
+  if (fc && !o.shortNotice) fc.lastAsk = w.day + (o.kind === "title" ? 10 : 14);
   closeMessages(w, o.id, auto ? "Expired" : "Declined");
-  const f = w.fighters[o.fighter];
   if (o.kind === "title" && isChampion(w, f)) {
     fc && (fc.goals = [...fc.goals.filter((g) => !g.startsWith("refused:")), `refused:${(Number(fc.goals.find((g) => g.startsWith("refused:"))?.split(":")[1] ?? 0) + 1)}`]);
     const n = Number(fc?.goals.find((g) => g.startsWith("refused:"))?.split(":")[1] ?? 0);
@@ -377,8 +420,9 @@ export function hireManager(w: World, f: Fighter, quality: number): string {
   const fc = w.career.fc[f.id];
   if (!fc) return "";
   const cut = quality >= 70 ? 20 : quality >= 45 ? 15 : 10;
-  fc.manager = { cut, quality, name: quality >= 70 ? "Elite MMA management" : quality >= 45 ? "Established MMA management" : "Local manager" };
-  return `Signed with ${fc.manager.name}: ${cut}% of purses and sponsorship.`;
+  const who = withRng(w, (rng) => managerPerson(rng, f));
+  fc.manager = { cut, quality, name: quality >= 70 ? "Elite MMA management" : quality >= 45 ? "Established MMA management" : "Local manager", person: who.person, style: who.style };
+  return `Signed with ${who.person} (${fc.manager.name}): ${cut}% of purses and sponsorship.`;
 }
 
 export function fireManager(w: World, f: Fighter): void {

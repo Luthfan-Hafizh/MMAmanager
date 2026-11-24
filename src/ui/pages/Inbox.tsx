@@ -2,6 +2,8 @@ import { useEffect, useState } from "react";
 import { fmtDate } from "../../core/time";
 import type { Message } from "../../model/types";
 import { answer } from "../../career/actions";
+import { adviseContract } from "../../career/advisor";
+import { AdviceCard, FightOfferView } from "../advice";
 import { changed, toast, useWorld } from "../../state/store";
 import { go, Link } from "../router";
 import { Empty, Seg } from "../components";
@@ -92,6 +94,16 @@ export function Inbox({ id }: { id?: string }) {
                 )}
               </div>
               <div className="text">{cur.body}</div>
+              {cur.kind === "offer" && cur.ref && !cur.done && (() => {
+                const o = w.career.fightOffers.find((x) => x.id === cur.ref);
+                const f = o ? w.fighters[o.fighter] : null;
+                return o && f && o.status === "open" ? <div style={{ marginTop: 18 }}><FightOfferView w={w} o={o} f={f} /></div> : null;
+              })()}
+              {cur.kind === "contract" && cur.ref && !cur.done && (() => {
+                const o = w.career.contractOffers.find((x) => x.id === cur.ref);
+                const f = o ? w.fighters[o.fighter] : null;
+                return o && f && o.status === "open" ? <div style={{ marginTop: 18 }}><AdviceCard a={adviseContract(w, f, o)} /></div> : null;
+              })()}
               {cur.actions && !cur.done && (
                 <div className="row" style={{ marginTop: 18 }}>
                   {cur.actions.map((a) => (

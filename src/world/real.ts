@@ -111,14 +111,16 @@ export interface ScoutView {
 /**
  * Room left to grow for a real fighter. The snapshot's own potential sits
  * barely above today's level, which froze every young fighter where they stood
- * while the world's generated prospects grew past them. Real fighters get the
- * room anyone their age has, plus what scouts look for in a prospect: an
- * unbeaten record, finishes, a ranking already, the hype, and a fast rise (few
- * fights for the level). The signals count for less with age, there is less to
- * add close to the top of the sport, and nothing is left to find after 33.
+ * while the world's generated prospects grew past them. Real fighters on the
+ * big stages are the ones who made it, so they get more room than anyone their
+ * age, plus what scouts look for in a prospect: an unbeaten record, finishes, a
+ * ranking already, the hype, and a fast rise (few fights for the level). Elite
+ * fighters keep improving into their early thirties, so the signals count until
+ * then; there is less to add close to the top of the sport, and nothing is left
+ * to find at 34.
  */
 export function prospectRoom(v: ScoutView, cur: number, noise: number): number {
-  const youth = clamp((27 - v.age) / 8, 0, 1.2);
+  const youth = clamp((28 - v.age) / 8, 0, 1.25);
   const fights = v.w + v.l + v.d;
   let s = 0;
   if (v.l === 0 && v.w >= 4) s += 2.5 + Math.min(v.w - 4, 10) * 0.2;
@@ -128,11 +130,11 @@ export function prospectRoom(v: ScoutView, cur: number, noise: number): number {
   if (v.rank !== null) s += v.rank === 0 ? 3 : v.rank <= 5 ? 2.4 : 1.6;
   s += clamp((v.pop - 24) / 8, 0, 2);
   s += clamp((13 - fights) / 3, 0, v.top ? 2 : 1.2);
-  let room = 3 + youth * 9 + clamp(s, -2, 6) * clamp((30 - v.age) / 6, 0, 1);
+  let room = 4 + youth * 10 + clamp(s, -2, 6) * clamp((32 - v.age) / 6, 0, 1);
   room += clamp(noise, -2, 2) * (1 + 1.5 * youth);
   room *= 0.75 + 0.25 * clamp(v.growth ?? 1, 0.4, 1.8);
   room *= clamp((94 - cur) / 20, 0.15, 1);
-  room *= clamp((33 - v.age) / 3, 0, 1);
+  room *= clamp((34 - v.age) / 3, 0, 1);
   return Math.max(0, room);
 }
 

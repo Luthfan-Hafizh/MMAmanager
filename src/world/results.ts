@@ -16,6 +16,7 @@ import { afterFightCareer, payControlled } from "../career/afterfight";
 import { vacate } from "./titles";
 import { mediaPrep } from "../career/fightweek";
 import { legacyAfterFight } from "./legacy";
+import { boutLimit, cutCheck, noticeHurt, sizeEdge } from "../career/shortnotice";
 
 export { ringRust } from "./core";
 
@@ -28,11 +29,17 @@ function aiCut(f: Fighter, limit: number, rng: Rng): number {
 export function conditionFor(w: World, f: Fighter, b: Bout, rng: Rng): Partial<Condition> {
   const ev = w.events[b.ev];
   const layoff = f.lastFight === null ? 0 : b.day - f.lastFight;
+  // Only the fighter who stepped in had the short camp.
+  const sub = !!b.shortNotice && b.sub === f.id;
   const c: Partial<Condition> = {
     rust: ringRust(layoff),
     home: !!ev && ev.country === f.country,
-    shortNotice: !!b.shortNotice && b.replaced !== undefined && (b.a === f.id ? true : true),
+    shortNotice: sub,
+    notice: sub ? b.notice : undefined,
   };
+  const opp = w.fighters[b.a === f.id ? b.b : b.a];
+  // Outside the usual division, the size gap tells.
+  if (opp && (f.div !== b.div || opp.div !== b.div)) c.size = sizeEdge(f, opp, boutLimit(b));
   const fc = w.career.fc[f.id];
   if (fc && fc.camp && fc.camp.bout === b.id) {
     // The player's camp decides the cut and the preparation (career/camp.ts).
@@ -40,14 +47,17 @@ export function conditionFor(w: World, f: Fighter, b: Bout, rng: Rng): Partial<C
     c.prep = fc.campPrep ?? 0;
     c.injury = f.injury && f.injury.until > b.day ? 0.5 : 0;
   } else {
-    c.cut = aiCut(f, DIVISIONS[b.div].limit, rng);
-    c.prep = clamp(rng.normal(0, 0.3) - (b.shortNotice ? 0.45 : 0), -1, 0.6);
+    c.cut = aiCut(f, boutLimit(b), rng);
+    if (sub) {
+      // A fast cut drains more.
+      const risk = cutCheck(f, boutLimit(b), b.notice ?? 14).risk;
+      c.cut = clamp(c.cut + (risk === "hard" ? 0.15 : risk === "normal" ? 0.05 : 0) + 0.05 * noticeHurt(b.notice), 0, 0.9);
+    }
+    c.prep = clamp(rng.normal(0, 0.3) - (sub ? 0.1 + 0.2 * noticeHurt(b.notice) : 0), -1, 0.6);
     c.injury = rng.chance(0.04) ? 0.3 : 0;
   }
-  if (b.shortNotice && b.replaced) {
-    // The fighter who stepped in had the short camp.
-    c.shortNotice = true;
-  }
+  // The fighter whose opponent changed prepared for somebody else.
+  if (b.shortNotice && b.sub && b.sub !== f.id) c.prep = (c.prep ?? 0) - 0.08 * noticeHurt(b.notice);
   c.prep = clamp((c.prep ?? 0) + mediaPrep(b, b.a === f.id ? "a" : "b", f), -1, 1);
   return c;
 }
@@ -80,7 +90,7 @@ export function weighIns(w: World, rng: Rng, ev: MMAEvent): void {
   for (const id of ev.bouts) {
     const b = w.bouts[id];
     if (b.status !== "booked" || b.weighIn) continue;
-    const limit = DIVISIONS[b.div].limit;
+    const limit = boutLimit(b);
     const allow = b.kind === "title" || b.kind === "vacant" || b.kind === "interim" ? 0 : 1;
     const out: NonNullable<Bout["weighIn"]> = { a: limit + allow * 0.5, b: limit + allow * 0.5 };
     for (const side of ["a", "b"] as const) {
@@ -92,7 +102,9 @@ export function weighIns(w: World, rng: Rng, ev: MMAEvent): void {
         continue;
       }
       const pct = (f.walk - limit) / limit;
-      const p = clamp(0.012 + Math.max(0, pct - 0.1) * 0.35 + (b.shortNotice ? 0.04 : 0) + (DIVISIONS[b.div].sex === "F" ? 0.008 : 0), 0, 0.2);
+      const sub = b.shortNotice && b.sub === f.id;
+      const risk = sub ? cutCheck(f, limit, b.notice ?? 14).risk : "normal";
+      const p = clamp(0.012 + Math.max(0, pct - 0.1) * 0.35 + (sub ? (risk === "hard" ? 0.12 : risk === "normal" ? 0.04 : 0.01) : 0) + (DIVISIONS[b.div].sex === "F" ? 0.008 : 0), 0, 0.3);
       if (rng.chance(p)) {
         const over = Math.round((allow + 0.3 + rng.next() * rng.next() * 5) * 10) / 10;
         out[side] = limit + over;
@@ -234,8 +246,11 @@ export function applyResult(w: World, rng: Rng, b: Bout, o: FightOutcome): void 
   const title = b.kind === "title" || b.kind === "vacant" || b.kind === "interim";
   if (winner && loser) {
     const finish = m !== "DEC";
-    winner.pop = clamp(winner.pop + tierPop * (finish ? 2.6 : 1.3) * (title ? 2 : 1) * (1 - winner.pop / 130), 0, 100);
-    loser.pop = clamp(loser.pop - tierPop * 0.9, 0, 100);
+    // Winning on short notice makes a name; losing on it costs little.
+    const snWin = b.shortNotice && b.sub === winner.id ? 1.5 : 1;
+    const snLoss = b.shortNotice && b.sub === loser.id ? 0.4 : 1;
+    winner.pop = clamp(winner.pop + tierPop * (finish ? 2.6 : 1.3) * (title ? 2 : 1) * snWin * (1 - winner.pop / 130), 0, 100);
+    loser.pop = clamp(loser.pop - tierPop * 0.9 * snLoss, 0, 100);
   }
 
   // Career numbers.

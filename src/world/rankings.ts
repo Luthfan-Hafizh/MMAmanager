@@ -36,8 +36,13 @@ export function eloUpdate(w: World, b: Bout, winner: Fighter | null, a: Fighter,
   const ka = kFactor(w, a, b);
   const kb = kFactor(w, bb, b);
   const fin = b.res && (b.res.method === "KO" || b.res.method === "TKO" || b.res.method === "SUB") ? 4 : 0;
-  const da = ka * (sa - ea) + (sa === 1 ? fin : 0);
-  const db = kb * (1 - sa - (1 - ea)) + (sa === 0 ? fin : 0);
+  let da = ka * (sa - ea) + (sa === 1 ? fin : 0);
+  let db = kb * (1 - sa - (1 - ea)) + (sa === 0 ? fin : 0);
+  // Stepping in on short notice: a loss is forgiven more easily.
+  if (b.shortNotice && b.sub) {
+    if (b.sub === a.id && da < 0) da *= 0.5;
+    if (b.sub === bb.id && db < 0) db *= 0.5;
+  }
   a.elo = Math.round(a.elo + da);
   bb.elo = Math.round(bb.elo + db);
   // A winner always moves above the fighter beaten, within the promotion's list.

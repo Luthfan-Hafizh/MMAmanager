@@ -32,6 +32,8 @@ import { withdraw } from "../src/world/matchmaking";
 import { withRng } from "../src/world/core";
 import { neighbourDivisions } from "../src/data/divisions";
 import { adviseFight, ask, QUESTIONS } from "../src/career/advisor";
+import { playerInjured } from "../src/career/injury";
+import { INJURY } from "../src/data/injuries";
 
 const g = globalThis as unknown as Record<string, unknown>;
 g.window = { location: { hash: "" }, addEventListener() {}, removeEventListener() {} };
@@ -156,6 +158,64 @@ pages(tw, "Retired fighter turned manager");
   if (cmsg) check("Inbox (contract)", <Inbox id={cmsg.id} />);
   check("Contracts (offer, manager)", <Contracts />);
   for (const q of QUESTIONS) if (!ask(sw, me, q.id).a) { failures++; console.log(`  FAIL no answer to "${q.q}"`); }
+}
+
+// Injuries: a champion's torn ACL (keep the belt, an interim title is made), and a camp injury (postpone).
+{
+  const cw = createWorld(roster, { name: "UI", seed: 81, mode: "fighter", difficulty: "normal", takeover: "ufc-joshua-van" });
+  const champ = cw.fighters[cw.career.fighters[0]];
+  const div = champ.div;
+  withRng(cw, (rng) => playerInjured(cw, rng, champ, INJURY.acl, "training"));
+  const belt = cw.inbox.find((m) => m.kind === "injury" && m.needs && m.actions?.some((a) => a.id === "hold"));
+  if (!belt) {
+    failures++;
+    console.log("  FAIL no keep-or-vacate decision for an injured champion");
+  }
+  setWorld(cw);
+  console.log(`Injured champion: ${champ.injury?.name}, fight-ready in ${Math.round(((champ.injury?.until ?? 0) - cw.day) / 30.4)} months`);
+  check("Home (injured champion)", <Home />);
+  check("Training (injured)", <Training />);
+  if (belt) {
+    check("Inbox (belt decision)", <Inbox id={belt.id} />);
+    answer(cw, belt.id, "hold");
+    if (!cw.career.fc[champ.id].hold) { failures++; console.log("  FAIL keeping the belt did not register"); }
+  }
+  play(cw, 200);
+  const interim = Object.values(cw.bouts).some((b) => b.promo === "ufc" && b.div === div && b.kind === "interim");
+  console.log(`  interim ${div} title booked while the champion is out: ${interim ? "yes" : "no"}`);
+  if (!interim) { failures++; console.log("  FAIL no interim title while the champion holds the belt injured"); }
+  if (cw.promos.ufc.champs[div] !== champ.id && cw.promos.ufc.champs[div] !== null && !cw.promos.ufc.interim[div]) console.log("  (the belt changed hands)");
+}
+{
+  const iw = createWorld(roster, { name: "UI", seed: 82, mode: "fighter", difficulty: "normal", takeover: "ufc-bilal-hasan" });
+  const me = iw.fighters[iw.career.fighters[0]];
+  for (let k = 0; k < 30 && !(me.booked && !iw.bouts[me.booked].pending); k++) {
+    advance(iw, 7);
+    for (const m of iw.inbox) if (m.needs && !m.done) answer(iw, m.id, m.kind === "offer" ? "accept" : m.actions?.[0]?.id ?? "ok");
+  }
+  const b = me.booked ? iw.bouts[me.booked] : undefined;
+  if (!b) {
+    failures++;
+    console.log("  FAIL the camp-injury fighter never got booked");
+  } else {
+    // Close to fight night, so it can't heal in time.
+    for (let k = 0; k < 80 && b.day - iw.day > 24 && b.status === "booked"; k++) {
+      advance(iw, 1);
+      for (const m of iw.inbox) if (m.needs && !m.done) answer(iw, m.id, m.actions?.[0]?.id ?? "ok");
+    }
+    const before = b.ev;
+    withRng(iw, (rng) => playerInjured(iw, rng, me, INJURY.hand, "training"));
+    const msg = iw.inbox.find((m) => m.kind === "injury" && m.needs && m.ref === b.id);
+    setWorld(iw);
+    if (msg) {
+      check("Inbox (hurt in camp)", <Inbox id={msg.id} />);
+      const acts = msg.actions?.map((a) => a.id).join("/");
+      const t = msg.actions?.some((a) => a.id === "postpone") ? answer(iw, msg.id, "postpone") : answer(iw, msg.id, "pull-out");
+      console.log(`Hurt in camp (${me.injury?.name}, ${Math.round((me.injury!.until - b.day) / 7)} weeks past fight night, options ${acts}): ${t}${b.ev !== before ? " (moved)" : ""}`);
+    } else console.log(`Hurt in camp: ${me.injury?.name}, no choice needed (${me.booked === b.id ? "heals in time" : "out of the fight"})`);
+    check("Home (hurt in camp)", <Home />);
+    check("Next fight (after the injury)", <NextFight />);
+  }
 }
 
 const mw = createWorld(roster, { name: "UI", seed: 79, mode: "manager", difficulty: "normal", agency: "Check Management" });

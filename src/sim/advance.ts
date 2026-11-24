@@ -27,6 +27,8 @@ import { fightWeekDaily } from "../career/fightweek";
 import { walkMonthly } from "../career/moves";
 import { legacyMonthly } from "../world/legacy";
 import { retirementTalk } from "../career/retire";
+import { injuryHealed, playerInjured } from "../career/injury";
+import { INJURY } from "../data/injuries";
 
 export interface Stop {
   kind: "decision" | "fight" | "week" | "message" | "retired";
@@ -39,8 +41,10 @@ function heal(w: World): void {
     const f = w.fighters[id];
     if (!f) continue;
     if (f.injury && f.injury.until <= w.day) {
-      notify(w, { kind: "injury", fighter: f.id, from: "Team doctor", subject: `${fullName(f)} is fit again`, body: `The ${f.injury.name.toLowerCase()} has healed. Back to full training.` });
+      const was = f.injury;
+      notify(w, { kind: "injury", fighter: f.id, from: "Team doctor", subject: `${fullName(f)} is fit again`, body: `The ${was.name.toLowerCase()} has healed${was.start !== undefined ? `, ${Math.round((w.day - was.start) / 7)} weeks after it happened` : ""}. Cleared for full training and for fights.` });
       f.injury = null;
+      injuryHealed(w, f);
     }
   }
   if (w.day % 7 === 3) {
@@ -71,22 +75,7 @@ function weekly(w: World, rng: Rng): void {
         if (lvl >= 3) fc.plan.drill = null;
       } else prog.drill[r.drilled.tech] = cur;
     }
-    if (r.injury) {
-      const until = w.day + r.injury.days;
-      f.injury = { name: r.injury.name, area: r.injury.area as "body", until, severity: r.injury.severity, from: "training" };
-      const b = f.booked ? w.bouts[f.booked] : undefined;
-      if (b && b.status === "booked" && until > b.day - 3) {
-        if (r.injury.severity >= 2 || until > b.day + 21) {
-          notify(w, { kind: "injury", fighter: f.id, from: "Team doctor", subject: `Out of the fight: ${r.injury.name.toLowerCase()}`, body: `${fullName(f)} suffered a ${r.injury.name.toLowerCase()} in training: out for about ${Math.round(r.injury.days / 7)} weeks. The fight is off; the promotion will look for a replacement opponent.` });
-          withdraw(w, rng, b, f.id, r.injury.name.toLowerCase());
-          fc.camp = null;
-        } else {
-          notify(w, { kind: "injury", fighter: f.id, ref: b.id, from: "Team doctor", subject: `Hurt in camp: ${r.injury.name.toLowerCase()}`, body: `${fullName(f)} suffered a ${r.injury.name.toLowerCase()} in training, about ${Math.round(r.injury.days / 7)} weeks to heal. It won't be fully healed on fight night (${fmtDate(b.day)}). Fight through it, or pull out?`, needs: true, actions: [{ id: "fight-hurt", label: "Fight through it", primary: true }, { id: "pull-out", label: "Pull out", danger: true }] });
-        }
-      } else {
-        notify(w, { kind: "injury", fighter: f.id, from: "Team doctor", subject: `Injury: ${r.injury.name.toLowerCase()}`, body: `${fullName(f)} picked up a ${r.injury.name.toLowerCase()} in training. Out of full training for about ${Math.round(r.injury.days / 7) || 1} week${r.injury.days > 10 ? "s" : ""}.` });
-      }
-    }
+    if (r.injury) playerInjured(w, rng, f, INJURY[r.injury.id], "training");
     const films = plan.week.filter((s) => s === "film").length;
     const spars = plan.week.filter((s) => s === "sparring").length;
     campWeek(w, f, films, spars);

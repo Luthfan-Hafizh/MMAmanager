@@ -22,7 +22,7 @@ import { primeText } from "../../world/development";
 import { useState } from "react";
 import { becomeManager, careerRecap } from "../../career/retire";
 import { moneyline } from "../../world/odds";
-import { FightOfferView } from "../advice";
+import { FightOfferView, InjuryCard } from "../advice";
 
 export function Home() {
   const w = useWorld();
@@ -123,7 +123,7 @@ export function NextFightCard({ w, f }: { w: World; f: Fighter }) {
       <Empty title="No fight booked">
         {fc?.asked ? "The matchmaker knows you want a fight." : f.injury && f.injury.until > w.day ? `Injured until ${fmtDate(f.injury.until)}.` : f.susp > w.day ? `Medically suspended until ${fmtDate(f.susp)}.` : "Offers come when the next cards are made."}
       </Empty>
-      {!fc?.asked && f.promo && (
+      {!fc?.asked && f.promo && !(f.injury && f.injury.until > w.day) && f.susp <= w.day && (
         <div className="center" style={{ paddingBottom: 8 }}>
           <button className="btn" onClick={() => { toast(askForFight(w, f)); changed(); }}>Ask the matchmaker for a fight</button>
         </div>
@@ -149,7 +149,7 @@ export function ConditionPanel({ w, f }: { w: World; f: Fighter }) {
         {row("Sharpness", f.sharp, "info")}
         {row("Morale", f.morale, "gold")}
         <div className="spread small"><span className="label">Walking weight</span><b>{f.walk} lb <span className="dim">({over > 0 ? `${over} over` : "on"} {limit})</span></b></div>
-        {f.injury && f.injury.until > w.day && <div className="notice bad small">{f.injury.name}: out until about {fmtDate(f.injury.until)}</div>}
+        {f.injury && f.injury.until > w.day && <InjuryCard w={w} f={f} />}
         {f.susp > w.day && <div className="notice warn small">Medical suspension until {fmtDate(f.susp)}</div>}
       </div>
     </Panel>

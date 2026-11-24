@@ -6,7 +6,7 @@ import { PROMOTIONS } from "../data/promotions";
 import type { Fighter, World } from "../model/types";
 import { addNews, fullName } from "./core";
 
-export function vacate(w: World, f: Fighter, why: "vacated" | "retired" | "moved"): void {
+export function vacate(w: World, f: Fighter, why: "vacated" | "retired" | "moved" | "injury"): void {
   if (!f.promo) return;
   const promo = f.promo;
   const ps = w.promos[promo];

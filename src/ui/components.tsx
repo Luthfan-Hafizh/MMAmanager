@@ -5,7 +5,7 @@ import { flagUrl, countryOf } from "../data/countries";
 import { DIVISIONS, type DivisionId } from "../data/divisions";
 import { PROMOTIONS, type PromoId } from "../data/promotions";
 import { ATTR_GROUPS, ATTR_INFO, GROUP_NAMES, attrBand, ovr, stars as starsOf, type AttrGroup, type AttrKey } from "../model/attributes";
-import type { Fighter, World } from "../model/types";
+import type { Fact, Fighter, World } from "../model/types";
 import { formOf, isInterim, rankOf, recordText } from "../world/core";
 import { Link } from "./router";
 import { money } from "../core/util";
@@ -291,5 +291,20 @@ export function Versus({ label, a, b, fmt, higher = "good" }: { label: string; a
         <div className="b" style={{ width: `${(Math.abs(b) / total) * 100}%` }} />
       </div>
     </div>
+  );
+}
+
+/** The key facts of a message or a situation, as a compact grid. */
+export function Facts({ facts }: { facts: Fact[] }) {
+  if (!facts.length) return null;
+  return (
+    <dl className="facts">
+      {facts.map((x, i) => (
+        <div key={i} className={x.v.length > 46 ? "wide" : ""}>
+          <dt>{x.k}</dt>
+          <dd className={x.tone ?? ""}>{x.v}</dd>
+        </div>
+      ))}
+    </dl>
   );
 }

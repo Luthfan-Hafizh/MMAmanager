@@ -2,11 +2,11 @@ import { useEffect, useState } from "react";
 import { fmtDate } from "../../core/time";
 import type { Message } from "../../model/types";
 import { answer } from "../../career/actions";
-import { adviseContract } from "../../career/advisor";
+import { adviseContract, adviseInjury } from "../../career/advisor";
 import { AdviceCard, FightOfferView } from "../advice";
 import { changed, toast, useWorld } from "../../state/store";
 import { go, Link } from "../router";
-import { Empty, Seg } from "../components";
+import { Empty, Facts, Seg } from "../components";
 import { Icons } from "../icons";
 
 const ICON: Record<Message["kind"], () => JSX.Element> = {
@@ -93,11 +93,17 @@ export function Inbox({ id }: { id?: string }) {
                   </>
                 )}
               </div>
+              {cur.facts && cur.facts.length > 0 && <Facts facts={cur.facts} />}
               <div className="text">{cur.body}</div>
               {cur.kind === "offer" && cur.ref && !cur.done && (() => {
                 const o = w.career.fightOffers.find((x) => x.id === cur.ref);
                 const f = o ? w.fighters[o.fighter] : null;
                 return o && f && o.status === "open" ? <div style={{ marginTop: 18 }}><FightOfferView w={w} o={o} f={f} /></div> : null;
+              })()}
+              {cur.kind === "injury" && cur.fighter && cur.needs && !cur.done && cur.actions && (() => {
+                const f = w.fighters[cur.fighter!];
+                const a = f ? adviseInjury(w, f, cur.actions!.map((x) => x.id), cur.ref) : null;
+                return a ? <div style={{ marginTop: 18 }}><AdviceCard a={a} /></div> : null;
               })()}
               {cur.kind === "contract" && cur.ref && !cur.done && (() => {
                 const o = w.career.contractOffers.find((x) => x.id === cur.ref);

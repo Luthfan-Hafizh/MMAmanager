@@ -124,12 +124,19 @@ export function fightEve(w: World, rng: Rng, b: Bout): void {
     fc.campCut = r.drain;
     fc.campPrep = campPrep(w, f, b);
     fc.campBout = b.id;
+    const lim = boutLimit(b);
     notify(w, {
       kind: "weighin",
       fighter: f.id,
       from: "Athletic commission",
       subject: r.made ? `Weigh-in: ${fullName(f)} made weight` : `Weigh-in: ${fullName(f)} missed weight`,
       body: r.text,
+      facts: [
+        { k: "On the scale", v: `${r.weight.toFixed(1)} lb`, tone: r.made ? "good" : "bad" },
+        { k: "Limit", v: `${lim} lb${b.limit ? " (catchweight)" : ""}${b.kind === "title" || b.kind === "interim" || b.kind === "vacant" ? ", no allowance in a title fight" : ", 1 lb allowance"}` },
+        { k: "The cut", v: `${(f.walk - lim).toFixed(0)} lb from ${f.walk}` },
+        { k: "Fight night", v: r.drain > 0.35 ? "Drained: the gas tank will suffer" : r.drain < 0.12 ? "Fresh" : "Normal recovery", tone: r.drain > 0.35 ? "bad" : r.drain < 0.12 ? "good" : undefined },
+      ],
     });
   }
 }

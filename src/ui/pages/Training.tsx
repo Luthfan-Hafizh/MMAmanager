@@ -1,3 +1,4 @@
+import { InjuryCard } from "../advice";
 import { Fragment, useMemo } from "react";
 import { ATTR_INFO, type AttrKey } from "../../model/attributes";
 import type { SessionId, World } from "../../model/types";
@@ -52,6 +53,11 @@ export function Training({ id }: { id?: string }) {
           </span>
         </div>
       </div>
+      {f.injury && f.injury.until > w.day && (
+        <div className="c12">
+          <InjuryCard w={w} f={f} />
+        </div>
+      )}
       {camp && (
         <div className="c12">
           <div className="notice row">

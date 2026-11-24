@@ -5,17 +5,18 @@
 
 import type { Rng } from "../core/rng";
 import { clamp } from "../core/util";
-import { DIVISIONS, type DivisionId } from "../data/divisions";
+import { DIVISIONS, neighbourDivisions, type DivisionId } from "../data/divisions";
 import { PROMOTIONS, roundsFor, type PromoId } from "../data/promotions";
 import { ovrOf } from "../model/attributes";
-import type { Bout, BoutKind, FightOffer, Fighter, MMAEvent, World } from "../model/types";
-import { addNews, availableFrom, daysSinceFight, fullName, isControlled, nextId, rankOf, rosterOf, stageFights } from "./core";
+import type { Bout, BoutKind, Fact, FightOffer, Fighter, MMAEvent, World } from "../model/types";
+import { addNews, availableFrom, daysSinceFight, fullName, isControlled, nextId, rankLabel, rankOf, rosterOf, stageFights } from "./core";
 import { lostToRecently, ratingFor } from "./rankings";
 import { setOdds } from "./odds";
 import { calloutFor } from "../career/fightweek";
+import { makeInjury, trainingInjury } from "../data/injuries";
 import { notify } from "../career/inbox";
 import { fightOfferPay, payShowOnly } from "../career/money";
-import { CUT_TEXT, cutCheck, findCall, type Call } from "../career/shortnotice";
+import { boutLimit, CUT_TEXT, cutCheck, findCall, type Call } from "../career/shortnotice";
 import { fmtDate } from "../core/time";
 import { money } from "../core/util";
 
@@ -258,7 +259,20 @@ function titleFights(w: World, rng: Rng, ev: MMAEvent, maxTitles: number): numbe
       }
       continue;
     }
-    if (champ.ctrl) continue; // offered separately
+    if (champ.ctrl) {
+      // The player's defences are offered separately. A player champion out
+      // injured who chose to keep the belt gets an interim title made meanwhile.
+      const hold = w.career.fc[champ.id]?.hold;
+      const out = availableFrom(champ) - ev.day;
+      if (hold && hold.promo === ev.promo && hold.div === d && !ps.interim[d] && out > 60 && p.rankSize) {
+        const ranked = (ps.ranks[d] ?? []).map((id) => w.fighters[id]).filter((f) => f && pool.includes(f) && !f.ctrl && f.id !== champ.id);
+        if (ranked.length >= 2 && !teammates(ranked[0], ranked[1])) {
+          makeBout(w, ev, ranked[0], ranked[1], "interim");
+          made++;
+        }
+      }
+      continue;
+    }
     const gap = DEFENCE_GAP[p.tier];
     const due = daysSinceFight(w, champ) + (ev.day - w.day) >= gap;
     if (pool.includes(champ) && due) {
@@ -493,6 +507,24 @@ export function offerFight(w: World, rng: Rng, ev: MMAEvent, f: Fighter, opp?: F
     const cut = cutCheck(f, limit, days);
     const when = days <= 1 ? "tomorrow" : `in ${days} days`;
     const big = p.tier === "major" || p.tier === "league";
+    const why = extra.stay
+      ? "Your opponent is out; the promotion found a new one."
+      : extra.debut
+      ? `${p.short} needs a name with a record like yours, and your deal lets them call.`
+      : d !== f.div
+      ? `Up at ${limit} lb there's no weight to cut, which is why they can call this late.`
+      : extra.limit
+      ? `You couldn't make ${DIVISIONS[d].limit} lb in ${days} days, so they agreed a catchweight.`
+      : "You're in the division, healthy, and you said you'd take calls.";
+    const facts: Fact[] = [
+      { k: "Notice", v: `${days} day${days === 1 ? "" : "s"} to fight night`, tone: days <= 3 ? "bad" : days <= 7 ? "warn" : undefined },
+      { k: "Opponent", v: `${fullName(o)} (${rec}), ${rankLabel(w, o) || "unranked"}` },
+      { k: "Weight", v: extra.limit ? `${limit} lb catchweight` : `${DIVISIONS[d].name}, ${limit} lb${d !== f.div ? " (a division up)" : ""}` },
+      { k: "The cut", v: cut.lb > 0 ? `${cut.lb} lb from ${f.walk}: ${CUT_TEXT[cut.risk]}` : "None", tone: cut.risk === "hard" ? "warn" : cut.risk === "too much" ? "bad" : undefined },
+      { k: "Why you", v: why },
+      { k: "Purse", v: pay.show ? `${money(pay.show)} + ${money(pay.win)} to win` : "No purse" },
+      { k: "Answer by", v: days <= 3 ? "Today" : fmtDate(expires) },
+    ];
     notify(w, {
       kind: "offer",
       fighter: f.id,
@@ -507,6 +539,7 @@ export function offerFight(w: World, rng: Rng, ev: MMAEvent, f: Fighter, opp?: F
         { id: "accept", label: extra.stay ? "Take the new opponent" : "Take the fight", primary: true },
         { id: "decline", label: extra.stay ? "Call it off" : "Turn it down", danger: true },
       ],
+      facts,
     });
     return offer;
   }
@@ -571,7 +604,15 @@ export function withdraw(w: World, rng: Rng, b: Bout, outId: string, why: string
   }
   // Champions don't step in on short notice (and can't fight for an interim belt).
   const ps = w.promos[ev.promo];
-  const pool = rosterOf(w, ev.promo, b.div).filter((x) => x.id !== stayId && x.id !== outId && !x.ctrl && x.id !== ps.champs[b.div] && x.id !== ps.interim[b.div] && readyFor(w, x, ev, { shortNotice: true }));
+  const free = (x: Fighter) => x.id !== stayId && x.id !== outId && !x.ctrl && x.id !== ps.champs[x.div] && x.id !== ps.interim[x.div] && readyFor(w, x, ev, { shortNotice: true });
+  // From the division (if the cut can be made in the days left), and inside two
+  // weeks from the division below: a lighter man stepping up has no cut to make.
+  const limit = boutLimit(b);
+  const below = neighbourDivisions(b.div).down;
+  const pool = [
+    ...rosterOf(w, ev.promo, b.div).filter((x) => free(x) && cutCheck(x, limit, Math.max(1, days)).risk !== "too much"),
+    ...(below && days <= 14 && !titleFight ? rosterOf(w, ev.promo, below).filter((x) => free(x) && x.walk <= limit + 2) : []),
+  ];
   // Who says yes on short notice: the fighters with more to gain than to lose.
   // Those rated well above the opponent mostly pass, so replacements are usually underdogs.
   const level = bookedAt(stay, p.tier);
@@ -593,7 +634,7 @@ export function withdraw(w: World, rng: Rng, b: Bout, outId: string, why: string
       offerFight(w, rng, ev, stay, sub, b.kind, true, b, { notice: days, stay: true, replaced: outId });
       return;
     }
-    if (!opts.quiet) addNews(w, { kind: "booking", promo: ev.promo, fighters: [outId, sub.id, stayId], text: `${fullName(out)} is out of ${ev.name} (${why}). ${fullName(sub)} steps in on ${days} days' notice against ${fullName(stay)}.` });
+    if (!opts.quiet) addNews(w, { kind: "booking", promo: ev.promo, fighters: [outId, sub.id, stayId], text: `${fullName(out)} is out of ${ev.name} (${why}). ${fullName(sub)} steps in on ${days} days' notice${sub.div !== b.div ? `, up from ${DIVISIONS[sub.div].name.toLowerCase()},` : ""} against ${fullName(stay)}.` });
     orderCard(w, ev);
     return;
   }
@@ -615,6 +656,11 @@ export function callOff(w: World, b: Bout, f: Fighter, why: string, days: number
     from: `${p.short} matchmaker`,
     subject: "The fight is off",
     body: `${why} The camp is over; the matchmaker will be in touch about the next date.${paid ? ` ${p.short} pays the show money all the same: ${money(paid)}.` : ""}`,
+    facts: [
+      { k: "Event", v: `${ev?.name ?? "The card"}, ${fmtDate(b.day)}` },
+      { k: "Days out", v: `${days}` },
+      { k: "Show money", v: paid ? `${money(paid)} paid` : days <= 7 ? "Not paid at this level" : "Not paid outside fight week", tone: paid ? "good" : undefined },
+    ],
   });
   const fc = w.career.fc[f.id];
   if (fc) fc.camp = null;
@@ -633,12 +679,14 @@ export function campInjuries(w: World, rng: Rng): void {
       for (const fid of [b.a, b.b]) {
         const f = w.fighters[fid];
         if (!f || f.ctrl) continue;
-        const p = 0.00155 * (f.hid.injuryProne / 9);
+        const p = 0.0023 * (f.hid.injuryProne / 9);
         if (rng.chance(p)) {
-          const days = rng.chance(0.2) ? rng.int(60, 200) : rng.int(21, 56);
-          f.injury = { name: rng.pick(["knee injury", "hand injury", "back injury", "rib injury", "illness", "shoulder injury", "ankle injury"]), area: "body", until: w.day + days, severity: days > 60 ? 2 : 1, from: "training" };
-          withdraw(w, rng, b, fid, f.injury.name);
-          break;
+          // The same injuries the player's fighters get, as long as they really take.
+          f.injury = makeInjury(rng, trainingInjury(rng, new Set()), w.day, "training");
+          if (f.injury.until > b.day - 3) {
+            withdraw(w, rng, b, fid, f.injury.name.charAt(0).toLowerCase() + f.injury.name.slice(1));
+            break;
+          }
         }
       }
     }

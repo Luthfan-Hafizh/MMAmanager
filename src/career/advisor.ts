@@ -18,6 +18,9 @@ import { fullName, isChampion, rankOf } from "../world/core";
 import { outlookRoom } from "../world/development";
 import { preview, winProb } from "../world/odds";
 import { boutLimit, cutCheck, noticeHurt, sizeEdge } from "./shortnotice";
+import { INJURY } from "../data/injuries";
+
+const INJURY_FOR = (id?: string) => (id ? INJURY[id] : undefined);
 import { counterOffer, valueOf } from "./offers";
 
 export type Verdict = "take" | "pass" | "think" | "sign" | "counter" | "wait";
@@ -306,6 +309,54 @@ export function managerNegotiate(w: World, rng: Rng, offerId: string): string[] 
     }
   }
   return log;
+}
+
+/** What the team thinks about an injury decision (hurt in camp, or the belt). */
+export function adviseInjury(w: World, f: Fighter, actions: string[], ref?: string): Advice | null {
+  const adv = adviserOf(w, f);
+  const inj = f.injury;
+  if (!inj) return null;
+  const reasons: Reason[] = [];
+  const add = (good: boolean | null, weight: number, text: string) => reasons.push({ good, text, weight: Math.abs(weight) });
+  const left = inj.until - w.day;
+  if (actions.includes("hold")) {
+    const months = Math.round(left / 30.4);
+    if (months <= 12) {
+      add(true, 2, `${months} months is a long time, but champions have held belts through longer. Keep it and unify when you're back.`);
+      add(null, 1, "The interim champion will be waiting: your first fight back is for both belts.");
+      const a = finish("take", reasons, adv);
+      return { ...a, label: "Keep it", headline: `Keep it. ${reasons[0].text}` };
+    }
+    add(false, 2, `${months} months out: the division can't wait that long. Vacate, and you're first in line when you're fit.`);
+    const a = finish("pass", reasons, adv);
+    return { ...a, label: "Vacate", headline: `Vacate it. ${reasons[0].text}` };
+  }
+  const b = ref ? w.bouts[ref] : undefined;
+  if (!b) return null;
+  const late = inj.until - b.day;
+  const title = b.kind === "title" || b.kind === "interim" || b.kind === "vacant";
+  const d = INJURY_FOR(inj.id);
+  const hurt = late > 0 && d ? Math.round(Math.min(1, (d.fightable ?? 0.3) * 3) * 22) : 0;
+  let pick: string;
+  if (actions.includes("fight-hurt") && late <= 0) {
+    add(true, 2, "It'll be healed by fight night. The camp loses some work, but fight.");
+    pick = "fight-hurt";
+  } else if (actions.includes("fight-hurt") && late <= 10 && hurt <= 15 && !title) {
+    add(true, 1.5, `It's nearly healed: you'd be about ${hurt}% down where it hurts. Fighters go in with worse.`);
+    add(false, 0.8, "There's a chance it gets worse in the fight.");
+    pick = "fight-hurt";
+  } else if (actions.includes("postpone")) {
+    add(true, 2, title ? "A title fight is worth waiting for: ask them to move it." : "Ask to move it: if they say no, you're out anyway, with no harm done.");
+    if (actions.includes("fight-hurt")) add(false, 1.2, `Fighting on it, you'd be about ${hurt}% down where it hurts, and it could get worse.`);
+    pick = "postpone";
+  } else {
+    add(true, 2, "Pull out and heal properly. There'll be other fights.");
+    pick = "pull-out";
+  }
+  const verdict: Verdict = pick === "pull-out" ? "pass" : "take";
+  const label = pick === "fight-hurt" ? "Fight" : pick === "postpone" ? "Postpone" : "Pull out";
+  const a = finish(verdict, reasons, adv);
+  return { ...a, label, headline: `${label}. ${reasons.find((r) => r.good === true)?.text ?? reasons[0].text}` };
 }
 
 export interface Answer {

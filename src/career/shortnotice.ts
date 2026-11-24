@@ -128,6 +128,10 @@ export function findCall(w: World, ev: MMAEvent, b: Bout, stay: Fighter, days: n
     }
     let chance = 0.4 + (f.promo === ev.promo ? 0.15 : 0) + (f.div === b.div ? 0.1 : 0) + (title ? 0.25 : 0) - (debut ? 0.1 : 0);
     chance *= clamp(1 - (gap - 3) / 12, 0.3, 1);
+    // Late in the week the weight decides it: a fighter with no cut to make (a
+    // division up, a catchweight, or walking near the limit) can be called days
+    // out; one facing a hard cut rarely gets the call.
+    if (days <= 7) chance *= cut.risk === "none" || cut.risk === "easy" ? 1.35 : cut.risk === "hard" ? 0.45 : 0.85;
     if (!best || chance > best.chance) best = { f, limit, debut, chance };
   }
   return best;

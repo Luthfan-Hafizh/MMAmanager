@@ -687,6 +687,23 @@ input[type="checkbox"] { accent-color: var(--red); width: 16px; height: 16px; }
 .switch { display: flex; gap: 10px; align-items: flex-start; font-size: 13px; line-height: 1.45; color: var(--ink-2); cursor: pointer; }
 .switch input { margin-top: 3px; accent-color: var(--red); width: 16px; height: 16px; flex-shrink: 0; }
 
+/* ---------- facts and injuries ---------- */
+.facts { display: grid; grid-template-columns: repeat(auto-fill, minmax(170px, 1fr)); grid-auto-flow: row dense; gap: 6px; margin: 14px 0 16px; }
+.facts > div { background: var(--sheet-2); padding: 9px 12px; min-width: 0; border-radius: 3px; }
+.facts > div.wide { grid-column: span 2; }
+.facts dt { font-stretch: 75%; font-weight: 700; font-size: 10.5px; letter-spacing: 0.1em; text-transform: uppercase; color: var(--ink-3); }
+.facts dd { margin: 3px 0 0; font-weight: 600; font-size: 13.5px; line-height: 1.4; }
+.facts dd.good { color: var(--win); }
+.facts dd.bad { color: var(--loss); }
+.facts dd.warn { color: var(--a-weak); }
+.injury { background: var(--loss-soft); border-radius: var(--r); padding: 12px 14px; box-shadow: inset 4px 0 0 var(--loss); }
+.injury.sev1 { background: var(--gold-soft); box-shadow: inset 4px 0 0 var(--gold); }
+.injury-left { text-align: right; line-height: 1; }
+.injury-left b { display: block; font-stretch: 62%; font-weight: 900; font-size: 30px; }
+.injury-left span { font-size: 11px; color: var(--ink-3); text-transform: uppercase; letter-spacing: 0.08em; font-weight: 700; font-stretch: 75%; }
+.injury-bar { height: 6px; background: var(--sheet-3); border-radius: 3px; overflow: hidden; margin: 10px 0 4px; }
+.injury-bar i { display: block; height: 100%; background: var(--win); border-radius: 3px; }
+
 /* ---------- responsive ---------- */
 @media (max-width: 1180px) {
   .offer-grid { grid-template-columns: repeat(3, minmax(0, 1fr)); }
@@ -734,6 +751,7 @@ input[type="checkbox"] { accent-color: var(--red); width: 16px; height: 16px; }
 }
 @media (max-width: 520px) {
   .offer-grid { grid-template-columns: 1fr; }
+  .facts > div.wide { grid-column: auto; }
   .team-card { grid-template-columns: 44px minmax(0, 1fr); }
   .team-card .btn { grid-column: 2; justify-self: start; }
   .attr-cols { grid-template-columns: 1fr; }

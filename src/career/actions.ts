@@ -5,6 +5,7 @@ import { withRng, touch } from "../world/core";
 import { withdraw } from "../world/matchmaking";
 import { acceptFight, declineFight, rejectContract, signContract } from "./offers";
 import { answerMedia, answerMicrophone, type Tone } from "./fightweek";
+import { answerInjury } from "./injury";
 
 export function answer(w: World, msgId: string, action: string): string {
   const m = w.inbox.find((x) => x.id === msgId);
@@ -22,14 +23,9 @@ export function answer(w: World, msgId: string, action: string): string {
     if (b) text = answerMedia(w, b, w.fighters[m.fighter], action.slice(6) as Tone);
   } else if ((action.startsWith("callout:") || action === "titleshot") && m.fighter) {
     text = answerMicrophone(w, w.fighters[m.fighter], action);
-  } else if (m.kind === "injury" && m.ref) {
-    const b = w.bouts[m.ref];
-    if (action === "pull-out" && b && b.status === "booked" && m.fighter) {
-      withRng(w, (rng) => withdraw(w, rng, b, m.fighter!, "injury"));
-      const fc = w.career.fc[m.fighter];
-      if (fc) fc.camp = null;
-      text = "Pulled out of the fight.";
-    } else text = "Fighting through it. The doctors will look again on fight week.";
+  } else if (m.kind === "injury" && m.fighter && m.actions?.length) {
+    const f = w.fighters[m.fighter];
+    text = withRng(w, (rng) => answerInjury(w, rng, f, action, m.ref));
   }
   m.done = text || action;
   m.needs = false;
@@ -43,7 +39,7 @@ export function autoAnswer(w: World): void {
     if (!m.needs || m.done) continue;
     if (m.kind === "offer") answer(w, m.id, "accept");
     else if (m.kind === "contract") answer(w, m.id, "sign");
-    else if (m.kind === "injury") answer(w, m.id, "fight-hurt");
+    else if (m.kind === "injury" && m.actions?.length) answer(w, m.id, m.actions[0].id);
     else if (m.actions?.some((a) => a.id === "media:confident")) answer(w, m.id, "media:confident");
     else {
       m.needs = false;

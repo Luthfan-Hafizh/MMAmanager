@@ -3,6 +3,7 @@
 
 import type { Rng } from "../core/rng";
 import { clamp } from "../core/util";
+import { fmtDate } from "../core/time";
 import { DIVISIONS } from "../data/divisions";
 import { PROMOTIONS } from "../data/promotions";
 import { ovr, ovrOf } from "../model/attributes";
@@ -17,6 +18,9 @@ import { vacate } from "./titles";
 import { mediaPrep } from "../career/fightweek";
 import { legacyAfterFight } from "./legacy";
 import { boutLimit, cutCheck, noticeHurt, sizeEdge } from "../career/shortnotice";
+import { fightInjuryDef, hurtOnNight, makeInjury, type InjuryDef } from "../data/injuries";
+import { lc, playerInjured } from "../career/injury";
+import { notify } from "../career/inbox";
 
 export { ringRust } from "./core";
 
@@ -41,11 +45,14 @@ export function conditionFor(w: World, f: Fighter, b: Bout, rng: Rng): Partial<C
   // Outside the usual division, the size gap tells.
   if (opp && (f.div !== b.div || opp.div !== b.div)) c.size = sizeEdge(f, opp, boutLimit(b));
   const fc = w.career.fc[f.id];
+  const hurt = f.injury && f.injury.until > b.day ? f.injury : null;
   if (fc && fc.camp && fc.camp.bout === b.id) {
     // The player's camp decides the cut and the preparation (career/camp.ts).
     c.cut = fc.campCut ?? 0.15;
     c.prep = fc.campPrep ?? 0;
-    c.injury = f.injury && f.injury.until > b.day ? 0.5 : 0;
+    // Fighting on an injury: it hurts what that part of the body does.
+    c.injury = hurt ? hurtOnNight(hurt, b.day) : 0;
+    if (hurt) c.injuryArea = hurt.area;
   } else {
     c.cut = aiCut(f, boutLimit(b), rng);
     if (sub) {
@@ -54,7 +61,14 @@ export function conditionFor(w: World, f: Fighter, b: Bout, rng: Rng): Partial<C
       c.cut = clamp(c.cut + (risk === "hard" ? 0.15 : risk === "normal" ? 0.05 : 0) + 0.05 * noticeHurt(b.notice), 0, 0.9);
     }
     c.prep = clamp(rng.normal(0, 0.3) - (sub ? 0.1 + 0.2 * noticeHurt(b.notice) : 0), -1, 0.6);
-    c.injury = rng.chance(0.04) ? 0.3 : 0;
+    if (hurt) {
+      c.injury = hurtOnNight(hurt, b.day);
+      c.injuryArea = hurt.area;
+    } else if (rng.chance(0.04)) {
+      // Most fighters carry something into a fight.
+      c.injury = 0.3;
+      c.injuryArea = rng.pick(["hand", "knee", "body", "shoulder", "back"]);
+    } else c.injury = 0;
   }
   // The fighter whose opponent changed prepared for somebody else.
   if (b.shortNotice && b.sub && b.sub !== f.id) c.prep = (c.prep ?? 0) - 0.08 * noticeHurt(b.notice);
@@ -283,6 +297,8 @@ export function applyResult(w: World, rng: Rng, b: Bout, o: FightOutcome): void 
 
   // Damage, wear, suspensions and injuries.
   const sides = o.sides;
+  const hurtNow: [Fighter, InjuryDef][] = [];
+  const worse: [Fighter, string, number][] = [];
   for (const [f, side] of [
     [A, sides[0]],
     [B, sides[1]],
@@ -306,22 +322,19 @@ export function applyResult(w: World, rng: Rng, b: Bout, o: FightOutcome): void 
     } else if (side.kd >= 2 || side.head < 40) susp = Math.max(susp, 30);
     else if (f === loser && m === "SUB") susp = rng.int(7, 21);
     f.susp = Math.max(f.susp, b.day + susp);
-    const worst = Math.min(side.head, side.body, side.legs);
-    const pInj = 0.035 + 0.3 * Math.pow(1 - worst / 100, 2) + (side.cut >= 2 ? 0.15 : 0);
-    if (rng.chance(pInj)) {
-      const which = side.cut >= 2 ? "cut" : side.legs < 45 ? "leg" : side.head < 45 ? "head" : rng.pick(["hand", "knee", "shoulder", "rib"]);
-      const names: Record<string, [string, number, number]> = {
-        cut: ["Deep cut", 21, 42],
-        leg: ["Leg damage", 21, 45],
-        head: ["Orbital fracture", 45, 90],
-        hand: ["Broken hand", 45, 100],
-        knee: ["Knee injury", 30, 120],
-        shoulder: ["Shoulder injury", 28, 70],
-        rib: ["Cracked rib", 28, 49],
-      };
-      const [name, lo, hi] = names[which];
-      const days = rng.int(lo, hi);
-      f.injury = { name, area: which === "cut" ? "head" : (which as "head"), until: b.day + days, severity: days > 60 ? 2 : 1, from: "fight" };
+    // Fought on an injury: it can come out worse.
+    const carried = f.injury && f.injury.until > b.day ? f.injury : null;
+    if (carried && rng.chance(0.4)) {
+      const extra = Math.round((carried.until - (carried.start ?? carried.until - 28)) * 0.5 + 14);
+      carried.until += extra;
+      carried.aggravated = true;
+      if (f.ctrl) worse.push([f, carried.name, extra]);
+    }
+    // New injuries, from what happened in the fight.
+    const def = fightInjuryDef(rng, side, f === loser && m === "SUB" ? o.detail : null);
+    if (def && !(carried && carried.until > b.day + def.weeks[1] * 7)) {
+      if (f.ctrl) hurtNow.push([f, def]);
+      else f.injury = makeInjury(rng, def, b.day, "fight");
     }
   }
 
@@ -329,6 +342,11 @@ export function applyResult(w: World, rng: Rng, b: Bout, o: FightOutcome): void 
   const champBefore = w.promos[b.promo].champs[b.div] ?? null;
   handleTitle(w, rng, b, winner, loser);
   const champAfter = w.promos[b.promo].champs[b.div] ?? null;
+  // The player's injuries are reported once the belt is settled (a champion may have a decision to make).
+  for (const [f, def] of hurtNow) playerInjured(w, rng, f, def, "fight", "in the fight");
+  for (const [f, name, extra] of worse) {
+    notify(w, { kind: "injury", fighter: f.id, from: "Team doctor", subject: `Made worse: ${lc(name)}`, body: `Fighting on the ${lc(name)} made it worse: another ${Math.round(extra / 7)} weeks before ${fullName(f)} is fight-ready.`, facts: [{ k: "Injury", v: `${name} (made worse)` }, { k: "Extra time out", v: `${Math.round(extra / 7)} weeks`, tone: "bad" }, { k: "Fight-ready", v: f.injury ? fmtDate(f.injury.until) : "now" }] });
+  }
   if (winner && loser) {
     const rankLoser = loser === A ? b.rankA ?? null : b.rankB ?? null;
     legacyAfterFight(w, b, winner, loser, rankLoser, champAfter === winner.id && champBefore !== winner.id, champBefore === winner.id && b.kind === "title");

@@ -29,6 +29,8 @@ export interface Condition {
   notice?: number;
   /** The size gap on the night, -1..1, when someone fights outside their division. */
   size?: number;
+  /** Where an injury a fighter carries into the fight is: it hurts what that part does. */
+  injuryArea?: string;
 }
 
 /** How a short camp tells: 1 with a day's notice, 0 with three weeks. */
@@ -251,7 +253,19 @@ export class FightSim {
       const fade = this.round === 1 ? 1 : this.round === 2 ? 0.65 : 0.4;
       v *= 1 - s.cond.rust * 0.11 * fade;
     }
-    if (s.cond.injury > 0) v *= 1 - s.cond.injury * 0.12;
+    if (s.cond.injury > 0) {
+      v *= 1 - s.cond.injury * 0.05;
+      // What the injured part does suffers most.
+      const area = s.cond.injuryArea;
+      const hit =
+        area === "hand" ? k === "boxing" || k === "power" || k === "clinchStrikes" || k === "groundStrikes" || k === "counters"
+        : area === "knee" || area === "leg" ? k === "kicks" || k === "footwork" || k === "takedowns" || k === "tdd" || k === "speed" || k === "scrambles"
+        : area === "shoulder" || area === "arm" ? k === "takedowns" || k === "clinchControl" || k === "subs" || k === "boxing" || k === "topControl"
+        : area === "body" || area === "back" ? k === "cardio" || k === "strength" || k === "toughness" || k === "takedowns"
+        : area === "head" ? k === "chin" || k === "composure"
+        : false;
+      if (hit) v *= 1 - s.cond.injury * 0.22;
+    }
     if (s.cond.prep) v *= 1 + s.cond.prep * 0.025;
     if (s.cond.home && (k === "composure" || k === "heart")) v *= 1.04;
     if (k === "footwork" || k === "tdd" || k === "speed") v *= 0.72 + 0.28 * (s.legs / 100);

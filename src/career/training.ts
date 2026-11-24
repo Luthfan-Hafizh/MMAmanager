@@ -11,6 +11,7 @@ import { ATTRS, ovrOf, type AttrKey } from "../model/attributes";
 import type { Fighter, Gym, SessionId, TrainingPlan, World } from "../model/types";
 import { TECHNIQUES, type TechId } from "../data/techniques";
 import { growthRate, monthsToPeak } from "../world/development";
+import { defOf, trainingInjury } from "../data/injuries";
 
 export interface SessionDef {
   id: SessionId;
@@ -98,7 +99,7 @@ export interface WeekResult {
   growth: Partial<Record<AttrKey, number>>;
   fatigue: number;
   sharp: number;
-  injury?: { name: string; days: number; severity: number; area: string };
+  injury?: { id: string; name: string; days: number; severity: number; area: string };
   drilled?: { tech: TechId; level: number; progress: number };
   load: number;
 }
@@ -123,20 +124,6 @@ export function weekRisk(f: Fighter, plan: TrainingPlan, age: number): number {
   return clamp(0.0011 * r * (f.hid.injuryProne / 9) * fat * fat * ageF, 0, 0.25);
 }
 
-const INJURIES: { name: string; area: string; days: [number, number]; sev: number; from: SessionId[] }[] = [
-  { name: "Bruised ribs", area: "body", days: [10, 24], sev: 1, from: ["sparring", "wrestling", "muaythai"] },
-  { name: "Sprained ankle", area: "leg", days: [10, 28], sev: 1, from: ["conditioning", "kickboxing", "wrestling"] },
-  { name: "Hand injury", area: "hand", days: [21, 45], sev: 2, from: ["boxing", "sparring"] },
-  { name: "Knee sprain (MCL)", area: "knee", days: [28, 70], sev: 2, from: ["wrestling", "bjj", "sparring"] },
-  { name: "Shoulder strain", area: "shoulder", days: [14, 35], sev: 1, from: ["bjj", "wrestling", "strength"] },
-  { name: "Lower back strain", area: "back", days: [10, 30], sev: 1, from: ["strength", "wrestling"] },
-  { name: "Cut over the eye", area: "head", days: [14, 28], sev: 1, from: ["sparring", "muaythai"] },
-  { name: "Concussion in sparring", area: "head", days: [28, 60], sev: 2, from: ["sparring"] },
-  { name: "Torn ACL", area: "knee", days: [210, 330], sev: 3, from: ["wrestling", "bjj", "sparring", "kickboxing"] },
-  { name: "Broken hand", area: "hand", days: [56, 100], sev: 3, from: ["boxing", "sparring"] },
-  { name: "Torn meniscus", area: "knee", days: [60, 120], sev: 2, from: ["wrestling", "bjj"] },
-  { name: "Pulled hamstring", area: "leg", days: [14, 35], sev: 1, from: ["conditioning", "kickboxing"] },
-];
 
 export function trainingWeek(w: World, f: Fighter, plan: TrainingPlan, rng: Rng, apply: boolean, mul = 1): WeekResult {
   const age = ageAt(f.birth, w.day);
@@ -150,6 +137,8 @@ export function trainingWeek(w: World, f: Fighter, plan: TrainingPlan, rng: Rng,
   const pro = 0.75 + f.pers.professionalism / 40;
   const fatPenalty = f.fatigue > 70 ? 0.65 : f.fatigue > 55 ? 0.85 : 1;
   const injured = f.injury && f.injury.until > w.day;
+  // While it heals, only what the injury allows still counts.
+  const hurtTrain = injured ? defOf(f.injury!).train : 1;
   const growth: Partial<Record<AttrKey, number>> = {};
   const fac = gym ? 0.8 + gym.facilities / 250 : 0.9;
   // Weak attributes improve faster than strong ones; the pace sets the overall rate.
@@ -166,7 +155,7 @@ export function trainingWeek(w: World, f: Fighter, plan: TrainingPlan, rng: Rng,
     const q = 0.55 + coachQuality(gym, sd.area) / 110;
     for (const [k, v] of Object.entries(sd.attrs) as [AttrKey, number][]) {
       const top = topOf(k) / meanTop;
-      const g = 0.0105 * mul * v * q * fac * INT_GROWTH[plan.intensity] * ageGrowth(age) * room * pro * fatPenalty * top * (injured ? 0.35 : 1);
+      const g = 0.0105 * mul * v * q * fac * INT_GROWTH[plan.intensity] * ageGrowth(age) * room * pro * fatPenalty * top * hurtTrain;
       growth[k] = (growth[k] ?? 0) + g;
     }
   }
@@ -176,10 +165,8 @@ export function trainingWeek(w: World, f: Fighter, plan: TrainingPlan, rng: Rng,
   const sharp = clamp(f.sharp * 0.93 + sharpGain * 0.9, 0, 100);
   let injury: WeekResult["injury"];
   if (!injured && rng.chance(weekRisk(f, plan, age))) {
-    const sessions = new Set(plan.week);
-    const pool = INJURIES.filter((i) => i.from.some((s) => sessions.has(s)));
-    const pick = rng.weighted(pool.length ? pool : INJURIES, (i) => (i.sev === 3 ? 0.12 : i.sev === 2 ? 0.6 : 1.6));
-    injury = { name: pick.name, days: rng.int(pick.days[0], pick.days[1]), severity: pick.sev, area: pick.area };
+    const pick = trainingInjury(rng, new Set(plan.week));
+    injury = { id: pick.id, name: pick.name, days: Math.round(((pick.weeks[0] + pick.weeks[1]) / 2) * 7), severity: pick.sev, area: pick.area };
   }
   let drilled: WeekResult["drilled"];
   if (plan.drill) {

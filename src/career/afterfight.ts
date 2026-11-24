@@ -6,7 +6,7 @@ import { money } from "../core/util";
 import { DIVISIONS } from "../data/divisions";
 import { PROMOTIONS } from "../data/promotions";
 import { ovr } from "../model/attributes";
-import type { Bout, Fighter, World } from "../model/types";
+import type { Bout, Fact, Fighter, World } from "../model/types";
 import { methodPhrase, type FightOutcome } from "../engine/sim";
 import { fullName, rankOf } from "../world/core";
 import { notify } from "./inbox";
@@ -34,6 +34,16 @@ export function afterFightCareer(w: World, rng: Rng, b: Bout, o: FightOutcome): 
     if (f.injury && f.injury.until > w.day) lines.push(`Injury: ${f.injury.name.toLowerCase()}, out until about ${fmtDate(f.injury.until)}.`);
     const r = rankOf(w, f);
     if (f.contract && f.contract.left === 0 && PROMOTIONS[b.promo].tier !== "amateur") lines.push("That was the last fight on the contract. Talks on the next deal start now.");
+    const facts: Fact[] = [
+      { k: "Result", v: won ? "Win" : lost ? "Loss" : "Draw", tone: won ? "good" : lost ? "bad" : undefined },
+      { k: "How", v: `${how.charAt(0).toUpperCase()}${how.slice(1)}, ${when}` },
+      { k: "Record now", v: `${f.rec.w}-${f.rec.l}${f.rec.d ? `-${f.rec.d}` : ""}` },
+      { k: "Ranking", v: r === 0 ? "Champion" : r ? `#${r}` : "Unranked" },
+      { k: "Strikes", v: `${mine.sigL} of ${mine.sigA} landed, ${theirs.sigL} taken` },
+      { k: "Takedowns", v: `${mine.tdL} of ${mine.tdA}` },
+    ];
+    if (f.susp > w.day + 8) facts.push({ k: "Medical suspension", v: `To ${fmtDate(f.susp)} (${Math.round((f.susp - w.day) / 7)} weeks)`, tone: f.susp - w.day > 60 ? "bad" : "warn" });
+    if (f.injury && f.injury.until > w.day) facts.push({ k: "Injury", v: `${f.injury.name}, fight-ready ${fmtDate(f.injury.until)}`, tone: "bad" });
     notify(w, {
       kind: "result",
       fighter: f.id,
@@ -41,6 +51,7 @@ export function afterFightCareer(w: World, rng: Rng, b: Bout, o: FightOutcome): 
       from: w.gyms[f.gym]?.headCoach ?? "Corner",
       subject: won ? `Victory over ${fullName(opp)}` : lost ? `Defeat to ${fullName(opp)}` : `Draw with ${fullName(opp)}`,
       body: lines.join(" "),
+      facts,
     });
     if (fc) {
       fc.camp = null;

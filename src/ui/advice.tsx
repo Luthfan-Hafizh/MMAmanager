@@ -12,6 +12,7 @@ import { boutLimit, CUT_TEXT, cutCheck } from "../career/shortnotice";
 import { moneyline } from "../world/odds";
 import { rankLabel, recordText } from "../world/core";
 import { changed } from "../state/store";
+import { defOf, SEVERITY_TEXT } from "../data/injuries";
 import { Link } from "./router";
 
 /** The adviser's verdict, the headline and the reasons for and against. */
@@ -135,6 +136,37 @@ export function AskDesk({ w, f }: { w: World; f: Fighter }) {
           <span><b>Take short-notice calls.</b> The matchmakers can ring when someone pulls out, from three weeks to a day before a fight, at the weight or a division up.</span>
         </label>
       )}
+    </div>
+  );
+}
+
+/** An injury as the doctor explains it: how bad, the treatment, the road back, what can be trained. */
+export function InjuryCard({ w, f }: { w: World; f: Fighter }) {
+  const inj = f.injury;
+  if (!inj || inj.until <= w.day) return null;
+  const d = defOf(inj);
+  const start = inj.start ?? inj.until - 28;
+  const total = Math.max(1, inj.until - start);
+  const done = Math.min(1, Math.max(0, (w.day - start) / total));
+  const left = inj.until - w.day;
+  const decision = w.inbox.find((m) => m.fighter === f.id && m.kind === "injury" && m.needs && !m.done);
+  return (
+    <div className={`injury sev${d.sev}`}>
+      <div className="spread">
+        <div>
+          <div className="label">{SEVERITY_TEXT[d.sev]} injury{inj.surgery ? " · surgery" : ""}{inj.aggravated ? " · made worse" : ""}</div>
+          <div className="dx" style={{ fontSize: 22 }}>{inj.name}</div>
+        </div>
+        <div className="injury-left">
+          <b>{left >= 63 ? `${Math.round(left / 30.4)} mo` : `${Math.max(1, Math.round(left / 7))} wk`}</b>
+          <span>to fight-ready</span>
+        </div>
+      </div>
+      <div className="injury-bar" aria-label={`${Math.round(done * 100)}% of the way back`}><i style={{ width: `${Math.round(done * 100)}%` }} /></div>
+      <div className="spread tiny dim"><span>{fmtDate(start, { year: false })}</span><span>Fight-ready {fmtDate(inj.until)}</span></div>
+      <p className="small" style={{ marginTop: 8 }}>{d.treat}</p>
+      <p className="small dim" style={{ marginTop: 4 }}>Training: {d.limits} About {Math.round(d.train * 100)}% of a normal week counts.</p>
+      {decision && <p className="small" style={{ marginTop: 8 }}><Link to={`/inbox/${decision.id}`} className="textlink">Decision waiting: {decision.subject}</Link></p>}
     </div>
   );
 }

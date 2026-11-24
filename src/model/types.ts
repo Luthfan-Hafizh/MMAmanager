@@ -64,6 +64,12 @@ export interface Injury {
   until: number;
   severity: number; // 1 minor - 3 major
   from: "fight" | "training";
+  /** The injury in data/injuries.ts (older saves have none). */
+  id?: string;
+  start?: number;
+  surgery?: boolean;
+  /** Made worse by fighting on it. */
+  aggravated?: boolean;
 }
 
 export interface Reign {
@@ -75,7 +81,7 @@ export interface Reign {
   defenses: number;
   interim?: boolean;
   how: string; // "won", "promoted", "vacant"
-  ended?: "lost" | "vacated" | "stripped" | "retired" | "moved" | "unified";
+  ended?: "lost" | "vacated" | "stripped" | "retired" | "moved" | "unified" | "injury";
 }
 
 export interface CareerTotals {
@@ -353,6 +359,14 @@ export interface Message {
   needs?: boolean;
   actions?: MessageAction[];
   done?: string;
+  /** The key facts, shown as a panel above the text. */
+  facts?: Fact[];
+}
+
+export interface Fact {
+  k: string;
+  v: string;
+  tone?: "good" | "bad" | "warn";
 }
 
 export type ProposalStatus = "open" | "accepted" | "declined" | "expired" | "withdrawn";
@@ -487,6 +501,10 @@ export interface FighterCareer {
   adapt?: number;
   /** Day of the last short-notice call, so the phone doesn't ring every week. */
   lastCall?: number;
+  /** A champion out injured who kept the belt: an interim title is fought meanwhile. */
+  hold?: { promo: PromoId; div: DivisionId; since: number };
+  /** A champion who vacated through injury: a title shot when fit, until this day. */
+  promise?: { promo: PromoId; div: DivisionId; until: number };
   /** Advice taken and ignored, for the manager's mood. */
   trust?: number;
 }

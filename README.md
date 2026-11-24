@@ -83,7 +83,7 @@ npm run check                   # all of the above, quick versions
 
 `npm run data` rebuilds `public/data/roster.json` from the snapshot in `data-src/`.
 
-The live site is the Vercel project `mma-manager`, deployed from this folder with the Vercel CLI (`npx vercel deploy --prod`, which runs `npm run build` and serves `dist/`). It is not connected to GitHub, so pushing to `main` does not deploy; run the command again after a change. It is separate from the old game's Vercel projects.
+The live site is the Vercel project `mma-manager`, connected to this repository: every push to `main` is built (`npm run build`, with the settings in `vercel.json`) and goes live within a minute, and pushes to other branches get preview deployments. `npx vercel deploy` (without `--prod`) makes a preview of the local folder without touching the live site. It is separate from the old game's Vercel projects.
 
 ## Data
 

@@ -43,7 +43,7 @@ function Row({ k, a, b, fa, fb, sub }: { k: string; a: number; b: number; fa?: s
   );
 }
 
-function StatTable({ A, B }: { A: RoundStat; B: RoundStat }) {
+export function StatTable({ A, B }: { A: RoundStat; B: RoundStat }) {
   return (
     <div className="fr-stats">
       <Row k="Significant strikes" a={A.sigL} b={B.sigL} fa={`${A.sigL}/${A.sigA}`} fb={`${B.sigL}/${B.sigA}`} />

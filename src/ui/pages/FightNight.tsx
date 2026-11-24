@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useReducer, useRef, useState } from "react";
 import { clock, fmtDate } from "../../core/time";
 import { DIVISIONS } from "../../data/divisions";
-import type { Bout, FightLogLine, RoundStat, World } from "../../model/types";
+import type { Bout, FightLogLine, Fighter, RoundStat, World } from "../../model/types";
 import { FightSim, GPOS_NAME, methodText, type CornerCall, type FightOutcome, type LiveAdvice } from "../../engine/sim";
 import { clamp } from "../../core/util";
 import { applyShout, SHOUT_BY_ID, SHOUT_GROUPS, SHOUTS, type Shout, type ShoutGroup } from "../../engine/plan";
@@ -15,8 +15,8 @@ import { Bar, Empty, FighterLink, Panel, Seg } from "../components";
 import { Band } from "../art";
 import { PlanEditor } from "./NextFight";
 import { stakeLabel } from "../../world/belts";
-import { FightReport } from "../report";
-import { roundSummary } from "../../world/report";
+import { FightReport, StatTable } from "../report";
+import { roundSummary, totals } from "../../world/report";
 
 export function FightNight() {
   const w = useWorld();
@@ -181,7 +181,7 @@ function LiveFight({ w, b, onDone }: { w: World; b: Bout; onDone: (o: FightOutco
   const [paused, setPaused] = useState(false);
   const [focus, setFocus] = useState<"recover" | "cut" | "tactics" | "head">("recover");
   const [used, setUsed] = useState<string[]>([]);
-  const feedRef = useRef<HTMLDivElement | null>(null);
+  const [sideTab, setSideTab] = useState<"moves" | "stats" | "read">("moves");
   const pick = (s: Speed) => {
     setSpeed(s);
     try {
@@ -340,16 +340,9 @@ function LiveFight({ w, b, onDone }: { w: World; b: Bout; onDone: (o: FightOutco
     return () => window.clearTimeout(timer);
   }, [speed, paused, sim, sim.round, sim.between, sim.over]);
 
-  // Keep the play-by-play at the newest line, unless the reader scrolled back.
-  useEffect(() => {
-    const el = feedRef.current;
-    if (el && el.scrollHeight - el.scrollTop - el.clientHeight < 80) el.scrollTop = el.scrollHeight;
-  });
-
   const out = sim.over ? sim.outcome() : null;
   const me = sim.s[mine];
   const opp = sim.s[1 - mine as 0 | 1];
-  const st = (i: 0 | 1) => sim.s[i].rs.reduce((a, r) => ({ sigL: a.sigL + r.sigL, sigA: a.sigA + r.sigA, tdL: a.tdL + r.tdL, tdA: a.tdA + r.tdA, kd: a.kd + r.kd, ctrl: a.ctrl + r.ctrl, subA: a.subA + r.subA }), { sigL: 0, sigA: 0, tdL: 0, tdA: 0, kd: 0, ctrl: 0, subA: 0 });
   const posText =
     sim.pos === "ground"
       ? `${sim.s[sim.top].name} on top · ${GPOS_NAME[sim.gpos]}`
@@ -385,29 +378,11 @@ function LiveFight({ w, b, onDone }: { w: World; b: Bout; onDone: (o: FightOutco
     tick();
   };
   const roundLead = sim.cards.length ? sim.scoreDiff(me) : 0;
-  const A = st(0);
-  const B = st(1);
-  const stat = (k: string, a: number, bb: number, fa = String(a), fb = String(bb)) => {
-    const t = a + bb || 1;
-    return (
-      <div className="bc-stat">
-        <div className="k">{k}</div>
-        <div className="v"><span>{fa}</span><span>{fb}</span></div>
-        <div className="vbar"><div className="a" style={{ width: `${(a / t) * 100}%` }} /><div className="b" style={{ width: `${(bb / t) * 100}%` }} /></div>
-      </div>
-    );
-  };
   const rounds = sim.s[0].rs.map((r, k) => [r, sim.s[1].rs[k]] as [RoundStat, RoundStat]);
   const rcards = sim.cards.map((r) => r.map(([x, y]) => `${x}-${y}`));
   const last = sim.log[sim.log.length - 1];
   const justEnded = sim.between ? sim.round : 0;
   const notes = sim.between && !sim.over ? sim.cornerNotes(mine) : [];
-  const byRound = new Map<number, FightLogLine[]>();
-  for (const l of sim.log) {
-    const list = byRound.get(l.r) ?? [];
-    list.push(l);
-    byRound.set(l.r, list);
-  }
 
   return (
     <div className="stack">
@@ -430,72 +405,81 @@ function LiveFight({ w, b, onDone }: { w: World; b: Bout; onDone: (o: FightOutco
         <div className={`bc-now${last?.side !== undefined ? ` s${last.side}` : ""}${last?.big ? " big" : ""}`} aria-live="polite">
           {last ? last.text : "The referee brings them to the centre. Touch gloves…"}
         </div>
-        {!sim.over && !sim.between && (
-          <div className="bc-calls" aria-live="polite" aria-label="Corner calls">
-            <div className="bc-calls-row">
+        <div className="bc-ctrl fn-ctrl">
+          <div className="fn-ctrl-g" role="group" aria-label="Fight speed">
+            <Seg value={speed} onChange={pick} options={SPEEDS} />
+            <button className="btn sm" onClick={() => setPaused((p) => !p)} disabled={sim.over || sim.between}>{paused ? "Resume" : "Pause"}</button>
+          </div>
+          <div className="fn-ctrl-g" role="group" aria-label="Corner calls">
+            <span className="fn-ctrl-l">Corner calls</span>
+            <Seg value={callMode} onChange={pickMode} options={CALL_MODES} />
+          </div>
+        </div>
+      </section>
+
+      {!sim.over && !sim.between && (
+        <div className="fn-grid">
+          <div className="fn-main">
+            <PlayByPlay log={sim.log} live />
+          </div>
+          <aside className="fn-side" aria-label="Your corner">
+            <div className="fn-calls" aria-live="polite" aria-label="Corner calls">
+              <div className="fn-calls-h">
+                <span>{fighterMode ? "Your corner" : "Assistant coach"}</span>
+                <span>{callMode === "ask" ? "Keys 1 to 3 answer" : callMode === "follow" ? "Following the corner" : "Fighting on instinct"}</span>
+              </div>
               {cards.length ? (
                 cards.map((c) => <CallView key={c.id} c={c} roundSec={sim.roundSec} fighterMode={fighterMode} onChoose={(k) => choose(c, k)} />)
               ) : (
                 <div className="bc-calls-idle">
                   {callMode === "ask"
-                    ? `${fighterMode ? "Your corner" : "Your assistant coach"} is watching. Calls show up here and the fight keeps going: pick one, or let ${fighterMode ? "your" : "the fighter's"} instinct decide. Keys 1 to 3 answer.`
+                    ? `Watching the fight. Calls appear here and the fight keeps going: pick one, or let ${fighterMode ? "your" : "the fighter's"} instinct decide.`
                     : callMode === "follow"
-                      ? "Following the corner: every call is acted on as it comes."
-                      : `On instinct: ${fighterMode ? "you fight" : "the fighter fights"} the way ${fighterMode ? "you know" : "they know"}.`}
+                      ? "Every call is acted on as it comes."
+                      : `${fighterMode ? "You fight" : "The fighter fights"} on instinct; the calls still show in the play by play.`}
+                </div>
+              )}
+              {doing.length > 0 && (
+                <div className="bc-doing">
+                  <span>Doing now</span>
+                  {doing.map(([g, sh]) => (
+                    <button key={g} className="chip" onClick={() => clearShout(g)} title="Stop doing this">{SHOUT_BY_ID[sh].label.replace(/!$/, "")} <b aria-hidden="true">×</b></button>
+                  ))}
                 </div>
               )}
             </div>
-            {doing.length > 0 && (
-              <div className="bc-doing">
-                <span>Doing now</span>
-                {doing.map(([g, sh]) => (
-                  <button key={g} className="chip" onClick={() => clearShout(g)} title="Stop doing this">{SHOUT_BY_ID[sh].label.replace(/!$/, "")} <b aria-hidden="true">×</b></button>
-                ))}
+            <div className="panel fn-tabs">
+              <div className="fn-tabbar">
+                <Seg value={sideTab} onChange={setSideTab} options={[{ v: "moves", label: fighterMode ? "Your moves" : "Corner" }, { v: "stats", label: "Stats" }, { v: "read", label: "The read" }]} />
               </div>
-            )}
-          </div>
-        )}
-        <div className="bc-stats">
-          {stat("Sig. strikes", A.sigL, B.sigL, `${A.sigL}/${A.sigA}`, `${B.sigL}/${B.sigA}`)}
-          {stat("Takedowns", A.tdL, B.tdL, `${A.tdL}/${A.tdA}`, `${B.tdL}/${B.tdA}`)}
-          {stat("Knockdowns", A.kd, B.kd)}
-          {stat("Sub attempts", A.subA, B.subA)}
-          {stat("Control", A.ctrl, B.ctrl, clock(A.ctrl), clock(B.ctrl))}
-        </div>
-        <div className="bc-ctrl">
-          <Seg value={speed} onChange={pick} options={SPEEDS} />
-          <button className="btn sm" onClick={() => setPaused((p) => !p)} disabled={sim.over || sim.between}>{paused ? "Resume" : "Pause"}</button>
-          <span className="bc-sep" aria-hidden="true" />
-          <span className="small" style={{ color: "var(--band-ink-3)" }}>Corner calls</span>
-          <Seg value={callMode} onChange={pickMode} options={CALL_MODES} />
-          <span className="small" style={{ color: "var(--band-ink-3)" }}>{speed === "watch" ? "Every line, at reading pace" : speed === "quick" ? "Every line, quickly" : speed === "fast" ? "Fast forward" : "Straight to the end of the round"}</span>
-        </div>
-      </section>
-
-      {!sim.over && !sim.between && (
-        <div className="grid">
-          <div className="c8">
-            <Panel title={fighterMode ? "Your moves" : "Corner"} hint={fighterMode ? "Change what you do at any moment; the fight goes on. One from each group, for the rest of the round; click an active one to stop." : "One instruction from each group, for the rest of the round. Discipline decides whether it's heard; click an active one to take it back."}>
-              <div className="shout-groups">
-                {SHOUT_GROUPS.map((g) => (
-                  <div className="shout-group" key={g.id}>
-                    <div className="label">{g.label}</div>
-                    <div className="row tight wrap">
-                      {SHOUTS.filter((s) => s.group === g.id).map((s) => {
-                        const on = me.shouts[g.id] === s.id;
-                        return (
-                          <button key={s.id} className={`btn sm${on ? " on" : ""}`} title={s.desc} aria-pressed={on} onClick={() => (on ? clearShout(g.id) : move(s.id))}>{s.label}</button>
-                        );
-                      })}
+              <div className="panel-b">
+                {sideTab === "moves" && (
+                  <>
+                    <p className="tiny dim" style={{ marginBottom: 10 }}>
+                      {fighterMode ? "Change what you do at any moment; the fight goes on. One from each group, for the rest of the round; click an active one to stop." : "One instruction from each group, for the rest of the round. Discipline decides whether it's heard."}
+                    </p>
+                    <div className="shout-groups">
+                      {SHOUT_GROUPS.map((g) => (
+                        <div className="shout-group" key={g.id}>
+                          <div className="label">{g.label}</div>
+                          <div className="row tight wrap">
+                            {SHOUTS.filter((s) => s.group === g.id).map((s) => {
+                              const on = me.shouts[g.id] === s.id;
+                              return (
+                                <button key={s.id} className={`btn sm${on ? " on" : ""}`} title={s.desc} aria-pressed={on} onClick={() => (on ? clearShout(g.id) : move(s.id))}>{s.label}</button>
+                              );
+                            })}
+                          </div>
+                        </div>
+                      ))}
                     </div>
-                  </div>
-                ))}
+                  </>
+                )}
+                {sideTab === "stats" && <LiveStats a={sim.s[0].f} b={sim.s[1].f} rounds={rounds} />}
+                {sideTab === "read" && <ReadBody sim={sim} mine={mine} />}
               </div>
-            </Panel>
-          </div>
-          <div className="c4">
-            <ReadPanel sim={sim} mine={mine} />
-          </div>
+            </div>
+          </aside>
         </div>
       )}
 
@@ -522,7 +506,9 @@ function LiveFight({ w, b, onDone }: { w: World; b: Bout; onDone: (o: FightOutco
                 <button className="btn primary lg" onClick={nextRound}>Round {sim.round + 1}</button>
               </div>
             </Panel>
-            <ReadPanel sim={sim} mine={mine} />
+            <Panel title="The read" hint="Where each fighter is guarding. The guard follows what they get hit with.">
+              <ReadBody sim={sim} mine={mine} />
+            </Panel>
           </div>
           <div className="c7">
             <PlanEditor compact plan={me.base} onChange={(p) => { sim.setPlan(mine, p); tick(); }} />
@@ -546,34 +532,75 @@ function LiveFight({ w, b, onDone }: { w: World; b: Bout; onDone: (o: FightOutco
         </Panel>
       )}
 
-      {rounds.length > 0 && (sim.between || sim.over || rounds.some((r) => r[0].sigA + r[1].sigA > 0)) && (
+      {(sim.between || sim.over) && rounds.length > 0 && (
         <div className="panel"><div className="panel-b">
-          <FightReport data={{ a: sim.s[0].f, b: sim.s[1].f, rounds, rcards, log: out ? sim.log : undefined, winner: out?.winner, method: out?.method, detail: out?.detail, endRound: out?.round, endTime: out?.time }} title={out ? "Fight report" : "Live statistics, updated as they fight"} />
+          <FightReport data={{ a: sim.s[0].f, b: sim.s[1].f, rounds, rcards, log: out ? sim.log : undefined, winner: out?.winner, method: out?.method, detail: out?.detail, endRound: out?.round, endTime: out?.time }} title={out ? "Fight report" : "The fight so far"} />
         </div></div>
       )}
 
-      <Panel title="Play by play" flush>
-        <div className="feed" ref={feedRef}>
-          {[...byRound.entries()].map(([r, lines]) => (
-            <div key={r} className="feed-round">
-              <div className="feed-r">Round {r}</div>
-              {lines.map((l, i) => (
-                <div key={i} className={`line${l.big ? " big" : ""}${l.side !== undefined ? ` s${l.side}` : ""}${l.kind === "round" ? " round" : ""}${l.kind === "finish" ? " finish" : ""}${l.kind === "read" ? " read" : ""}${l.kind === "corner" ? " corner" : ""}${l.kind === "call" ? " mine" : ""}${l.kind === "miss" ? " miss" : ""}`}>
-                  <span className="t">{clock(l.t)}</span>
-                  <span>{l.text}</span>
-                </div>
-              ))}
-            </div>
-          ))}
-          {sim.log.length === 0 && <div className="empty">The referee brings them to the centre. Touch gloves…</div>}
-        </div>
-      </Panel>
+      {(sim.between || sim.over) && <PlayByPlay log={sim.log} live={false} />}
+    </div>
+  );
+}
+
+type FeedFilter = "all" | "key" | "corner";
+const KEY_KINDS = new Set(["kd", "rock", "finish", "read", "sub", "td", "pass", "sweep", "cut", "state", "call"]);
+
+/** The play by play: newest first while it's live, in order afterwards; all of it, the key moments, or the corners. */
+function PlayByPlay({ log, live }: { log: FightLogLine[]; live: boolean }) {
+  const [filter, setFilter] = useState<FeedFilter>("all");
+  const keep = (l: FightLogLine) => l.kind !== "round" && (filter === "all" || (filter === "key" ? !!l.big || KEY_KINDS.has(l.kind ?? "") : l.kind === "call" || l.kind === "corner"));
+  const byRound = new Map<number, FightLogLine[]>();
+  for (const l of log) {
+    if (!keep(l)) continue;
+    const list = byRound.get(l.r) ?? [];
+    list.push(l);
+    byRound.set(l.r, list);
+  }
+  const order = [...byRound.entries()];
+  if (live) {
+    order.reverse();
+    for (const [, lines] of order) lines.reverse();
+  }
+  return (
+    <Panel title="Play by play" acts={<Seg value={filter} onChange={setFilter} options={[{ v: "all", label: "All" }, { v: "key", label: "Key moments" }, { v: "corner", label: "Corners" }]} />} flush>
+      <div className={`feed${live ? " live" : ""}`}>
+        {order.map(([r, lines]) => (
+          <div key={r} className="feed-round">
+            <div className="feed-r">Round {r}</div>
+            {lines.map((l, i) => (
+              <div key={i} className={`line${l.big ? " big" : ""}${l.side !== undefined ? ` s${l.side}` : ""}${l.kind === "finish" ? " finish" : ""}${l.kind === "read" ? " read" : ""}${l.kind === "corner" ? " corner" : ""}${l.kind === "call" ? " mine" : ""}${l.kind === "miss" ? " miss" : ""}`}>
+                <span className="t">{clock(l.t)}</span>
+                <span>{l.text}</span>
+              </div>
+            ))}
+          </div>
+        ))}
+        {!order.length && <div className="empty">{log.length ? "Nothing like that yet." : "The referee brings them to the centre. Touch gloves…"}</div>}
+      </div>
+    </Panel>
+  );
+}
+
+/** The numbers while they fight: this round or the whole fight. */
+function LiveStats({ a, b, rounds }: { a: Fighter; b: Fighter; rounds: [RoundStat, RoundStat][] }) {
+  const [scope, setScope] = useState<"round" | "fight">("round");
+  if (!rounds.length) return <p className="small dim">The numbers start with the first exchange.</p>;
+  const cur = scope === "round" ? rounds[rounds.length - 1] : totals(rounds);
+  return (
+    <div>
+      <div className="fn-stats-h">
+        <span className="a">{a.surname}</span>
+        <Seg value={scope} onChange={setScope} options={[{ v: "round", label: `Round ${rounds.length}` }, { v: "fight", label: "Whole fight" }]} />
+        <span className="b">{b.surname}</span>
+      </div>
+      <StatTable A={cur[0]} B={cur[1]} />
     </div>
   );
 }
 
 /** Where both fighters are guarding, and what that leaves open. */
-function ReadPanel({ sim, mine }: { sim: FightSim; mine: 0 | 1 }) {
+function ReadBody({ sim, mine }: { sim: FightSim; mine: 0 | 1 }) {
   const me = sim.s[mine];
   const opp = sim.s[1 - mine as 0 | 1];
   const rows = (i: 0 | 1, who: string) => {
@@ -596,13 +623,13 @@ function ReadPanel({ sim, mine }: { sim: FightSim; mine: 0 | 1 }) {
   const open = sim.openness(opp);
   const best = [0, 1, 2].sort((x, y) => open[y] - open[x])[0];
   return (
-    <Panel title="The read" hint="Where each fighter is guarding. The guard follows what they get hit with.">
+    <>
       {rows((1 - mine) as 0 | 1, `${opp.name} is guarding`)}
       {rows(mine, `${me.name} is guarding`)}
       <p className="small" style={{ marginTop: 8 }}>
         {open[best] > 1.1 ? <>The <b>{ZONES[best].toLowerCase()}</b> {best === 2 ? "are" : "is"} open on {opp.name}. "Find the opening" goes there by itself.</> : `${opp.name}'s guard is balanced: mixing it up keeps it that way.`}
       </p>
-    </Panel>
+    </>
   );
 }
 

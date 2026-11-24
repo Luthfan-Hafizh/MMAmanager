@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { fmtDate } from "../../core/time";
 import type { Message } from "../../model/types";
 import { answer } from "../../career/actions";
@@ -33,6 +33,11 @@ const KIND: Record<Message["kind"], string> = {
 export function Inbox({ id }: { id?: string }) {
   const w = useWorld();
   const [filter, setFilter] = useState<"all" | "decide" | "unread">("all");
+  // On a phone the list and the message stack: opening one scrolls to it.
+  const bodyRef = useRef<HTMLDivElement | null>(null);
+  useEffect(() => {
+    if (id && bodyRef.current && window.matchMedia("(max-width: 860px)").matches) bodyRef.current.scrollIntoView({ behavior: "smooth", block: "start" });
+  }, [id]);
   const list = w.inbox.filter((m) => (filter === "decide" ? m.needs && !m.done : filter === "unread" ? !m.read : true));
   const cur = w.inbox.find((m) => m.id === id) ?? list[0];
   useEffect(() => {
@@ -80,7 +85,7 @@ export function Inbox({ id }: { id?: string }) {
             );
           })}
         </div>
-        <div className="msg-body">
+        <div className="msg-body" ref={bodyRef}>
           {cur ? (
             <>
               <h3>{cur.subject}</h3>

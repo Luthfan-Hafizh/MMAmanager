@@ -1,9 +1,11 @@
 import { fmtDate, weeksText, ageYears, DOW, MONTHS, ymd } from "../../core/time";
+import { FIGHT_STYLES } from "../../data/fightstyles";
+import { fightStyle } from "../../world/fightstyle";
 import { money } from "../../core/util";
 import { DIVISIONS } from "../../data/divisions";
 import { PROMOTIONS } from "../../data/promotions";
 import { countryOf } from "../../data/countries";
-import { ovr, styleOf } from "../../model/attributes";
+import { ovr } from "../../model/attributes";
 import type { Fighter, News, World } from "../../model/types";
 import { blocking } from "../../career/inbox";
 import { answer } from "../../career/actions";
@@ -201,7 +203,6 @@ function FighterHome({ w, f }: { w: World; f: Fighter }) {
           <>
             {rl === "C" ? <span className="tag gold">Champion</span> : rl ? <span className="tag red">{rl}</span> : null}
             <span>{DIVISIONS[f.div].name}</span>
-            <span className="dim">·</span>
             <span>{f.promo ? PROMOTIONS[f.promo].name : "Free agent"}</span>
           </>
         }
@@ -217,7 +218,7 @@ function FighterHome({ w, f }: { w: World; f: Fighter }) {
         <div className="factgrid">
           <div><div className="k">Country</div><div className="v row tight"><Flag code={f.country} /> {countryOf(f.country).name}</div></div>
           <div><div className="k">Age</div><div className="v">{age} · {primeText(f, w.day).toLowerCase()}</div></div>
-          <div><div className="k">Style</div><div className="v">{styleOf(f.attrs)}</div></div>
+          <div><div className="k">Styles</div><div className="v">{FIGHT_STYLES[fightStyle(f).s].name} · {FIGHT_STYLES[fightStyle(f).g].name}</div></div>
           <div><div className="k">Team</div><div className="v ellip">{w.gyms[f.gym]?.name}</div></div>
           <div><div className="k">Form</div><div className="v"><Form w={w} f={f} n={6} /></div></div>
           <div><div className="k">Overall</div><div className="v row tight">{o} <Spark points={(fc?.progress ?? []).map((p) => p.ovr)} w={90} h={20} color="#ea2e2c" /></div></div>

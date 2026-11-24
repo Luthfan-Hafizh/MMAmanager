@@ -106,7 +106,7 @@ function P4P({ w }: { w: World }) {
   return (
     <section className="sec">
       <div className="sec-h"><h2>Pound for pound</h2><span className="hint">The best fighters in the UFC regardless of weight</span></div>
-      <div className="rk-col" style={{ display: "grid", gridTemplateColumns: "minmax(0, 1fr) minmax(0, 2fr)" }}>
+      <div className="rk-col p4p-col">
         {first && (
           <div className="rk-champ" style={{ minHeight: 220 }}>
             <div>
@@ -117,7 +117,7 @@ function P4P({ w }: { w: World }) {
             <span className="belt" aria-hidden="true" style={{ fontSize: 150 }}>1</span>
           </div>
         )}
-        <div className="rk-list" style={{ columns: 2, columnGap: 0, padding: "8px 0" }}>
+        <div className="rk-list p4p-list">
           {top.map((f, i) => (
             <Link key={f.id} to={`/fighter/${f.id}`} className={f.ctrl ? "me" : ""}>
               <span className="n">{i + 1}</span>

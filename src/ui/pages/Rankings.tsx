@@ -3,7 +3,7 @@ import { DIVISIONS, type DivisionId } from "../../data/divisions";
 import { PROMOTIONS, PROMO_IDS, type PromoId } from "../../data/promotions";
 import type { World } from "../../model/types";
 import { rankMove } from "../../world/rankings";
-import { recordText } from "../../world/core";
+import { rankNumber, recordText } from "../../world/core";
 import { useWorld } from "../../state/store";
 import { go, Link } from "../router";
 import { Empty } from "../components";
@@ -88,7 +88,7 @@ function DivisionColumn({ w, promo, d }: { w: World; promo: PromoId; d: Division
           const mv = rankMove(w, promo, d, id);
           return (
             <Link key={id} to={`/fighter/${id}`} className={f.ctrl ? "me" : ""}>
-              <span className="n">{ps.interim[d] === id ? "IC" : i + 1}</span>
+              <span className="n">{ps.interim[d] === id ? "IC" : rankNumber(ids, ps.interim[d] ?? null, i)}</span>
               <span className="ellip" style={{ fontWeight: f.ctrl ? 800 : 500 }}>{f.first} {f.surname}</span>
               <span className={`mv ${typeof mv === "number" ? (mv > 0 ? "good" : "bad") : "dim"}`}>{mv === "new" ? "NEW" : typeof mv === "number" && mv !== 0 ? (mv > 0 ? `▲${mv}` : `▼${-mv}`) : ""}</span>
             </Link>

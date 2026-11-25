@@ -50,6 +50,8 @@ import { bmfPairing } from "../src/world/belts";
 import { Rng } from "../src/core/rng";
 import { applyResult, signTo } from "../src/world/results";
 import { neckWork, templatePlan, trainingWeek } from "../src/career/training";
+import { justDethroned, updateRankings } from "../src/world/rankings";
+import { rankOf } from "../src/world/core";
 import { repair } from "../src/world/create";
 
 const g = globalThis as unknown as Record<string, unknown>;
@@ -541,6 +543,39 @@ pages(tw, "Retired fighter turned manager");
     if (ps.interim[me.div] === me.id || r?.ended !== "stripped") fail("turning down two fights for the belts did not cost the interim title");
     else console.log("Interim champion: two refusals and the interim title is taken");
   }
+}
+
+// A champion who loses the belt goes straight to number one; an interim champion heads the list without a number.
+{
+  const fail = (what: string) => { failures++; console.log(`  FAIL ${what}`); };
+  const rw = createWorld(roster, { name: "UI", seed: 92, mode: "fighter", difficulty: "normal", takeover: "ufc-arman-tsarukyan" });
+  const ps = rw.promos.ufc;
+  const d = "WW" as const;
+  const champ = rw.fighters[ps.champs[d]!];
+  const low = rw.fighters[ps.ranks[d]![9]];
+  for (const f of [champ, low]) if (f.booked && rw.bouts[f.booked]) cancelBout(rw, rw.bouts[f.booked], "test");
+  const ev = rw.upcoming.map((id) => rw.events[id]).find((e) => e.promo === "ufc" && e.day - rw.day > 20)!;
+  const b = makeBout(rw, ev, champ, low, "title");
+  const out = quickSim(rw, b);
+  out.winner = b.a === low.id ? "a" : "b";
+  out.method = "KO";
+  out.detail = "punch";
+  withRng(rw, (rng) => applyResult(rw, rng, b, out));
+  updateRankings(rw, "ufc", [d]);
+  if (ps.champs[d] !== low.id || rankOf(rw, champ) !== 1) fail(`the champion who lost the belt is ranked ${rankOf(rw, champ)}, not number one`);
+  else console.log(`Lost the belt: ${champ.surname} is number one behind the new champion ${low.surname}`);
+  // An interim champion above the list doesn't take the number one.
+  const ic = rw.fighters[ps.ranks[d]![3]];
+  ps.interim[d] = ic.id;
+  updateRankings(rw, "ufc", [d]);
+  if (ps.ranks[d]![0] !== ic.id || rankOf(rw, champ) !== 1) fail(`with an interim champion, the former champion is ranked ${rankOf(rw, champ)}`);
+  setWorld(rw);
+  const page = renderToString(<Rankings />).replace(/<!-- -->/g, "");
+  if (!page.includes(">IC<")) fail("the rankings page does not mark the interim champion");
+  // Fighting again ends it: the rankings take over.
+  champ.lastFight = (champ.lastFight ?? rw.day) + 60;
+  if (justDethroned(rw, "ufc", d).has(champ.id)) fail("the former champion kept number one after fighting again");
+  else console.log("With an interim champion heading the list, the former champion is still number one; a fight later the rankings take over");
 }
 
 const mw = createWorld(roster, { name: "UI", seed: 79, mode: "manager", difficulty: "normal", agency: "Check Management" });

@@ -2,12 +2,14 @@
 // (the system it launched in October 2026). Who you beat counts most; a finish
 // adds a little; fighting often helps; after eighteen months out the score
 // decays faster and faster; and a winner always moves above the fighter beaten.
+// A champion who loses the belt goes straight to number one, as on the UFC's
+// rankings, and stays there until fighting again.
 
 import { clamp } from "../core/util";
 import { DIVISIONS, type DivisionId } from "../data/divisions";
 import { PROMOTIONS, type PromoId } from "../data/promotions";
 import type { Bout, Fighter, World } from "../model/types";
-import { addNews, fightsInPromo, fullName, rosterOf, stageFights } from "./core";
+import { addNews, fightsInPromo, fullName, rankNumber, rosterOf, stageFights } from "./core";
 
 const INACTIVE_FROM = 548; // eighteen months
 
@@ -69,6 +71,25 @@ function eligible(w: World, f: Fighter, promo: PromoId): boolean {
   return fightsInPromo(w, f, promo) >= 1;
 }
 
+/**
+ * Champions who have just lost the belt (or an interim champion theirs) and
+ * haven't fought since: they go straight to number one, for up to eighteen
+ * months out.
+ */
+export function justDethroned(w: World, promo: PromoId, d: DivisionId): Set<string> {
+  const ps = w.promos[promo];
+  const out = new Set<string>();
+  for (const r of ps.reigns) {
+    if (r.div !== d || r.lost === undefined || (r.ended !== "lost" && r.ended !== "unified")) continue;
+    if (w.day - r.lost > INACTIVE_FROM) continue;
+    const f = w.fighters[r.fighter];
+    if (!f || f.status !== "active" || f.promo !== promo || f.div !== d || f.lastFight !== r.lost) continue;
+    if (ps.champs[d] === f.id || ps.interim[d] === f.id) continue;
+    out.add(f.id);
+  }
+  return out;
+}
+
 export function updateRankings(w: World, promo: PromoId, divs?: DivisionId[]): void {
   const p = PROMOTIONS[promo];
   if (!p.rankSize) return;
@@ -76,19 +97,24 @@ export function updateRankings(w: World, promo: PromoId, divs?: DivisionId[]): v
   for (const d of divs ?? p.divisions) {
     const champ = ps.champs[d] ?? null;
     const interim = ps.interim[d] ?? null;
-    const list = rosterOf(w, promo, d)
+    const scored = rosterOf(w, promo, d)
       .filter((f) => f.id !== champ && f.id !== interim && eligible(w, f, promo))
       .map((f) => ({ f, s: rankScore(w, f) }))
       .filter((x) => x.s > -1e9)
       .sort((x, y) => y.s - x.s);
-    const ids = list.slice(0, p.rankSize - (interim ? 1 : 0)).map((x) => x.f.id);
+    // The champion who just lost the belt is number one until fighting again.
+    const back = justDethroned(w, promo, d);
+    const list = [...scored.filter((x) => back.has(x.f.id)), ...scored.filter((x) => !back.has(x.f.id))];
+    // Fifteen numbered places; an interim champion heads them without a number.
+    const ids = list.slice(0, p.rankSize).map((x) => x.f.id);
     if (interim) ids.unshift(interim);
     ps.prevRanks[d] = ps.ranks[d] ?? [];
     ps.ranks[d] = ids;
     // Peak rank for the record.
     ids.forEach((id, i) => {
       const f = w.fighters[id];
-      if (promo === "ufc" && (f.peakRank === undefined || i + 1 < f.peakRank)) f.peakRank = i + 1;
+      const n = rankNumber(ids, interim, i);
+      if (promo === "ufc" && (f.peakRank === undefined || n < f.peakRank)) f.peakRank = n;
     });
     if (champ) {
       const f = w.fighters[champ];
@@ -100,9 +126,11 @@ export function updateRankings(w: World, promo: PromoId, divs?: DivisionId[]): v
 /** Movement since the last update: positive is up. */
 export function rankMove(w: World, promo: PromoId, d: DivisionId, id: string): number | "new" | null {
   const ps = w.promos[promo];
-  const now = (ps.ranks[d] ?? []).indexOf(id);
+  // Places among the numbered contenders: the belt holders above them don't count.
+  const numbered = (list: string[] | undefined) => (list ?? []).filter((x) => x !== ps.interim[d] && x !== ps.champs[d]);
+  const now = numbered(ps.ranks[d]).indexOf(id);
   if (now < 0) return null;
-  const before = (ps.prevRanks[d] ?? []).indexOf(id);
+  const before = numbered(ps.prevRanks[d]).indexOf(id);
   if (before < 0) return "new";
   return before - now;
 }
@@ -190,8 +218,9 @@ export function ratingFor(tier: string, ovr: number): number {
 
 export function rankingNews(w: World, promo: PromoId, d: DivisionId): void {
   const ps = w.promos[promo];
-  const first = ps.ranks[d]?.[0];
-  const before = ps.prevRanks[d]?.[0];
+  const firstOf = (list: string[] | undefined) => (list ?? []).find((id) => id !== ps.interim[d]);
+  const first = firstOf(ps.ranks[d]);
+  const before = firstOf(ps.prevRanks[d]);
   if (first && first !== before && promo === "ufc") {
     const f = w.fighters[first];
     addNews(w, { kind: "ranking", promo, fighters: [first], text: `${fullName(f)} is the new number one contender at ${DIVISIONS[d].name.toLowerCase()}.` });

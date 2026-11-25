@@ -12,7 +12,7 @@ import { blocking } from "../../career/inbox";
 import { answer } from "../../career/actions";
 import { askForFight } from "../../career/offers";
 import { upcomingOf } from "../../world/calendar";
-import { fullName, isChampion, rankLabel, recordText } from "../../world/core";
+import { fullName, isChampion, rankLabel, rankNumber, recordText } from "../../world/core";
 import { changed, toast, useWorld } from "../../state/store";
 import { Link, go } from "../router";
 import { Bar, Empty, FighterLink, Flag, Form, Ovr, Panel, RankBadge, Spark } from "../components";
@@ -309,7 +309,7 @@ function FighterHome({ w, f }: { w: World; f: Fighter }) {
                     <div className={`rk-item${w.fighters[champ]?.ctrl ? " me" : ""}`}><span className="rank c">C</span><FighterLink w={w} id={champ} /><span /></div>
                   )}
                   {ranks.slice(0, 10).map((id, i) => (
-                    <div key={id} className={`rk-item${w.fighters[id]?.ctrl ? " me" : ""}`}><span className="n">{i + 1}</span><FighterLink w={w} id={id} /><span className="tiny dim">{recordText(w.fighters[id])}</span></div>
+                    <div key={id} className={`rk-item${w.fighters[id]?.ctrl ? " me" : ""}`}>{ps.interim[f.div] === id ? <span className="rank ic">IC</span> : <span className="n">{rankNumber(ranks, ps.interim[f.div] ?? null, i)}</span>}<FighterLink w={w} id={id} /><span className="tiny dim">{recordText(w.fighters[id])}</span></div>
                   ))}
                 </div>
               </Panel>

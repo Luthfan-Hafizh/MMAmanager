@@ -146,7 +146,7 @@ export function formOf(w: World, f: Fighter, n = 5): ("W" | "L" | "D" | "NC")[] 
   return out;
 }
 
-/** Rank in the promotion's division: 0 champion, 1-15 ranked, null unranked. */
+/** Rank in the promotion's division: 0 champion, 1-15 ranked, null unranked (an interim champion counts as 1). */
 export function rankOf(w: World, f: Fighter): number | null {
   if (!f.promo) return null;
   const ps = w.promos[f.promo];
@@ -155,7 +155,16 @@ export function rankOf(w: World, f: Fighter): number | null {
   const list = ps.ranks[f.div];
   if (!list) return null;
   const i = list.indexOf(f.id);
-  return i >= 0 ? i + 1 : null;
+  return i >= 0 ? rankNumber(list, ps.interim[f.div] ?? null, i) : null;
+}
+
+/**
+ * The number at a place in a ranking list. An interim champion heads the list
+ * without a number, as on the UFC's rankings, so the first contender under
+ * them is still number one.
+ */
+export function rankNumber(list: string[], interim: string | null, i: number): number {
+  return interim && list[0] === interim ? Math.max(1, i) : i + 1;
 }
 
 export function isChampion(w: World, f: Fighter): boolean {

@@ -14,7 +14,7 @@ import { makeName } from "../data/names";
 import { PROMOTIONS, TIER_RANK, type PromoId } from "../data/promotions";
 import { ovrOf } from "../model/attributes";
 import type { Bout, ContractOffer, FightOffer, Fighter, World } from "../model/types";
-import { fullName, isChampion, rankOf } from "../world/core";
+import { fullName, isChampion, isInterim, rankOf } from "../world/core";
 import { outlookRoom } from "../world/development";
 import { preview, winProb } from "../world/odds";
 import { boutLimit, cutCheck, noticeHurt, sizeEdge } from "./shortnotice";
@@ -416,7 +416,8 @@ export function ask(w: World, f: Fighter, id: string): Answer {
     const room = outlookRoom(f, w.day);
     const g = w.gyms[f.gym];
     const steps: string[] = [];
-    if (tier === "amateur" || tier === "local") steps.push("Build the record: a few more wins and the regional shows will call.");
+    if (isInterim(w, f)) steps.push("You hold the interim belt, so every fight is for it now: a defence while the champion is out, the unification when the champion is back. Win that and the belt is yours outright.");
+    else if (tier === "amateur" || tier === "local") steps.push("Build the record: a few more wins and the regional shows will call.");
     else if (tier === "regional") steps.push(isChampion(w, f) ? "Defend the belt once, and the UFC or the PFL will want you." : "Get the regional title, or a run of wins, for the call-up.");
     else if (tier === "league") steps.push("Win the league fights in front of you; when the deal is done, the UFC can talk.");
     else if (rank === null) steps.push("Get a ranked name on the record and you're in the top fifteen.");

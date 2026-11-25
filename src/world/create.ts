@@ -20,6 +20,7 @@ import { currentStreak, potentialNoise, prospectRoom, realFighter, realGym, type
 import { entryElo, updateP4P, updateRankings } from "./rankings";
 import { managerPerson } from "../career/advisor";
 import { initBmf } from "./belts";
+import { refreshCard } from "./matchmaking";
 import { grantStyleTech, pickStyles, switchStyle } from "./fightstyle";
 import { dayOfIso, realSignals } from "./real";
 import { styleFit, type GrappleStyle, type StrikeStyle } from "../data/fightstyles";
@@ -109,6 +110,22 @@ export function repair(w: World): World {
   // Some signings used to leave the amateur flag on a fighter who had turned pro.
   for (const f of Object.values(w.fighters)) {
     if (f.amateur && ((f.promo && PROMOTIONS[f.promo].tier !== "amateur") || f.rec.w + f.rec.l + f.rec.d + f.rec.nc > 0)) f.amateur = false;
+  }
+  // Reigns left open when a second vacant-title winner overwrote the first, or an interim belt was dropped.
+  for (const ps of Object.values(w.promos)) {
+    for (const r of ps.reigns) {
+      if (r.lost !== undefined) continue;
+      const holder = r.interim ? ps.interim[r.div] : ps.champs[r.div];
+      if (holder === r.fighter) continue;
+      const next = ps.reigns.find((x) => x !== r && x.div === r.div && !!x.interim === !!r.interim && x.won >= r.won);
+      r.lost = next ? next.won : w.day;
+      r.ended = "vacated";
+    }
+  }
+  // Champions and interim champions used to be booked in fights with no belt on the line.
+  for (const id of w.upcoming) {
+    const ev = w.events[id];
+    if (ev && ev.status !== "done") refreshCard(w, ev);
   }
   return w;
 }

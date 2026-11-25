@@ -14,13 +14,18 @@
 // champion still not close to fit, the champion is stripped and the interim
 // champion promoted (as with McGregor and Aldo in 2016). With no interim belt,
 // eighteen months out costs the title.
+//
+// A champion doesn't take a non-title fight at the weight, and an interim
+// champion's fights are all for the interim belt: a defence while the champion
+// is out (as Tom Aspinall's against Curtis Blaydes in 2024), the unification
+// when the champion is back. Lose one and the belt goes with it.
 
 import type { Rng } from "../core/rng";
 import { clamp } from "../core/util";
 import { ageAt, dayOf, fmtDate } from "../core/time";
 import { DIVISIONS, type DivisionId } from "../data/divisions";
-import { PROMOTIONS, PROMO_IDS, type PromoId } from "../data/promotions";
-import type { Bout, BmfState, Fighter, MMAEvent, World } from "../model/types";
+import { PROMOTIONS, PROMO_IDS, roundsFor, type PromoId } from "../data/promotions";
+import type { Bout, BoutKind, BmfState, Fighter, MMAEvent, World } from "../model/types";
 import { addNews, fullName, rankOf, rosterOf } from "./core";
 import { notify } from "../career/inbox";
 
@@ -52,6 +57,51 @@ export function stakeOf(w: World, b: Bout): Bout["stake"] {
   if (b.kind === "interim" && ps.interim[b.div] && (ps.interim[b.div] === b.a || ps.interim[b.div] === b.b)) return "interim-defence";
   if (b.kind === "bmf" && ps.bmf?.holder && (ps.bmf.holder === b.a || ps.bmf.holder === b.b)) return "bmf-defence";
   return undefined;
+}
+
+/**
+ * What a fight is for, from who holds the belts: a champion's or an interim
+ * champion's fight at the weight is always for the belt, however it was made;
+ * a fight for a belt nobody holds any more is for the vacant title, and one for
+ * a belt somebody else has won since is a fight for the next shot.
+ */
+export function beltKindFor(w: World, promo: PromoId, div: DivisionId, a: string, b: string, kind: BoutKind): BoutKind {
+  if (kind === "bmf" || kind === "tryout") return kind;
+  const ps = w.promos[promo];
+  if (!ps) return kind;
+  const holds = (id: string | null | undefined) => !!id && (a === id || b === id);
+  if (holds(ps.champs[div])) return "title";
+  if (holds(ps.interim[div])) return "interim";
+  if (kind !== "title" && kind !== "vacant" && kind !== "interim") return kind;
+  if (!ps.champs[div]) return "vacant";
+  if (kind === "interim" && !ps.interim[div]) return "interim";
+  return "eliminator";
+}
+
+/** Bring a booked fight's stakes up to date with who holds the belts now. True if anything changed. */
+export function refreshBelt(w: World, b: Bout): boolean {
+  if (b.status !== "booked" || !b.a || !b.b) return false;
+  const p = PROMOTIONS[b.promo];
+  let k = beltKindFor(w, b.promo, b.div, b.a, b.b, b.kind);
+  if (k === "eliminator" && !p.rankSize) k = "regular";
+  if ((k === "regular" || k === "eliminator") && p.tier === "amateur") k = "amateur";
+  const before = `${b.kind}/${b.stake ?? ""}/${b.rounds}`;
+  b.kind = k;
+  b.stake = stakeOf(w, b);
+  b.rounds = roundsFor(p, isBeltFight(b), b.order === 0);
+  return before !== `${b.kind}/${b.stake ?? ""}/${b.rounds}`;
+}
+
+/** After a belt changes hands away from the cage: the division's booked fights follow it. */
+export function refreshDivision(w: World, promo: PromoId, div: DivisionId): void {
+  for (const id of w.upcoming) {
+    const ev = w.events[id];
+    if (!ev || ev.promo !== promo || ev.status === "done") continue;
+    for (const bid of ev.bouts) {
+      const b = w.bouts[bid];
+      if (b && b.div === div) refreshBelt(w, b);
+    }
+  }
 }
 
 // ---------- the BMF title ----------
@@ -219,6 +269,7 @@ export function strip(w: World, promo: PromoId, d: DivisionId, why: string): voi
       ],
     });
   }
+  refreshDivision(w, promo, d);
 }
 
 /** When a champion who is out stops being able to keep the belt: fifteen months from the last fight with an interim champion waiting, eighteen without. */

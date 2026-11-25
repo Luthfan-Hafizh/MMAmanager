@@ -17,6 +17,7 @@ import { offerPostFight } from "./media";
 import { addHeat, addMoment, addPop, heatOf, ppvShare, stageMul } from "./rivals";
 import { boutLimit } from "./shortnotice";
 import { neckWork } from "./training";
+import { beltNote } from "../world/belts";
 
 export function afterFightCareer(w: World, rng: Rng, b: Bout, o: FightOutcome, chinBefore: Record<string, number> = {}): void {
   for (const side of ["a", "b"] as const) {
@@ -41,6 +42,11 @@ export function afterFightCareer(w: World, rng: Rng, b: Bout, o: FightOutcome, c
     const chinLost = chinWas === undefined ? 0 : chinWas - f.attrs.chin;
     const chinFmt = (v: number) => v.toFixed(chinLost < 0.15 ? 2 : 1);
     if (chinLost >= 0.05) lines.push(`The knockout took something off the chin: ${chinFmt(chinWas)} before, ${chinFmt(f.attrs.chin)} now. Neck work in the strength sessions builds some of it back${neckWork(f) < 0.995 ? ", if less after every knockout" : ""}.`);
+    if (beltNote(b, f.id) === "Won the interim title") {
+      const ch = w.promos[b.promo].champs[b.div];
+      const pron = DIVISIONS[b.div].sex === "F" ? "she" : "he";
+      lines.push(`${f.surname} is the interim champion, and every fight from here is for that belt: a defence while ${ch ? fullName(w.fighters[ch]) : "the champion"} is out, the unification when ${pron}'s back. Lose one and the belt goes with it.`);
+    }
     const r = rankOf(w, f);
     if (f.contract && f.contract.left === 0 && PROMOTIONS[b.promo].tier !== "amateur") lines.push("That was the last fight on the contract. Talks on the next deal start now.");
     const facts: Fact[] = [

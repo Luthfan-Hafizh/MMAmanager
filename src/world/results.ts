@@ -14,7 +14,7 @@ import { fightStyle } from "./fightstyle";
 import { packRounds } from "./report";
 import { eloUpdate, entryElo, nameContenders, rankingNews, updateP4P, updateRankings } from "./rankings";
 import { markDone } from "./calendar";
-import { orderCard } from "./matchmaking";
+import { orderCard, refreshCard } from "./matchmaking";
 import { afterFightCareer, payControlled } from "../career/afterfight";
 import { vacate } from "./titles";
 import { mediaPrep } from "../career/fightweek";
@@ -22,7 +22,7 @@ import { legacyAfterFight } from "./legacy";
 import { boutLimit, cutCheck, noticeHurt, sizeEdge } from "../career/shortnotice";
 import { fightInjuryDef, hurtOnNight, makeInjury, type InjuryDef } from "../data/injuries";
 import { lc, playerInjured } from "../career/injury";
-import { handleBmf } from "./belts";
+import { handleBmf, isBeltFight, refreshDivision } from "./belts";
 import { notify } from "../career/inbox";
 
 export { ringRust } from "./core";
@@ -208,6 +208,8 @@ export function toResult(o: FightOutcome, keep: boolean): BoutResult {
 
 /** Run a card. Fights involving the player's fighters are held for fight night. */
 export function runEvent(w: World, rng: Rng, ev: MMAEvent): { awaiting: Bout[] } {
+  // What each fight is for, as the belts stand tonight.
+  refreshCard(w, ev);
   weighIns(w, rng, ev);
   const awaiting: Bout[] = [];
   // Early prelims first, main event last.
@@ -393,6 +395,8 @@ export function applyResult(w: World, rng: Rng, b: Bout, o: FightOutcome): void 
   const champBefore = w.promos[b.promo].champs[b.div] ?? null;
   handleTitle(w, rng, b, winner, loser);
   if (b.kind === "bmf") handleBmf(w, b, winner, loser);
+  // Fights already booked in the division are for whatever the belts are now.
+  if (isBeltFight(b)) refreshDivision(w, b.promo, b.div);
   const champAfter = w.promos[b.promo].champs[b.div] ?? null;
   // The player's injuries are reported once the belt is settled (a champion may have a decision to make).
   for (const [f, def] of hurtNow) playerInjured(w, rng, f, def, "fight", "in the fight");

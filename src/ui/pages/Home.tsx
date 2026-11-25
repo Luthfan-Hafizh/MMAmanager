@@ -122,10 +122,17 @@ export function NextFightCard({ w, f }: { w: World; f: Fighter }) {
     );
   }
   const fc = w.career.fc[f.id];
+  // An interim champion waits for a fight for the belts.
+  const ps = f.promo ? w.promos[f.promo] : null;
+  const champ = ps && ps.interim[f.div] === f.id && ps.champs[f.div] ? w.fighters[ps.champs[f.div]!] : null;
+  const champOut = champ?.injury && champ.injury.until > w.day ? champ.injury.until : null;
+  const waiting = champ
+    ? `You hold the interim belt, and every fight is for it. ${champ.surname} ${champOut ? `is out until ${fmtDate(champOut)}: a long wait means an interim title defence first, then the unification.` : "is fit, so the next fight is the unification."}`
+    : null;
   return (
     <Panel title="Next fight">
       <Empty title="No fight booked">
-        {fc?.asked ? "The matchmaker knows you want a fight." : f.injury && f.injury.until > w.day ? `Injured until ${fmtDate(f.injury.until)}.` : f.susp > w.day ? `Medically suspended until ${fmtDate(f.susp)}.` : "Offers come when the next cards are made."}
+        {f.injury && f.injury.until > w.day ? `Injured until ${fmtDate(f.injury.until)}.` : f.susp > w.day ? `Medically suspended until ${fmtDate(f.susp)}.` : waiting ?? (fc?.asked ? "The matchmaker knows you want a fight." : "Offers come when the next cards are made.")}
       </Empty>
       {!fc?.asked && f.promo && !(f.injury && f.injury.until > w.day) && f.susp <= w.day && (
         <div className="center" style={{ paddingBottom: 8 }}>

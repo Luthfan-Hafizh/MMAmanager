@@ -15,7 +15,7 @@ import { setOdds } from "./odds";
 import { calloutFor } from "../career/fightweek";
 import { grudgeBonus, heatOf, rivalsOf } from "../career/rivals";
 import { makeInjury, trainingInjury } from "../data/injuries";
-import { beltBooked, bmfPairing, isBeltFight, stakeLabel, stakeOf } from "./belts";
+import { beltBooked, beltKindFor, bmfPairing, isBeltFight, refreshBelt, stakeLabel, stakeOf } from "./belts";
 import { notify } from "../career/inbox";
 import { fightOfferPay, payShowOnly } from "../career/money";
 import { boutLimit, CUT_TEXT, cutCheck, findCall, type Call } from "../career/shortnotice";
@@ -128,6 +128,8 @@ function bestOpponent(w: World, rng: Rng, f: Fighter, pool: Fighter[], promo: Pr
 
 export function makeBout(w: World, ev: MMAEvent, a: Fighter, b: Fighter, kind: BoutKind, opts: { shortNotice?: boolean; pending?: string; why?: string } = {}): Bout {
   const p = PROMOTIONS[ev.promo];
+  // A champion's fight at the weight is for the belt, however it was made.
+  kind = beltKindFor(w, ev.promo, a.div, a.id, b.id, kind);
   const title = kind === "title" || kind === "interim" || kind === "vacant";
   const bout: Bout = {
     id: nextId(w, "b"),
@@ -209,6 +211,16 @@ export function orderCard(w: World, ev: MMAEvent): void {
   }
 }
 
+/** What every fight on a card is for, as the belts stand now; the card is reordered if anything changed. */
+export function refreshCard(w: World, ev: MMAEvent): void {
+  let moved = false;
+  for (const id of ev.bouts) {
+    const b = w.bouts[id];
+    if (b && refreshBelt(w, b)) moved = true;
+  }
+  if (moved) orderCard(w, ev);
+}
+
 export function bookingPass(w: World, rng: Rng): void {
   for (const id of w.upcoming) {
     const ev = w.events[id];
@@ -219,8 +231,15 @@ export function bookingPass(w: World, rng: Rng): void {
   }
 }
 
+/** Fighters free for an ordinary fight: champions and interim champions fight only for their belts. */
 function availableIn(w: World, ev: MMAEvent, d: DivisionId): Fighter[] {
-  return rosterOf(w, ev.promo, d).filter((f) => !f.ctrl && readyFor(w, f, ev));
+  const ps = w.promos[ev.promo];
+  return rosterOf(w, ev.promo, d).filter((f) => !f.ctrl && f.id !== ps.champs[d] && f.id !== ps.interim[d] && readyFor(w, f, ev));
+}
+
+/** Has a belt holder waited well past the usual gap between defences? */
+function keptWaiting(w: World, ev: MMAEvent, f: Fighter): boolean {
+  return daysSinceFight(w, f) + (ev.day - w.day) >= DEFENCE_GAP[PROMOTIONS[ev.promo].tier] * 1.6;
 }
 
 function contenderFor(w: World, ev: MMAEvent, d: DivisionId, champ: Fighter, pool: Fighter[]): Fighter | null {
@@ -239,7 +258,14 @@ function contenderFor(w: World, ev: MMAEvent, d: DivisionId, champ: Fighter, poo
   if (!PROMOTIONS[ev.promo].rankSize) {
     // Shows without rankings: the best of the available on a run.
     const c = pool.filter((f) => f.id !== champ.id && f.streak >= 2).sort((a, b) => b.elo - a.elo)[0];
-    return c ?? null;
+    if (c) return c;
+  }
+  // A champion kept waiting gets the best challenger available: champions don't
+  // take non-title fights, so the promotion finds them one.
+  if (keptWaiting(w, ev, champ)) {
+    const ranked = ranks.slice(0, limit * 2).map((id) => w.fighters[id]).find((f) => f && f.id !== champ.id && pool.includes(f) && f.streak >= 0 && !lostToRecently(w, f, champ.id));
+    if (ranked) return ranked;
+    return pool.filter((f) => f.id !== champ.id && f.streak >= 1 && !lostToRecently(w, f, champ.id)).sort((a, b) => b.elo - a.elo)[0] ?? null;
   }
   return null;
 }
@@ -248,7 +274,15 @@ function titleFights(w: World, rng: Rng, ev: MMAEvent, maxTitles: number): numbe
   const p = PROMOTIONS[ev.promo];
   const ps = w.promos[ev.promo];
   let made = 0;
-  const divs = rng.shuffle([...p.divisions]);
+  // The belt that has waited longest goes first: a champion by the days since the last fight, a vacant belt by the days it has been vacant.
+  const waited = (d: DivisionId) => {
+    const c = ps.champs[d] ? w.fighters[ps.champs[d]!] : null;
+    if (c) return daysSinceFight(w, c);
+    let last = -1;
+    for (const r of ps.reigns) if (r.div === d && !r.interim && r.lost !== undefined && r.lost > last) last = r.lost;
+    return last < 0 ? 400 : w.day - last;
+  };
+  const divs = rng.shuffle([...p.divisions]).sort((x, y) => waited(y) - waited(x));
   for (const d of divs) {
     if (made >= maxTitles) break;
     if ((ev.bouts.length ?? 0) >= p.cardSize) break;
@@ -256,7 +290,8 @@ function titleFights(w: World, rng: Rng, ev: MMAEvent, maxTitles: number): numbe
     const champ = champId ? w.fighters[champId] : null;
     const pool = rosterOf(w, ev.promo, d).filter((f) => readyFor(w, f, ev));
     if (!champ || champ.status !== "active") {
-      // Vacant belt: the best two available.
+      // Vacant belt: the best two available (one fight for it at a time).
+      if (beltBooked(w, ev.promo, d, "vacant")) continue;
       const ranked = (ps.ranks[d] ?? []).map((id) => w.fighters[id]).filter((f) => f && pool.includes(f) && !f.ctrl);
       const cands = ranked.length >= 2 ? ranked : pool.filter((f) => !f.ctrl).sort((a, b) => b.elo - a.elo);
       if (cands.length >= 2 && !teammates(cands[0], cands[1])) {
@@ -283,7 +318,14 @@ function titleFights(w: World, rng: Rng, ev: MMAEvent, maxTitles: number): numbe
     const gap = DEFENCE_GAP[p.tier];
     const due = daysSinceFight(w, champ) + (ev.day - w.day) >= gap;
     if (pool.includes(champ) && due) {
-      const c = contenderFor(w, ev, d, champ, pool);
+      // With an interim champion, the champion's next fight unifies the belts: the
+      // champion waits for the interim champion, unless they're out a long time.
+      const ic = ps.interim[d] ? w.fighters[ps.interim[d]!] : null;
+      const unify = ic && ic.status === "active" && ic.promo === ev.promo && !teammates(ic, champ) ? ic : null;
+      let c: Fighter | null = null;
+      if (!unify) c = contenderFor(w, ev, d, champ, pool.filter((x) => x.id !== ic?.id));
+      else if (pool.includes(unify)) c = unify.ctrl ? null : unify; // the player's interim champion is offered it instead
+      else if (availableFrom(unify) - ev.day > 90) c = contenderFor(w, ev, d, champ, pool.filter((x) => x.id !== unify.id));
       if (c && !c.ctrl && !teammates(c, champ)) {
         makeBout(w, ev, champ, c, "title");
         ps.contender[d] = null;
@@ -338,7 +380,9 @@ export function buildCard(w: World, rng: Rng, ev: MMAEvent): void {
     else if (y.ctrl) offerFight(w, rng, ev, y, x, "bmf");
     else makeBout(w, ev, x, y, "bmf");
   }
-  const maxTitles = ev.kind === "numbered" ? 2 : ev.kind === "fightnight" ? (rng.chance(0.12) ? 1 : 0) : p.tier === "amateur" ? 1 : rng.chance(0.65) ? 1 : 2;
+  // Champions fight only for their belts, so the shows below the UFC put two title
+  // fights on most cards (Cage Warriors and KSW often three); the UFC two on a numbered card.
+  const maxTitles = ev.kind === "numbered" ? 2 : ev.kind === "fightnight" ? (rng.chance(0.12) ? 1 : 0) : p.tier === "amateur" ? 1 : rng.chance(0.2) ? 1 : rng.chance(0.75) ? 2 : 3;
   titleFights(w, rng, ev, maxTitles);
   fillCard(w, rng, ev, size);
   orderCard(w, ev);
@@ -450,18 +494,28 @@ export function offerFight(w: World, rng: Rng, ev: MMAEvent, f: Fighter, opp?: F
   if (!o) {
     const pool = rosterOf(w, ev.promo, d).filter((x) => x.id !== f.id && !x.ctrl && readyFor(w, x, ev, { shortNotice }));
     const champ = ps.champs[d];
+    // Belt holders aren't ordinary opponents: they fight for their belts.
+    const free = pool.filter((x) => x.id !== champ && x.id !== ps.interim[d]);
     if (champ === f.id) {
       // A champion's defence.
       const due = daysSinceFight(w, f) + (ev.day - w.day) >= DEFENCE_GAP[p.tier] - 20;
       if (!due) return null;
       o = contenderFor(w, ev, d, f, pool);
       k = "title";
-    } else if (champ && ps.interim[d] === f.id && availableFrom(w.fighters[champ]) - ev.day > 120) {
-      // The interim champion defends while the champion is out.
-      const due = daysSinceFight(w, f) + (ev.day - w.day) >= DEFENCE_GAP[p.tier] - 20;
-      if (!due) return null;
-      o = contenderFor(w, ev, d, f, pool.filter((x) => x.id !== champ));
-      k = "interim";
+    } else if (champ && ps.interim[d] === f.id) {
+      // The interim champion fights only for the belts: the unification when the
+      // champion is back, a defence while the champion is out a long time.
+      const c = w.fighters[champ];
+      const away = !c || c.status !== "active" || c.ctrl || teammates(c, f);
+      if (!away && readyFor(w, c, ev)) {
+        o = c;
+        k = "title";
+      } else if (away || availableFrom(c) - ev.day > 120) {
+        const due = daysSinceFight(w, f) + (ev.day - w.day) >= DEFENCE_GAP[p.tier] - 20;
+        if (!due) return null;
+        o = contenderFor(w, ev, d, f, free);
+        k = "interim";
+      } else return null; // The champion is nearly back: the next fight is the unification.
     } else if (champ && ps.contender[d] === f.id) {
       const c = w.fighters[champ];
       if (c && !c.ctrl && readyFor(w, c, ev)) {
@@ -479,7 +533,7 @@ export function offerFight(w: World, rng: Rng, ev: MMAEvent, f: Fighter, opp?: F
       // A call-out the matchmaker likes the sound of.
       const c = calloutFor(w, f);
       const t = c ? w.fighters[c] : null;
-      if (t && pool.includes(t) && !teammates(f, t)) {
+      if (t && free.includes(t) && !teammates(f, t)) {
         const rf = rankOf(w, f);
         const rt = rankOf(w, t);
         const gap = (rf ?? 18) - (rt ?? 18);
@@ -490,13 +544,13 @@ export function offerFight(w: World, rng: Rng, ev: MMAEvent, f: Fighter, opp?: F
     }
     if (!o) {
       // A rivalry with real heat in the division: the fight sells, so it gets made.
-      const hot = rivalsOf(w, f).find((x) => x.r.heat >= 35 && pool.includes(x.f) && !teammates(f, x.f));
+      const hot = rivalsOf(w, f).find((x) => x.r.heat >= 35 && free.includes(x.f) && !teammates(f, x.f));
       if (hot) {
         const gap = Math.abs((rankOf(w, f) ?? 18) - (rankOf(w, hot.f) ?? 18));
         if (gap <= 8 && rng.chance(hot.r.heat / 130)) o = hot.f;
       }
     }
-    if (!o) o = bestOpponent(w, rng, f, pool, ev.promo, new Set());
+    if (!o) o = bestOpponent(w, rng, f, free, ev.promo, new Set());
   }
   if (!o) return null;
   if (k === "regular" && p.rankSize) {

@@ -11,6 +11,7 @@ import { DIVISIONS } from "../src/data/divisions";
 import { ovrOf } from "../src/model/attributes";
 import { ageAt, fmtDate } from "../src/core/time";
 import type { World } from "../src/model/types";
+import { isBeltFight } from "../src/world/belts";
 
 const quick = process.argv.includes("--quick");
 const years = quick ? 1 : Number(process.argv.find((a: string) => /^\d+$/.test(a)) ?? 3);
@@ -74,6 +75,21 @@ for (const id of PROMO_IDS) {
   for (const [d, list] of Object.entries(ps.ranks)) {
     if (new Set(list).size !== list!.length) errors.push(`${id} ${d} ranking has duplicates`);
     if (ps.champs[d as keyof typeof ps.champs] && list!.includes(ps.champs[d as keyof typeof ps.champs]!)) errors.push(`${id} ${d} champion is also ranked`);
+  }
+}
+
+// Champions and interim champions fight only for belts at their weight (as in the
+// UFC, where a champion doesn't take a non-title fight and an interim champion
+// defends the interim belt), and every open reign belongs to the holder.
+for (const id of PROMO_IDS) {
+  const ps = w.promos[id];
+  const held = (f: string, d: string, day: number) => ps.reigns.some((r) => r.fighter === f && r.div === d && r.won < day && (r.lost === undefined || r.lost >= day));
+  for (const b of Object.values(w.bouts)) {
+    if (b.promo !== id || b.status !== "done" || b.day < startDay || isBeltFight(b)) continue;
+    for (const f of [b.a, b.b]) if (held(f, b.div, b.day)) errors.push(`${id} ${b.div}: belt holder ${w.fighters[f].first} ${w.fighters[f].surname} fought with no belt on the line (${b.kind}, day ${b.day})`);
+  }
+  for (const r of ps.reigns) {
+    if (r.lost === undefined && (r.interim ? ps.interim[r.div] : ps.champs[r.div]) !== r.fighter) errors.push(`${id} ${r.div}: an open ${r.interim ? "interim " : ""}reign for ${r.fighter}, who doesn't hold the belt`);
   }
 }
 

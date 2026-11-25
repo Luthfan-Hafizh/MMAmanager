@@ -31,13 +31,13 @@ import { FightReport, reportOf } from "../src/ui/report";
 import { FightSim, simulate } from "../src/engine/sim";
 import { retirePlayer } from "../src/career/retire";
 import { becomeManager } from "../src/career/retire";
-import { hireManager, makeContractOffer } from "../src/career/offers";
-import { withdraw } from "../src/world/matchmaking";
+import { declineFight, hireManager, makeContractOffer } from "../src/career/offers";
+import { cancelBout, offerFight, withdraw } from "../src/world/matchmaking";
 import { withRng } from "../src/world/core";
 import { neighbourDivisions } from "../src/data/divisions";
 import { adviseFight, ask, QUESTIONS } from "../src/career/advisor";
 import { playerInjured } from "../src/career/injury";
-import { INJURY } from "../src/data/injuries";
+import { INJURY, makeInjury } from "../src/data/injuries";
 import { Media, PressRoom } from "../src/ui/pages/Media";
 import { callOut, calloutChoices, talkableFights, talkFight } from "../src/career/social";
 import { heatOf } from "../src/career/rivals";
@@ -463,6 +463,84 @@ pages(tw, "Retired fighter turned manager");
   if (!(jv.attrs.chin < chin0)) fail("a knockout loss did not cost any chin");
   else if (!msg?.body.includes("took something off the chin") || !msg.facts?.some((x) => x.k === "Chin")) fail("the result of a knockout loss does not say what it cost the chin");
   else console.log(`Knockout loss: ${msg.body.slice(msg.body.indexOf("The knockout"))}`);
+}
+
+// The interim belt: every fight is for it (the unification with the champion back, a
+// defence while the champion is out), losing one loses it, and two refusals cost it.
+{
+  const fail = (what: string) => { failures++; console.log(`  FAIL ${what}`); };
+  const setup = (seed: number) => {
+    const iw = createWorld(roster, { name: "UI", seed, mode: "fighter", difficulty: "normal", takeover: "ufc-arman-tsarukyan" });
+    const me = iw.fighters[iw.career.fighters[0]];
+    const ps = iw.promos.ufc;
+    const champ = iw.fighters[ps.champs[me.div]!];
+    ps.interim[me.div] = me.id;
+    ps.reigns.push({ fighter: me.id, promo: "ufc", div: me.div, won: iw.day - 180, defenses: 0, how: "interim", interim: true });
+    for (const f of [me, champ]) {
+      if (f.booked && iw.bouts[f.booked]) cancelBout(iw, iw.bouts[f.booked], "test");
+      f.lastFight = iw.day - 180;
+      f.injury = null;
+      f.susp = 0;
+    }
+    const ev = iw.upcoming.map((id) => iw.events[id]).find((e) => e.promo === "ufc" && e.day - iw.day > 40)!;
+    return { iw, me, ps, champ, ev };
+  };
+  {
+    const { iw, me, champ, ev } = setup(88);
+    const o = withRng(iw, (rng) => offerFight(iw, rng, ev, me));
+    const b = o ? Object.values(iw.bouts).find((x) => x.pending === o.id) : undefined;
+    if (!o || o.kind !== "title" || o.opp !== champ.id || b?.stake !== "unify") fail(`with the champion fit, the interim champion should be offered the unification (got ${o?.kind ?? "nothing"}, ${b?.stake})`);
+    else console.log(`Interim champion, the champion fit: offered the unification with ${champ.surname} over ${b.rounds} rounds`);
+  }
+  {
+    const { iw, me, champ, ev } = setup(89);
+    champ.injury = withRng(iw, (rng) => makeInjury(rng, INJURY.acl, iw.day, "training"));
+    champ.injury.until = iw.day + 365;
+    const o = withRng(iw, (rng) => offerFight(iw, rng, ev, me));
+    const b = o ? Object.values(iw.bouts).find((x) => x.pending === o.id) : undefined;
+    if (!o || !b || o.kind !== "interim" || b.stake !== "interim-defence") fail(`with the champion out a year, the interim champion should defend the interim belt (got ${o?.kind ?? "nothing"}, ${b?.stake})`);
+    else {
+      const opp = iw.fighters[o.opp];
+      b.pending = undefined;
+      const out = quickSim(iw, b);
+      out.winner = b.a === me.id ? "b" : "a";
+      out.method = "DEC";
+      out.detail = "unanimous decision";
+      withRng(iw, (rng) => applyResult(iw, rng, b, out));
+      if (iw.promos.ufc.interim[me.div] !== opp.id || b.res?.belt?.[b.a === me.id ? "a" : "b"] !== "Lost the interim title") fail("losing an interim defence did not pass the interim belt to the winner");
+      else console.log(`Interim champion, the champion out a year: defends against ${opp.surname}, loses, and ${opp.surname} is the interim champion`);
+    }
+  }
+  {
+    const { iw, me, champ, ev } = setup(90);
+    champ.injury = withRng(iw, (rng) => makeInjury(rng, INJURY.acl, iw.day, "training"));
+    champ.injury.until = ev.day + 40;
+    const o = withRng(iw, (rng) => offerFight(iw, rng, ev, me));
+    if (o) fail(`with the champion nearly back, the interim champion was offered a ${o.kind} fight`);
+    setWorld(iw);
+    const home = renderToString(<Home />).replace(/<!-- -->/g, "");
+    if (!home.includes("You hold the interim belt")) fail("Home does not tell a waiting interim champion why there is no fight");
+    const other = Object.values(iw.fighters).find((x) => x.promo === "ufc" && x.div === me.div && x.id !== me.id && x.id !== champ.id && !x.booked && x.status === "active")!;
+    const b = makeBout(iw, ev, me, other, "regular");
+    if (b.kind !== "interim" || b.rounds !== 5) fail(`an ordinary fight made for the interim champion stayed ${b.kind} over ${b.rounds} rounds`);
+    b.kind = "regular";
+    b.stake = undefined;
+    b.rounds = 3;
+    repair(iw);
+    const loaded = iw.bouts[b.id];
+    if (loaded.kind !== "interim" || loaded.stake !== "interim-defence" || loaded.rounds !== 5) fail(`loading did not put the interim belt on a booked fight (${loaded.kind}, ${loaded.stake}, ${loaded.rounds} rounds)`);
+    else console.log("Interim champion, the champion nearly back: no ordinary fight, Home says why; a fight made any other way, or booked in an old save, is an interim defence");
+  }
+  {
+    const { iw, me, ps, ev } = setup(91);
+    for (let i = 0; i < 2; i++) {
+      const o = withRng(iw, (rng) => offerFight(iw, rng, ev, me));
+      if (o) declineFight(iw, o.id);
+    }
+    const r = ps.reigns.find((x) => x.fighter === me.id && x.interim);
+    if (ps.interim[me.div] === me.id || r?.ended !== "stripped") fail("turning down two fights for the belts did not cost the interim title");
+    else console.log("Interim champion: two refusals and the interim title is taken");
+  }
 }
 
 const mw = createWorld(roster, { name: "UI", seed: 79, mode: "manager", difficulty: "normal", agency: "Check Management" });

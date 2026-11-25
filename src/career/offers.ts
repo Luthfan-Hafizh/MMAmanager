@@ -10,7 +10,9 @@ import { PROMOTIONS, TIER_RANK, promoFor, type PromoId } from "../data/promotion
 import { countryOf } from "../data/countries";
 import { ovr, ovrOf } from "../model/attributes";
 import type { ContractOffer, FightOffer, Fighter, World } from "../model/types";
-import { addNews, fullName, nextId, rankOf, touch, isChampion, withRng } from "../world/core";
+import { addNews, fullName, nextId, rankOf, touch, isChampion, isInterim, withRng } from "../world/core";
+import { dropInterim, vacate } from "../world/titles";
+import { refreshDivision } from "../world/belts";
 import { callOff, cancelBout, withdraw } from "../world/matchmaking";
 import { signTo } from "../world/results";
 import { managerPerson } from "./advisor";
@@ -112,7 +114,22 @@ export function declineFight(w: World, offerId: string, auto = false): string {
   const fc = w.career.fc[o.fighter];
   if (fc && !o.shortNotice) fc.lastAsk = w.day + (o.kind === "title" ? 10 : 14);
   closeMessages(w, o.id, auto ? "Expired" : "Declined");
-  if (o.kind === "title" && isChampion(w, f)) {
+  // A champion turning down defences, or an interim champion the fights for the belts, loses the belt on the second.
+  const holder = o.kind === "title" && isChampion(w, f) ? "champ" : (o.kind === "title" || o.kind === "interim") && isInterim(w, f) ? "interim" : null;
+  if (holder === "interim") {
+    fc && (fc.goals = [...fc.goals.filter((g) => !g.startsWith("refused:")), `refused:${(Number(fc.goals.find((g) => g.startsWith("refused:"))?.split(":")[1] ?? 0) + 1)}`]);
+    const n = Number(fc?.goals.find((g) => g.startsWith("refused:"))?.split(":")[1] ?? 0);
+    if (n >= 2) {
+      dropInterim(w, o.promo, f.div, "stripped");
+      refreshDivision(w, o.promo, f.div);
+      if (fc) fc.goals = fc.goals.filter((g) => !g.startsWith("refused:"));
+      notify(w, { kind: "info", fighter: f.id, from: PROMOTIONS[o.promo].short, subject: "Stripped of the interim title", body: `${fullName(f)} turned down a second fight for the belts. The interim title has been taken away.` });
+      addNews(w, { kind: "title", promo: o.promo, fighters: [f.id], big: true, text: `${fullName(f)} has been stripped of the ${PROMOTIONS[o.promo].short} interim title after turning down two fights for the belts.` });
+    } else if (!auto) {
+      notify(w, { kind: "info", fighter: f.id, from: PROMOTIONS[o.promo].short, subject: "A warning from the matchmaker", body: `The promotion expects its interim champion to fight for the belts. Turn down the next one and the interim title will be taken.` });
+    }
+  }
+  if (holder === "champ") {
     fc && (fc.goals = [...fc.goals.filter((g) => !g.startsWith("refused:")), `refused:${(Number(fc.goals.find((g) => g.startsWith("refused:"))?.split(":")[1] ?? 0) + 1)}`]);
     const n = Number(fc?.goals.find((g) => g.startsWith("refused:"))?.split(":")[1] ?? 0);
     if (n >= 2) {
@@ -125,6 +142,7 @@ export function declineFight(w: World, offerId: string, auto = false): string {
         r.ended = "stripped";
       }
       if (fc) fc.goals = fc.goals.filter((g) => !g.startsWith("refused:"));
+      refreshDivision(w, o.promo, f.div);
       notify(w, { kind: "info", fighter: f.id, from: PROMOTIONS[o.promo].short, subject: "Stripped of the title", body: `${fullName(f)} turned down a second title defence. The belt has been vacated.` });
       addNews(w, { kind: "title", promo: o.promo, fighters: [f.id], big: true, text: `${fullName(f)} has been stripped of the ${PROMOTIONS[o.promo].short} title after refusing to defend it.` });
     } else if (!auto) {
@@ -277,18 +295,12 @@ export function signContract(w: World, rng: Rng, offerId: string): string {
   if (f.booked && f.promo !== o.promo) return "Finish the fight that is booked first.";
   const old = f.promo;
   if (old && old !== o.promo) {
-    // A champion leaving vacates the belt.
+    // A champion leaving vacates the belt (an interim champion is promoted); an interim champion leaves the interim belt.
     const ps = w.promos[old];
-    if (ps.champs[f.div] === f.id) {
-      ps.champs[f.div] = null;
-      const r = [...ps.reigns].reverse().find((x) => x.fighter === f.id && x.lost === undefined);
-      if (r) {
-        r.lost = w.day;
-        r.ended = "vacated";
-      }
-      addNews(w, { kind: "title", promo: old, fighters: [f.id], text: `${fullName(f)} vacates the ${PROMOTIONS[old].short} title to sign with ${PROMOTIONS[o.promo].short}.` });
+    if (ps.champs[f.div] === f.id || ps.interim[f.div] === f.id) {
+      addNews(w, { kind: "title", promo: old, fighters: [f.id], text: `${fullName(f)} vacates the ${PROMOTIONS[old].short} ${ps.champs[f.div] === f.id ? "" : "interim "}title to sign with ${PROMOTIONS[o.promo].short}.` });
+      vacate(w, f, "vacated");
     }
-    if (ps.interim[f.div] === f.id) ps.interim[f.div] = null;
   }
   o.status = "accepted";
   f.promo = o.promo;

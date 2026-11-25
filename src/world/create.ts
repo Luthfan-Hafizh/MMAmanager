@@ -11,7 +11,7 @@ import { makeName } from "../data/names";
 import { PROMOTIONS, PROMO_IDS, promoFor, type PromoId } from "../data/promotions";
 import { ARTS, type BaseArt } from "../data/styles";
 import { ovrOf } from "../model/attributes";
-import type { Career, Contract, Fighter, Gym, PromoState, Stance, World } from "../model/types";
+import type { Bout, Career, Contract, Fighter, Gym, PromoState, Stance, World } from "../model/types";
 import { defaultTraining } from "../career/training";
 import { ensureSchedule } from "./calendar";
 import { addNews, fullName, nextId, rankOf, touch, withRng } from "./core";
@@ -19,7 +19,8 @@ import { generateFighter, makeRecord, pickCountry } from "./generate";
 import { currentStreak, potentialNoise, prospectRoom, realFighter, realGym, type RosterFile } from "./real";
 import { entryElo, updateP4P, updateRankings } from "./rankings";
 import { managerPerson } from "../career/advisor";
-import { initBmf } from "./belts";
+import { initBmf, isBeltFight } from "./belts";
+import { notify } from "../career/inbox";
 import { refreshCard } from "./matchmaking";
 import { grantStyleTech, pickStyles, switchStyle } from "./fightstyle";
 import { dayOfIso, realSignals } from "./real";
@@ -120,6 +121,35 @@ export function repair(w: World): World {
       const next = ps.reigns.find((x) => x !== r && x.div === r.div && !!x.interim === !!r.interim && x.won >= r.won);
       r.lost = next ? next.won : w.day;
       r.ended = "vacated";
+    }
+  }
+  // Champions used to be booked in fights with no belt on the line: a fighter who
+  // beat the champion in one is first in line for the title.
+  for (const [pid, ps] of Object.entries(w.promos)) {
+    for (const [d, champId] of Object.entries(ps.champs) as [DivisionId, string | null | undefined][]) {
+      const c = champId ? w.fighters[champId] : null;
+      if (!c) continue;
+      let last: Bout | undefined;
+      for (let k = c.bouts.length - 1; k >= 0 && !last; k--) if (w.bouts[c.bouts[k]]?.status === "done") last = w.bouts[c.bouts[k]];
+      if (!last || !last.res?.winner || isBeltFight(last) || last.promo !== pid || last.div !== d) continue;
+      const day = last.day;
+      const won = w.fighters[last.res.winner === "a" ? last.a : last.b];
+      const held = ps.reigns.some((r) => r.fighter === c.id && r.div === d && r.won < day && (r.lost === undefined || r.lost >= day));
+      if (!held || !won || won.id === c.id || won.status !== "active" || won.lastFight !== day || won.promo !== pid || won.div !== d || ps.contender[d] === won.id) continue;
+      ps.contender[d] = won.id;
+      if (won.ctrl) {
+        notify(w, {
+          kind: "info",
+          fighter: won.id,
+          from: `${PROMOTIONS[pid as PromoId].short} matchmaker`,
+          subject: "First in line for the title",
+          body: `${fullName(won)} beat the champion, ${fullName(c)}, in a fight the belt should have been on. The next fight for the ${DIVISIONS[d].name.toLowerCase()} title is yours.`,
+          facts: [
+            { k: "Beat", v: `${fullName(c)}, the champion`, tone: "good" },
+            { k: "Next", v: "The title fight", tone: "good" },
+          ],
+        });
+      }
     }
   }
   // Champions and interim champions used to be booked in fights with no belt on the line.

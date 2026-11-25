@@ -533,7 +533,14 @@ export function offerFight(w: World, rng: Rng, ev: MMAEvent, f: Fighter, opp?: F
       // A call-out the matchmaker likes the sound of.
       const c = calloutFor(w, f);
       const t = c ? w.fighters[c] : null;
-      if (t && free.includes(t) && !teammates(f, t)) {
+      if (t && (t.id === champ || t.id === ps.interim[d]) && pool.includes(t) && !teammates(f, t)) {
+        // A top-five contender calling out a belt holder gets the fight, with the belt on it.
+        const rf = rankOf(w, f);
+        if (rf !== null && rf > 0 && rf <= 5 && (f.streak >= 1 || !!w.career.fc[f.id]?.callout?.ok)) {
+          o = t;
+          k = t.id === champ ? "title" : "interim";
+        }
+      } else if (t && free.includes(t) && !teammates(f, t)) {
         const rf = rankOf(w, f);
         const rt = rankOf(w, t);
         const gap = (rf ?? 18) - (rt ?? 18);

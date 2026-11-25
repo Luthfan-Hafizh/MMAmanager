@@ -596,6 +596,54 @@ pages(tw, "Retired fighter turned manager");
   else console.log("Home town: the form offers Brazil's cities or a typed town; Itaquaquecetuba, Brazil shows on the fighter page and Home");
 }
 
+// Beating the champion: an old save's fight with no belt on it gives the winner the
+// title shot, and a top contender who calls out the champion gets a title fight.
+{
+  const fail = (what: string) => { failures++; console.log(`  FAIL ${what}`); };
+  const setupChamp = (seed: number) => {
+    const cw2 = createWorld(roster, { name: "UI", seed, mode: "fighter", difficulty: "normal", takeover: "ufc-arman-tsarukyan" });
+    const me = cw2.fighters[cw2.career.fighters[0]];
+    const ps = cw2.promos.ufc;
+    const champ = cw2.fighters[ps.champs[me.div]!];
+    for (const f of [me, champ]) {
+      if (f.booked && cw2.bouts[f.booked]) cancelBout(cw2, cw2.bouts[f.booked], "test");
+      f.lastFight = cw2.day - 200;
+      f.injury = null;
+      f.susp = 0;
+    }
+    ps.contender[me.div] = null;
+    const ev = cw2.upcoming.map((id) => cw2.events[id]).find((e) => e.promo === "ufc" && e.day - cw2.day > 20)!;
+    return { cw2, me, ps, champ, ev };
+  };
+  {
+    const { cw2, me, ps, champ, ev } = setupChamp(94);
+    const b = makeBout(cw2, ev, me, champ, "regular");
+    // As the old version booked it: no belt on the fight.
+    b.kind = "regular";
+    b.stake = undefined;
+    b.rounds = 3;
+    const out = quickSim(cw2, b);
+    out.winner = b.a === me.id ? "a" : "b";
+    out.method = "SUB";
+    out.detail = "neck crank";
+    withRng(cw2, (rng) => applyResult(cw2, rng, b, out));
+    repair(cw2);
+    const msg = cw2.inbox.find((m) => m.subject === "First in line for the title" && m.fighter === me.id);
+    if (ps.contender[me.div] !== me.id || !msg) fail("beating the champion in a fight with no belt on it did not make the winner first in line");
+    else console.log(`Old save, beat the champion ${champ.surname} with no belt on it: first in line for the title, and told so`);
+  }
+  {
+    const { cw2, me, champ, ev } = setupChamp(95);
+    me.streak = Math.max(me.streak, 2);
+    const rf = rankOf(cw2, me);
+    cw2.career.fc[me.id].callout = { target: champ.id, until: cw2.day + 30, ok: false };
+    const o = withRng(cw2, (rng) => offerFight(cw2, rng, ev, me));
+    if (rf === null || rf < 1 || rf > 5) console.log(`  (skipped the call-out check: ${me.surname} is ranked ${rf})`);
+    else if (!o || o.kind !== "title" || o.opp !== champ.id) fail(`a #${rf} contender who called out the champion was offered ${o ? `a ${o.kind} fight` : "nothing"}`);
+    else console.log(`#${rf} ${me.surname} called out the champion ${champ.surname}: offered the title fight`);
+  }
+}
+
 const mw = createWorld(roster, { name: "UI", seed: 79, mode: "manager", difficulty: "normal", agency: "Check Management" });
 for (const f of starterClients(mw, 3)) addControlled(mw, f);
 pages(mw, "Manager, day 0");

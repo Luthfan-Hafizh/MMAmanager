@@ -11,7 +11,7 @@ import { rankLabel, recordText } from "../../world/core";
 import { headToHead, moneyline, oddsOf, preview } from "../../world/odds";
 import { useWorld } from "../../state/store";
 import { go, Link } from "../router";
-import { Empty, Flag, Seg, Tabs, Versus } from "../components";
+import { Empty, Flag, Seg, Tabs, Versus, ScrollRow } from "../components";
 import { Band } from "../art";
 import { groupScore } from "../../model/attributes";
 import type { FightRecord, Fighter } from "../../model/types";
@@ -137,10 +137,10 @@ export function EventPage({ id }: { id: string }) {
         }
         tabs={
           sections.length > 1 ? (
-            <div className="tabs" style={{ marginBottom: -34 }}>
+            <ScrollRow className="tabs" active={sec} style={{ marginBottom: -34 }}>
               <button className={sec === "all" ? "on" : ""} onClick={() => setSec("all")}>Full card</button>
               {sections.map((s) => <button key={s} className={sec === s ? "on" : ""} onClick={() => setSec(s)}>{s}</button>)}
-            </div>
+            </ScrollRow>
           ) : undefined
         }
       />

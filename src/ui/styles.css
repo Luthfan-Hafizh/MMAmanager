@@ -520,6 +520,11 @@ input[type="checkbox"] { accent-color: var(--red); width: 16px; height: 16px; }
 .ev-row.tba .when b { font-size: 26px; }
 .ev-row.tba .headline { font-size: 19px; margin-top: 0; color: var(--ink-2); }
 .ev-row.tba .where { margin-top: 3px; font-size: 12px; }
+/* A row that scrolls sideways (components.tsx ScrollRow): the edge fades while there's more. */
+.scroll-row { position: relative; }
+.scroll-row[data-more="1"] { -webkit-mask-image: linear-gradient(to right, #000 calc(100% - 48px), transparent); mask-image: linear-gradient(to right, #000 calc(100% - 48px), transparent); }
+.scroll-row[data-less="1"] { -webkit-mask-image: linear-gradient(to left, #000 calc(100% - 48px), transparent); mask-image: linear-gradient(to left, #000 calc(100% - 48px), transparent); }
+.scroll-row[data-more="1"][data-less="1"] { -webkit-mask-image: linear-gradient(to right, transparent, #000 48px, #000 calc(100% - 48px), transparent); mask-image: linear-gradient(to right, transparent, #000 48px, #000 calc(100% - 48px), transparent); }
 /* Rankings: jump to one division. */
 .rk-divs { display: flex; gap: 6px; margin-bottom: 18px; overflow-x: auto; scrollbar-width: none; padding-bottom: 2px; }
 .rk-divs::-webkit-scrollbar { display: none; }
@@ -692,14 +697,20 @@ div.field { display: flex; flex-direction: column; gap: 6px; }
   .tape > div:last-child { grid-column: 1 / -1; border-right: 0; }
   .body-grid .tiles { grid-template-columns: repeat(2, minmax(0, 1fr)); }
 }
-/* Picking a fighting style: the families as tabs, tiles with a fit meter, a card for the chosen one. */
-/* .style-pick is a grid elsewhere: let the picker shrink to it, so the tabs scroll instead of widening the panel. */
+/* Picking a fighting style: the families as chips, tiles with a fit meter, a card for the chosen one. */
+/* .style-pick is a grid elsewhere: let the picker shrink to it. */
 .sp { min-width: 0; }
-.sp-tabs { display: flex; gap: 2px; overflow-x: auto; scrollbar-width: none; margin-bottom: 8px; border-bottom: 1px solid var(--line); }
-.sp-tabs::-webkit-scrollbar { display: none; }
-.sp-tabs button { flex-shrink: 0; padding: 7px 9px 6px; background: none; border: 0; border-bottom: 2px solid transparent; margin-bottom: -1px; cursor: pointer; font-stretch: 75%; font-weight: 800; font-size: 11.5px; letter-spacing: 0.08em; text-transform: uppercase; color: var(--ink-3); white-space: nowrap; }
-.sp-tabs button:hover { color: var(--ink); }
-.sp-tabs button.on { color: var(--ink); border-bottom-color: var(--red); }
+/* The families as chips that wrap: every one in view, with how many styles it holds,
+   and a red mark on the family the chosen style belongs to. */
+.sp-fams { display: flex; flex-wrap: wrap; gap: 6px; margin-bottom: 10px; }
+.sp-fam { display: inline-flex; align-items: center; gap: 7px; height: 30px; padding: 0 10px; border: 1.5px solid var(--line); border-radius: 2px; background: var(--sheet); color: var(--ink-2); cursor: pointer; font-stretch: 75%; font-weight: 800; font-size: 11.5px; letter-spacing: 0.08em; text-transform: uppercase; white-space: nowrap; transition: border-color 0.15s, background 0.15s, color 0.15s; }
+.sp-fam:hover { border-color: var(--ink); color: var(--ink); }
+.sp-fam.on { background: var(--ink); border-color: var(--ink); color: var(--sheet); }
+.sp-fam i { font-style: normal; font-weight: 700; font-size: 10.5px; letter-spacing: 0; color: var(--ink-3); }
+.sp-fam.on i { color: var(--sheet); opacity: 0.65; }
+.sp-fam-own { border-style: dashed; }
+.sp-fam-own.on { border-style: solid; }
+.sp-fam.sp-has::after { content: ""; width: 6px; height: 6px; border-radius: 50%; background: var(--red); margin-left: -2px; }
 .sp-tiles { grid-template-columns: repeat(auto-fill, minmax(140px, 1fr)); }
 .sp-tile { position: relative; padding-bottom: 20px; }
 .sp-dots { position: absolute; left: 11px; bottom: 8px; display: flex; gap: 3px; }

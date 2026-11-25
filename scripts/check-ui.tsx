@@ -59,6 +59,7 @@ import { rankOf } from "../src/world/core";
 import { repair } from "../src/world/create";
 import { declineChoices, rapport, rapportLabel } from "../src/career/promoter";
 import { DeclinePicker } from "../src/ui/decline";
+import { FIGHT_STYLES, GRAPPLE_GROUPS, STRIKE_GROUPS } from "../src/data/fightstyles";
 
 const g = globalThis as unknown as Record<string, unknown>;
 g.window = { location: { hash: "" }, addEventListener() {}, removeEventListener() {} };
@@ -611,6 +612,22 @@ pages(tw, "Retired fighter turned manager");
     const lvl = (f: typeof big) => Object.values(f.attrs).reduce((a, v) => a + v, 0) / Object.values(f.attrs).length;
     if (!(big.attrs.strength > long.attrs.strength + 2 && long.attrs.cardio > big.attrs.cardio + 1.5) || Math.abs(lvl(big) - lvl(long)) > 0.6 || long.reach !== 84.5 || long.build !== "lean" || long.walk !== 218) fail(`the body should trade strength for cardio at the same level (strength ${big.attrs.strength.toFixed(1)} v ${long.attrs.strength.toFixed(1)}, cardio ${big.attrs.cardio.toFixed(1)} v ${long.attrs.cardio.toFixed(1)}, mean ${lvl(big).toFixed(2)} v ${lvl(long).toFixed(2)}, reach ${long.reach})`);
     else console.log(`The body: 6'0" muscular at 238 lb has strength ${big.attrs.strength.toFixed(1)}, cardio ${big.attrs.cardio.toFixed(1)}; 6'4" lean with an 84.5" reach at 218 lb has ${long.attrs.strength.toFixed(1)} and ${long.attrs.cardio.toFixed(1)}; the same level (${lvl(big).toFixed(2)} v ${lvl(long).toFixed(2)})`);
+  }
+  // The style families are chips that wrap, so none hides past the edge of the panel
+  // (Taekwondo did, in a row of tabs): every family with its count in both pickers,
+  // and a mark on the family the chosen style comes from.
+  {
+    const chips = [...flat.matchAll(/class="sp-fam[^"]*"[^>]*>([^<]+)<i>(\d+)<\/i>/g)].map((m) => `${m[1]} ${m[2]}`);
+    const want = (["strike", "grapple"] as const).flatMap((kind) =>
+      (kind === "strike" ? STRIKE_GROUPS : GRAPPLE_GROUPS)
+        .map((g) => [g, Object.values(FIGHT_STYLES).filter((st) => st.kind === kind && st.group === g).length] as const)
+        .filter(([, n]) => n > 0)
+        .map(([g, n]) => `${g === "Brazilian jiu-jitsu" ? "BJJ" : g} ${n}`),
+    );
+    const missing = want.filter((x) => !chips.includes(x));
+    const marks = (flat.match(/sp-has/g) ?? []).length;
+    if (flat.includes("sp-tabs") || missing.length > 0 || chips.filter((c) => c.startsWith("Your background")).length !== 2 || marks !== 2) fail(`the style families should all show as chips with their counts, the chosen style's family marked (missing: ${missing.join(", ") || "none"}; marks ${marks})`);
+    else console.log(`Style families: ${chips.length} chips that wrap, none cut off (${chips.filter((c) => !c.startsWith("Your")).slice(0, 7).join(", ")}, ...)`);
   }
   const typed = renderToString(<CreateForm cf={{ ...base, hometown: "Itaquaquecetuba" }} setCf={() => {}} onBack={() => {}} onNext={() => {}} />);
   if (!typed.includes('value="Itaquaquecetuba"')) fail("a typed home town does not show in its own box");

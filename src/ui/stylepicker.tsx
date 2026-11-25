@@ -1,4 +1,4 @@
-// Picking how a fighter strikes or grapples: the families as tabs (the fighter's own
+// Picking how a fighter strikes or grapples: the families as chips that wrap (the fighter's own
 // background first), the styles as tiles with how well each suits them, and a card
 // for the chosen one: what it does in a fight, its trait profile, its signature
 // techniques and what it is built on.
@@ -41,11 +41,19 @@ export function StylePicker({ kind, art, value, attrs, onChange }: { kind: "stri
   const traits = (Object.entries(cur.t) as [TraitKey, number][]).filter(([, v]) => v > 0).sort((a, b) => b[1] - a[1]).slice(0, 4);
   return (
     <div className="sp">
-      <div className="sp-tabs" role="tablist" aria-label={kind === "strike" ? "Striking families" : "Grappling families"}>
-        <button type="button" role="tab" aria-selected={tab === "own"} className={tab === "own" ? "on" : ""} onClick={() => setTab("own")}>Your background</button>
-        {groups.map((g) => (
-          <button key={g} type="button" role="tab" aria-selected={tab === g} className={tab === g ? "on" : ""} onClick={() => setTab(g)}>{g === "Brazilian jiu-jitsu" ? "BJJ" : g}</button>
-        ))}
+      <div className="sp-fams" role="tablist" aria-label={kind === "strike" ? "Striking families" : "Grappling families"}>
+        <button type="button" role="tab" aria-selected={tab === "own"} className={`sp-fam sp-fam-own${tab === "own" ? " on" : ""}${mine ? " sp-has" : ""}`} onClick={() => setTab("own")} title={mine ? "Your style is here" : undefined}>
+          Your background<i>{own.length}</i>
+        </button>
+        {groups.map((g) => {
+          const n = all.filter((s) => s.group === g).length;
+          const here = !mine && cur.group === g;
+          return (
+            <button key={g} type="button" role="tab" aria-selected={tab === g} className={`sp-fam${tab === g ? " on" : ""}${here ? " sp-has" : ""}`} onClick={() => setTab(g)} title={here ? "Your style is here" : undefined}>
+              {g === "Brazilian jiu-jitsu" ? "BJJ" : g}<i>{n}</i>
+            </button>
+          );
+        })}
       </div>
       <div className="tiles sp-tiles" role="radiogroup" aria-label={kind === "strike" ? "How you strike" : "How you grapple"}>
         {list.map((id) => {

@@ -9,7 +9,7 @@ import { fullName } from "../../world/core";
 import { stripDeadline } from "../../world/belts";
 import { useWorld } from "../../state/store";
 import { go, Link } from "../router";
-import { Empty } from "../components";
+import { Empty, ScrollRow } from "../components";
 import { Band } from "../art";
 
 const HOW: Record<string, string> = { won: "Won it", vacant: "Won the vacant title", promoted: "Promoted from interim", interim: "Won the interim title" };
@@ -29,11 +29,11 @@ export function Titles({ promo, div }: { promo?: string; div?: string }) {
         title="Title history"
         sub="Every reign from the champions the world began with: how each began and ended, interim belts and their defences, unifications and strippings. The BMF lineage goes back to 2019."
         tabs={
-          <div className="tabs" style={{ marginBottom: -34 }}>
+          <ScrollRow className="tabs" active={pid} label="Promotions" style={{ marginBottom: -34 }}>
             {ranked.map((x) => (
               <button key={x} className={x === pid ? "on" : ""} onClick={() => go(`/titles/${x}`)}>{PROMOTIONS[x].short}</button>
             ))}
-          </div>
+          </ScrollRow>
         }
       />
       <div className="wrap page-body">

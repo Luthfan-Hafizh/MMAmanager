@@ -137,15 +137,53 @@ export function Seg<T extends string | number>({ value, options, onChange }: { v
   );
 }
 
+/**
+ * A row that scrolls sideways when it doesn't fit (tabs, chips): the edges fade
+ * while there's more to see, and the chosen item (".on") is kept in view, without
+ * moving the page.
+ */
+export function ScrollRow({ className, active, label, children, style }: { className: string; active?: string; label?: string; children: ReactNode; style?: React.CSSProperties }) {
+  const ref = useRef<HTMLDivElement | null>(null);
+  useEffect(() => {
+    const el = ref.current;
+    if (!el) return;
+    const check = () => {
+      el.dataset.more = el.scrollWidth - el.scrollLeft - el.clientWidth > 4 ? "1" : "";
+      el.dataset.less = el.scrollLeft > 4 ? "1" : "";
+    };
+    check();
+    el.addEventListener("scroll", check, { passive: true });
+    window.addEventListener("resize", check);
+    const ro = typeof ResizeObserver === "undefined" ? null : new ResizeObserver(check);
+    ro?.observe(el);
+    return () => {
+      el.removeEventListener("scroll", check);
+      window.removeEventListener("resize", check);
+      ro?.disconnect();
+    };
+  }, []);
+  useEffect(() => {
+    const el = ref.current;
+    const on = el?.querySelector<HTMLElement>(".on");
+    if (!el || !on || el.scrollWidth <= el.clientWidth) return;
+    el.scrollTo({ left: Math.max(0, on.offsetLeft - (el.clientWidth - on.offsetWidth) / 2), behavior: "instant" as ScrollBehavior });
+  }, [active]);
+  return (
+    <div ref={ref} className={`${className} scroll-row`} aria-label={label} style={style}>
+      {children}
+    </div>
+  );
+}
+
 export function Tabs<T extends string>({ tabs, value, onChange }: { tabs: { id: T; label: string }[]; value: T; onChange: (t: T) => void }) {
   return (
-    <div className="tabs">
+    <ScrollRow className="tabs" active={value}>
       {tabs.map((t) => (
         <button key={t.id} className={t.id === value ? "on" : ""} onClick={() => onChange(t.id)}>
           {t.label}
         </button>
       ))}
-    </div>
+    </ScrollRow>
   );
 }
 

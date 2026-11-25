@@ -6,7 +6,7 @@ import { rankMove } from "../../world/rankings";
 import { rankNumber, recordText } from "../../world/core";
 import { useWorld } from "../../state/store";
 import { go, Link } from "../router";
-import { Empty } from "../components";
+import { Empty, ScrollRow } from "../components";
 import { Band } from "../art";
 
 export function Rankings({ promo, div }: { promo?: string; div?: string }) {
@@ -23,20 +23,20 @@ export function Rankings({ promo, div }: { promo?: string; div?: string }) {
         title={`${p.short} Rankings`}
         sub="Who you beat counts most, a finish adds a little, activity helps, and after eighteen months out the score decays. A winner always moves above the fighter beaten."
         tabs={
-          <div className="tabs" style={{ marginBottom: -34 }}>
+          <ScrollRow className="tabs" active={pid} label="Promotions" style={{ marginBottom: -34 }}>
             {ranked.map((x) => (
               <button key={x} className={x === pid ? "on" : ""} onClick={() => go(`/rankings/${x}`)}>{PROMOTIONS[x].short}</button>
             ))}
-          </div>
+          </ScrollRow>
         }
       />
       <div className="wrap page-body">
-        <nav className="rk-divs" aria-label="Divisions">
+        <ScrollRow className="rk-divs" active={only ?? "all"} label="Divisions">
           <button type="button" className={`btn sm${!only ? " on" : ""}`} onClick={() => go(`/rankings/${pid}`)}>All divisions</button>
           {p.divisions.map((d) => (
             <button key={d} type="button" className={`btn sm${only === d ? " on" : ""}`} title={DIVISIONS[d].name} onClick={() => go(`/rankings/${pid}/${d}`)}>{DIVISIONS[d].short}</button>
           ))}
-        </nav>
+        </ScrollRow>
         {(pid === "ufc" || pid === "pfl") && !only && <P4P w={w} promo={pid} />}
         <div className="rk-grid">
           {divs.map((d) => <DivisionColumn key={d} w={w} promo={pid} d={d} />)}

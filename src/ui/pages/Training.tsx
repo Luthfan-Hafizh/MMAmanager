@@ -2,7 +2,7 @@ import { InjuryCard } from "../advice";
 import { Fragment, useMemo, useState } from "react";
 import { ATTR_INFO, type AttrKey } from "../../model/attributes";
 import type { Fighter, FighterCareer, SessionId, World } from "../../model/types";
-import { INTENSITY_NAMES, SESSIONS, SESSION_IDS, SLOT_NAMES, TEMPLATES, coachQuality, planPreview, styleSessions, templatePlan, trainingWeek } from "../../career/training";
+import { INTENSITY_NAMES, SESSIONS, SESSION_IDS, SLOT_NAMES, TEMPLATES, coachQuality, neckNote, planPreview, styleSessions, templatePlan, trainingWeek } from "../../career/training";
 import { FIGHT_STYLES, masteryName, styleFit, type StyleId } from "../../data/fightstyles";
 import { fightStyle, switchStyle } from "../../world/fightstyle";
 import { Rng } from "../../core/rng";
@@ -46,6 +46,8 @@ export function Training({ id }: { id?: string }) {
   const counts = new Map<SessionId, number>();
   for (const s of fc.plan.week) counts.set(s, (counts.get(s) ?? 0) + 1);
   const camp = fc.camp;
+  const strengthDays = counts.get("strength") ?? 0;
+  const neckText = [strengthDays ? "" : "Neck work is part of every strength session, and the one thing that builds a chin.", neckNote(f) ?? ""].filter(Boolean).join(" ");
   return (
     <div className="grid">
       <div className="c12">
@@ -128,7 +130,7 @@ export function Training({ id }: { id?: string }) {
                     <td><span className="row tight"><span className="promo-dot" style={{ background: d.color }} /> <b>{d.name}</b></span></td>
                     <td className="c">{counts.get(s) ?? 0}</td>
                     <td>{d.area === "head" ? "Head coach" : d.area === "sc" ? "Strength coach" : `${d.area} coach`} <span className="dim">{coachQuality(gym, d.area)}</span></td>
-                    <td className="small muted">{Object.keys(d.attrs).map((k) => ATTR_INFO[k as AttrKey].name).join(", ") || (s === "drilling" ? "The technique you drill" : "Recovery")}</td>
+                    <td className="small muted">{(Object.keys(d.attrs) as AttrKey[]).map((k) => `${ATTR_INFO[k].name}${d.how?.[k] ? ` (${d.how[k]})` : ""}`).join(", ") || (s === "drilling" ? "The technique you drill" : "Recovery")}</td>
                     <td className="r">{d.load > 0 ? d.load : <span className="good">{d.load}</span>}</td>
                   </tr>
                 );
@@ -151,6 +153,13 @@ export function Training({ id }: { id?: string }) {
                 {preview.top.map(([k, v]) => (
                   <div key={k} className="spread"><span>{ATTR_INFO[k].name}</span><span className="good">+{v.toFixed(3)}</span></div>
                 ))}
+              </div>
+              <div className="forecast-chin">
+                <div className="spread small">
+                  <span>Chin <span className="dim">· neck work</span></span>
+                  {strengthDays ? <span className={preview.chin >= 0.0005 ? "good" : "dim"}>+{preview.chin.toFixed(3)}</span> : <span className="dim">No strength session</span>}
+                </div>
+                {neckText && <p className="tiny dim">{neckText}</p>}
               </div>
               <p className="tiny dim" style={{ marginTop: 6 }}>Growth slows near the fighter's ceiling and with age; fatigue over 55 slows it too. Sparring is where injuries happen.</p>
             </div>

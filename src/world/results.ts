@@ -345,7 +345,8 @@ export function applyResult(w: World, rng: Rng, b: Bout, o: FightOutcome): void 
     if (grappled) st.gm = Math.min(99, Math.round((st.gm + 0.8 * (1 - st.gm / 130)) * 10) / 10);
   }
 
-  // Damage, wear, suspensions and injuries.
+  // Damage, wear, suspensions and injuries. The chin before, for the player's report.
+  const chinBefore: Record<string, number> = { [A.id]: A.attrs.chin, [B.id]: B.attrs.chin };
   const sides = o.sides;
   const hurtNow: [Fighter, InjuryDef][] = [];
   const worse: [Fighter, string, number][] = [];
@@ -427,7 +428,7 @@ export function applyResult(w: World, rng: Rng, b: Bout, o: FightOutcome): void 
     const p = winner === A ? b.odds : 1 - b.odds;
     if (p < 0.28) addNews(w, { kind: "upset", promo: b.promo, ev: ev.id, fighters: [winner.id, loser.id], text: `Upset at ${ev.name}: ${fullName(winner)} beat the favourite ${fullName(loser)}.` });
   }
-  if (keep) afterFightCareer(w, rng, b, o);
+  if (keep) afterFightCareer(w, rng, b, o, chinBefore);
   touch(w);
 }
 

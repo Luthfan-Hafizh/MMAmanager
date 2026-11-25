@@ -41,7 +41,7 @@ export const ATTR_INFO: Record<AttrKey, { name: string; short: string; desc: str
   strength: { name: "Strength", short: "Str", desc: "Raw strength for the weight class: clinch, control and frames." },
   speed: { name: "Speed", short: "Spd", desc: "Hand speed and explosiveness: first to land, first to react." },
   cardio: { name: "Cardio", short: "Car", desc: "The gas tank: how long the pace can be held." },
-  chin: { name: "Chin", short: "Chn", desc: "How well head shots are absorbed. Wears down with knockouts." },
+  chin: { name: "Chin", short: "Chn", desc: "How well head shots are absorbed. Neck work in the strength sessions builds it slowly; knockouts and age wear it down, and a hard cut weakens it on the night." },
   recovery: { name: "Recovery", short: "Rec", desc: "Recovering when hurt, between rounds and between fights." },
   toughness: { name: "Toughness", short: "Tgh", desc: "Absorbing body and leg damage; resistance to injury." },
   fightIQ: { name: "Fight IQ", short: "IQ", desc: "Reading the fight, picking the right shot and the right moment." },

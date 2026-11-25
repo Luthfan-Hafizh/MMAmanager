@@ -2,7 +2,8 @@
 // an intensity, and a technique to drill. Growth depends on the coach who runs
 // each session, the facilities, age, how much room is left to the fighter's
 // potential and their professionalism. Load builds fatigue; fatigue and hard
-// sparring cause injuries; sparring keeps a fighter sharp.
+// sparring cause injuries; sparring keeps a fighter sharp. The strength
+// sessions include neck work, the one thing that builds a chin.
 
 import { Rng } from "../core/rng";
 import { clamp } from "../core/util";
@@ -25,6 +26,8 @@ export interface SessionDef {
   risk: number;
   sharp: number;
   color: string;
+  /** How a session trains an attribute, when it isn't obvious (the strength session builds the chin through neck work). */
+  how?: Partial<Record<AttrKey, string>>;
 }
 
 export const SESSIONS: Record<SessionId, SessionDef> = {
@@ -35,7 +38,7 @@ export const SESSIONS: Record<SessionId, SessionDef> = {
   bjj: { id: "bjj", name: "Jiu-jitsu", short: "BJJ", area: "grappling", attrs: { subs: 1, subDef: 0.9, bottomGame: 0.8, topControl: 0.4, scrambles: 0.4 }, load: 6, risk: 1.1, sharp: 0.6, color: "#8e4ec6" },
   sparring: { id: "sparring", name: "MMA sparring", short: "SPR", area: "head", attrs: { fightIQ: 0.7, composure: 0.6, groundStrikes: 0.4, scrambles: 0.3, boxing: 0.2, takedowns: 0.2, tdd: 0.3, heart: 0.2 }, load: 9, risk: 2.4, sharp: 3, color: "#d6409f" },
   drilling: { id: "drilling", name: "Technique drilling", short: "DRL", area: "head", attrs: { fightIQ: 0.15 }, load: 4, risk: 0.5, sharp: 0.5, color: "#12a594" },
-  strength: { id: "strength", name: "Strength", short: "STR", area: "sc", attrs: { strength: 1, power: 0.5, toughness: 0.3 }, load: 7, risk: 0.9, sharp: 0, color: "#978365" },
+  strength: { id: "strength", name: "Strength", short: "STR", area: "sc", attrs: { strength: 1, power: 0.5, toughness: 0.3, chin: 0.35 }, load: 7, risk: 0.9, sharp: 0, color: "#978365", how: { chin: "neck work" } },
   conditioning: { id: "conditioning", name: "Conditioning", short: "CON", area: "sc", attrs: { cardio: 1, recovery: 0.5, workRate: 0.4, speed: 0.2 }, load: 8, risk: 0.8, sharp: 0.5, color: "#30a46c" },
   film: { id: "film", name: "Film study", short: "FLM", area: "head", attrs: { fightIQ: 1, counters: 0.3, discipline: 0.3, composure: 0.2 }, load: 1, risk: 0, sharp: 0, color: "#0090ff" },
   recovery: { id: "recovery", name: "Recovery", short: "REC", area: "sc", attrs: {}, load: -8, risk: -0.4, sharp: 0, color: "#6b7280" },
@@ -92,6 +95,26 @@ export function ageGrowth(age: number): number {
   if (age < 33) return 0.7;
   if (age < 35) return 0.55;
   return 0.4;
+}
+
+/**
+ * How much neck work still does for the chin, 0.25 to 1. A stronger neck takes
+ * some of the snap out of a punch, but it can't undo the damage: every knockout
+ * loss, and the wear of a long, hard career, leave less for it to build on.
+ */
+export function neckWork(f: Fighter): number {
+  const kos = f.rec.koL + f.am.koL;
+  return clamp(1 - kos * 0.12 - Math.max(0, f.dmg - 80) / 400, 0.25, 1);
+}
+
+/** Why neck work does less than it would, or null when the chin is fresh. */
+export function neckNote(f: Fighter): string | null {
+  const n = neckWork(f);
+  if (n >= 0.995) return null;
+  const kos = f.rec.koL + f.am.koL;
+  const losses = `${kos} knockout loss${kos === 1 ? "" : "es"}`;
+  const why = kos && f.dmg > 80 ? `${losses} and years of wear` : kos ? losses : "years of wear";
+  return `After ${why}, neck work does ${Math.round(n * 100)}% of what it would for a fresh chin.`;
 }
 
 /** Converts the world's monthly growth rate into the training pace (over a real career, with camps, injuries and light weeks, a pace of 1 is worth about 1.4 overall a year). */
@@ -172,12 +195,13 @@ export function trainingWeek(w: World, f: Fighter, plan: TrainingPlan, rng: Rng,
     tv += v;
   }
   const meanTop = tv > 0 ? Math.max(0.2, tw / tv) : 1;
+  const neck = neckWork(f);
   for (const s of plan.week) {
     const sd = SESSIONS[s];
     const q = 0.55 + coachQuality(gym, sd.area) / 110;
     for (const [k, v] of Object.entries(sd.attrs) as [AttrKey, number][]) {
       const top = topOf(k) / meanTop;
-      const g = 0.0105 * mul * v * q * fac * INT_GROWTH[plan.intensity] * ageGrowth(age) * room * pro * fatPenalty * top * hurtTrain;
+      const g = 0.0105 * mul * v * q * fac * INT_GROWTH[plan.intensity] * ageGrowth(age) * room * pro * fatPenalty * top * hurtTrain * (k === "chin" ? neck : 1);
       growth[k] = (growth[k] ?? 0) + g;
     }
   }
@@ -237,9 +261,10 @@ export function trainingWeek(w: World, f: Fighter, plan: TrainingPlan, rng: Rng,
 }
 
 /** Rough weekly overall change this plan would give. */
-export function planPreview(w: World, f: Fighter, plan: TrainingPlan): { ovr: number; fatigue: number; risk: number; top: [AttrKey, number][] } {
+export function planPreview(w: World, f: Fighter, plan: TrainingPlan): { ovr: number; fatigue: number; risk: number; top: [AttrKey, number][]; chin: number } {
   const clone: Fighter = { ...f, attrs: { ...f.attrs }, style: f.style ? { ...f.style } : undefined };
   const r = trainingWeek(w, clone, plan, new Rng(1), true);
-  const top = (Object.entries(r.growth) as [AttrKey, number][]).sort((a, b) => b[1] - a[1]).slice(0, 5);
-  return { ovr: ovrOf(clone.attrs) - ovrOf(f.attrs), fatigue: r.fatigue, risk: weekRisk(f, plan, ageAt(f.birth, w.day)), top };
+  // The chin has its own line on the training page.
+  const top = (Object.entries(r.growth) as [AttrKey, number][]).filter(([k]) => k !== "chin").sort((a, b) => b[1] - a[1]).slice(0, 5);
+  return { ovr: ovrOf(clone.attrs) - ovrOf(f.attrs), fatigue: r.fatigue, risk: weekRisk(f, plan, ageAt(f.birth, w.day)), top, chin: r.growth.chin ?? 0 };
 }

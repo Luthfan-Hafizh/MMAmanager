@@ -16,8 +16,9 @@ import { clearCallout, offerMicrophone } from "./fightweek";
 import { offerPostFight } from "./media";
 import { addHeat, addMoment, addPop, heatOf, ppvShare, stageMul } from "./rivals";
 import { boutLimit } from "./shortnotice";
+import { neckWork } from "./training";
 
-export function afterFightCareer(w: World, rng: Rng, b: Bout, o: FightOutcome): void {
+export function afterFightCareer(w: World, rng: Rng, b: Bout, o: FightOutcome, chinBefore: Record<string, number> = {}): void {
   for (const side of ["a", "b"] as const) {
     const f = w.fighters[b[side]];
     if (!f.ctrl) continue;
@@ -35,6 +36,11 @@ export function afterFightCareer(w: World, rng: Rng, b: Bout, o: FightOutcome): 
     ];
     if (f.susp > w.day + 8) lines.push(`Medical suspension until ${fmtDate(f.susp)}.`);
     if (f.injury && f.injury.until > w.day) lines.push(`Injury: ${f.injury.name.toLowerCase()}, out until about ${fmtDate(f.injury.until)}.`);
+    // A knockout costs some of the chin for good; neck work builds a little back.
+    const chinWas = chinBefore[f.id];
+    const chinLost = chinWas === undefined ? 0 : chinWas - f.attrs.chin;
+    const chinFmt = (v: number) => v.toFixed(chinLost < 0.15 ? 2 : 1);
+    if (chinLost >= 0.05) lines.push(`The knockout took something off the chin: ${chinFmt(chinWas)} before, ${chinFmt(f.attrs.chin)} now. Neck work in the strength sessions builds some of it back${neckWork(f) < 0.995 ? ", if less after every knockout" : ""}.`);
     const r = rankOf(w, f);
     if (f.contract && f.contract.left === 0 && PROMOTIONS[b.promo].tier !== "amateur") lines.push("That was the last fight on the contract. Talks on the next deal start now.");
     const facts: Fact[] = [
@@ -47,6 +53,7 @@ export function afterFightCareer(w: World, rng: Rng, b: Bout, o: FightOutcome): 
     ];
     if (f.susp > w.day + 8) facts.push({ k: "Medical suspension", v: `To ${fmtDate(f.susp)} (${Math.round((f.susp - w.day) / 7)} weeks)`, tone: f.susp - w.day > 60 ? "bad" : "warn" });
     if (f.injury && f.injury.until > w.day) facts.push({ k: "Injury", v: `${f.injury.name}, fight-ready ${fmtDate(f.injury.until)}`, tone: "bad" });
+    if (chinLost >= 0.05) facts.push({ k: "Chin", v: `${chinFmt(chinWas)} → ${chinFmt(f.attrs.chin)}`, tone: "bad" });
     notify(w, {
       kind: "result",
       fighter: f.id,

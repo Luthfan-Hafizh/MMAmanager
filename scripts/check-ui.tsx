@@ -48,7 +48,8 @@ import { boutLimit } from "../src/career/shortnotice";
 import { makeBout } from "../src/world/matchmaking";
 import { bmfPairing } from "../src/world/belts";
 import { Rng } from "../src/core/rng";
-import { signTo } from "../src/world/results";
+import { applyResult, signTo } from "../src/world/results";
+import { neckWork, templatePlan, trainingWeek } from "../src/career/training";
 import { repair } from "../src/world/create";
 
 const g = globalThis as unknown as Record<string, unknown>;
@@ -412,6 +413,56 @@ pages(tw, "Retired fighter turned manager");
   const html = renderToString(<Home />).replace(/<!-- -->/g, "");
   if (!html.includes("Pro record") || !html.includes("Amateur 3-4")) { failures++; console.log("  FAIL Home does not show the pro record with the amateur record under it"); }
   else console.log("Turning pro: the flag clears on a debut and on load; Home shows the pro record and Amateur 3-4");
+}
+
+// Neck work: the strength sessions build the chin, less after knockouts, and a knockout loss says what it cost.
+{
+  const fail = (what: string) => { failures++; console.log(`  FAIL ${what}`); };
+  const nw = createWorld(roster, { name: "UI", seed: 86, mode: "fighter", difficulty: "normal", created: { first: "Neck", surname: "Work", sex: "M", country: "BR", div: "LW", age: 22, height: 70, reach: 71, stance: "orthodox", art: "boxing", talent: "prospect", start: "amateur" } });
+  const me = nw.fighters[nw.career.fighters[0]];
+  const chinOf = (tpl: string, f = me) => trainingWeek(nw, structuredClone(f), templatePlan(tpl), new Rng(1), false).growth.chin ?? 0;
+  const sc = chinOf("conditioning");
+  const bal = chinOf("balanced");
+  const none = chinOf("taper");
+  const ko = structuredClone(me);
+  ko.rec = { ...ko.rec, l: 3, koL: 3 };
+  const cracked = chinOf("conditioning", ko);
+  if (!(sc > bal && bal > 0 && none === 0)) fail(`strength sessions should build the chin, more with more of them (S&C ${sc}, balanced ${bal}, taper ${none})`);
+  if (!(cracked < sc * 0.75)) fail(`three knockout losses should leave less for neck work (${cracked} against ${sc})`);
+  const y = structuredClone(me);
+  const c0 = y.attrs.chin;
+  for (let i = 0; i < 52; i++) trainingWeek(nw, y, templatePlan("conditioning"), new Rng(10 + i), true);
+  const yb = structuredClone(me);
+  for (let i = 0; i < 52; i++) trainingWeek(nw, yb, templatePlan("balanced"), new Rng(10 + i), true);
+  const year = y.attrs.chin - c0;
+  const yearBal = yb.attrs.chin - c0;
+  if (!(year > 0.5 && year < 2.5 && yearBal > 0.1 && yearBal < year)) fail(`a year of training should add a sensible amount of chin (S&C ${year.toFixed(2)}, balanced ${yearBal.toFixed(2)})`);
+  nw.career.fc[me.id].plan = templatePlan("conditioning");
+  setWorld(nw);
+  const page = renderToString(<Training />).replace(/<!-- -->/g, "");
+  if (!page.includes("Chin (neck work)") || !page.includes("· neck work")) fail("the training page does not show the neck work");
+  nw.fighters[me.id] = ko;
+  const page2 = renderToString(<Training />).replace(/<!-- -->/g, "");
+  if (!page2.includes("After 3 knockout losses, neck work does")) fail("the training page does not say what the knockouts cost the neck work");
+  nw.fighters[me.id] = me;
+  console.log(`Neck work: chin +${year.toFixed(2)} a year on the S&C week, +${yearBal.toFixed(2)} on a balanced week; three knockout losses leave ${Math.round(neckWork(ko) * 100)}%`);
+
+  // A knockout loss: the result says what it cost the chin.
+  const kw = createWorld(roster, { name: "UI", seed: 87, mode: "fighter", difficulty: "normal", takeover: "ufc-joshua-van" });
+  const jv = kw.fighters[kw.career.fighters[0]];
+  const ev = kw.upcoming.map((id) => kw.events[id]).find((e) => e.promo === "ufc" && e.day - kw.day > 20)!;
+  const opp = Object.values(kw.fighters).find((x) => x.promo === "ufc" && x.div === jv.div && x.id !== jv.id && !x.booked && x.status === "active")!;
+  const b = makeBout(kw, ev, jv, opp, "regular");
+  const o = quickSim(kw, b);
+  o.winner = b.a === jv.id ? "b" : "a";
+  o.method = "KO";
+  o.detail = "punches";
+  const chin0 = jv.attrs.chin;
+  withRng(kw, (rng) => applyResult(kw, rng, b, o));
+  const msg = kw.inbox.find((m) => m.ref === b.id && m.kind === "result");
+  if (!(jv.attrs.chin < chin0)) fail("a knockout loss did not cost any chin");
+  else if (!msg?.body.includes("took something off the chin") || !msg.facts?.some((x) => x.k === "Chin")) fail("the result of a knockout loss does not say what it cost the chin");
+  else console.log(`Knockout loss: ${msg.body.slice(msg.body.indexOf("The knockout"))}`);
 }
 
 const mw = createWorld(roster, { name: "UI", seed: 79, mode: "manager", difficulty: "normal", agency: "Check Management" });

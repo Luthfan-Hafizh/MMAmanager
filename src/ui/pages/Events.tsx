@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, Fragment } from "react";
 import { clock, DOW, fmtDate, MONTHS, ymd } from "../../core/time";
 import { countryOf } from "../../data/countries";
 import { DIVISIONS } from "../../data/divisions";
@@ -30,6 +30,8 @@ function boutRecord(w: World, f: Fighter, b: Bout): string {
 
 const TIERS: (Tier | "all" | "mine")[] = ["mine", "all", "major", "league", "tryout", "regional", "local", "amateur"];
 
+const MONTH_NAMES = ["January", "February", "March", "April", "May", "June", "July", "August", "September", "October", "November", "December"];
+
 export function Events({ promo }: { promo?: string }) {
   const w = useWorld();
   const [tab, setTab] = useState<"upcoming" | "results">("upcoming");
@@ -46,7 +48,22 @@ export function Events({ promo }: { promo?: string }) {
       <Tabs value={tab} onChange={setTab} tabs={[{ id: "upcoming", label: "Upcoming" }, { id: "results", label: "Past events" }]} />
       {!promo && <Seg value={tier} onChange={setTier} options={TIERS.map((t) => ({ v: t, label: t === "mine" ? "My promotions" : t === "all" ? "All" : TIER_NAME[t as Tier] }))} />}
       <div className="panel">
-        {list.length === 0 ? <Empty title="No events" /> : list.map((e) => <EventRow key={e.id} w={w} e={e} />)}
+        {list.length === 0 ? (
+          <Empty title="No events" />
+        ) : (
+          list.map((e, i) => {
+            // A heading for each month, so the schedule reads like a calendar.
+            const t = ymd(e.day);
+            const prev = i > 0 ? ymd(list[i - 1].day) : null;
+            const head = !prev || prev.m !== t.m || prev.y !== t.y;
+            return (
+              <Fragment key={e.id}>
+                {head && <div className="ev-month">{MONTH_NAMES[t.m]} {t.y}</div>}
+                <EventRow w={w} e={e} />
+              </Fragment>
+            );
+          })
+        )}
       </div>
     </div>
   );
@@ -61,12 +78,25 @@ function EventRow({ w, e }: { w: World; e: MMAEvent }) {
     return b.status !== "cancelled" && (w.fighters[b.a]?.ctrl || w.fighters[b.b]?.ctrl);
   });
   const stake = main ? stakeLabel(main) : null;
+  if (e.status === "planned") {
+    // No card yet: one quiet line, so the cards that are made stand out.
+    return (
+      <div className={`ev-row tba${mine ? " mine" : ""}`} onClick={() => go(`/event/${e.id}`)}>
+        <div className="when"><span>{DOW[t.dow]}</span><b>{t.d}</b></div>
+        <div style={{ minWidth: 0 }}>
+          <div className="headline">{e.name}</div>
+          <div className="where">Card to be announced about {Math.round(p.lead / 7)} weeks out · {e.venue}, {e.city}</div>
+        </div>
+        <div className="acts"><span className="btn sm ghost">Details</span></div>
+      </div>
+    );
+  }
   return (
     <div className={`ev-row${mine ? " mine" : ""}`} onClick={() => go(`/event/${e.id}`)}>
       <div className="when"><span>{DOW[t.dow]}</span><b>{t.d}</b><span>{MONTHS[t.m]} {t.y}</span></div>
       <div style={{ minWidth: 0 }}>
         <div className="nm">{e.name}{stake && stake !== "Title eliminator" ? ` · ${stake}` : ""}</div>
-        <div className="headline">{main && e.status !== "planned" ? `${w.fighters[main.a]?.surname} vs ${w.fighters[main.b]?.surname}` : "Card to be announced"}</div>
+        <div className="headline">{main ? `${w.fighters[main.a]?.surname} vs ${w.fighters[main.b]?.surname}` : e.status === "done" ? "No fights" : "Card to be announced"}</div>
         <div className="where">{e.venue}, {e.city} · {p.name}</div>
       </div>
       <div className="acts"><span className="btn sm">{e.status === "done" ? "Results" : "Fight card"}</span></div>

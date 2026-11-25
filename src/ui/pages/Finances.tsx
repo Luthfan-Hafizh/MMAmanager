@@ -101,19 +101,19 @@ function BalanceChart({ months, max }: { months: { m: string; inc: number; out: 
   const d = pts.map(([x, yy], i) => `${i ? "L" : "M"}${x.toFixed(1)},${yy.toFixed(1)}`).join(" ");
   return (
     <svg viewBox={`0 0 ${W} ${H}`} width="100%" role="img" aria-label="Bank balance by month">
-      <line x1={pad} x2={W - pad} y1={H / 2} y2={H / 2} stroke="var(--border-2)" strokeDasharray="4 4" />
-      <path d={d} fill="none" stroke="var(--info)" strokeWidth="2.5" strokeLinejoin="round" />
+      <line x1={pad} x2={W - pad} y1={H / 2} y2={H / 2} stroke="var(--line-2)" strokeDasharray="4 4" />
+      <path d={d} fill="none" stroke="var(--blue)" strokeWidth="2.5" strokeLinejoin="round" />
       {pts.map(([x, yy], i) => (
         <g key={i}>
-          <circle cx={x} cy={yy} r="3.5" fill={months[i].bal < 0 ? "var(--bad)" : "var(--info)"}>
+          <circle cx={x} cy={yy} r="3.5" fill={months[i].bal < 0 ? "var(--loss)" : "var(--blue)"}>
             <title>{`${months[i].m}: ${money(months[i].bal)} (in ${money(months[i].inc)}, out ${money(months[i].out)})`}</title>
           </circle>
           {i % Math.ceil(months.length / 8) === 0 && (
-            <text x={x} y={H - 6} fontSize="11" textAnchor="middle" fill="var(--text-3)">{MONTHS[Number(months[i].m.slice(5)) - 1]} {months[i].m.slice(2, 4)}</text>
+            <text x={x} y={H - 6} fontSize="11" textAnchor="middle" fill="var(--ink-3)">{MONTHS[Number(months[i].m.slice(5)) - 1]} {months[i].m.slice(2, 4)}</text>
           )}
         </g>
       ))}
-      <text x={pad} y={14} fontSize="11" fill="var(--text-3)">{money(max)}</text>
+      <text x={pad} y={14} fontSize="11" fill="var(--ink-3)">{money(max)}</text>
     </svg>
   );
 }

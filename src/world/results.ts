@@ -146,7 +146,7 @@ export function stripAtScale(w: World, b: Bout, f: Fighter): boolean {
     ps.interim[d] = null;
     b.stake = undefined;
   } else return false;
-  addNews(w, { kind: "title", promo: b.promo, ev: b.ev, fighters: [f.id, opp.id], big: true, text: `${fullName(f)} misses weight and is stripped of the ${b.kind === "interim" ? "interim " : ""}${belt}. Only ${fullName(opp)} can win it${ev ? ` at ${ev.name}` : ""}.` });
+  addNews(w, { kind: "title", promo: b.promo, ev: b.ev, fighters: [f.id, opp.id], big: bigStage(b.promo), text: `${fullName(f)} misses weight and is stripped of the ${b.kind === "interim" ? "interim " : ""}${belt}. Only ${fullName(opp)} can win it${ev ? ` at ${ev.name}` : ""}.` });
   return true;
 }
 
@@ -424,7 +424,7 @@ export function applyResult(w: World, rng: Rng, b: Bout, o: FightOutcome): void 
       promo: b.promo,
       ev: ev.id,
       fighters: [winner.id, loser.id],
-      big: title || b.order === 0,
+      big: bigStage(b.promo) && (title || b.order === 0),
       text: `${fullName(winner)} beat ${fullName(loser)} by ${how}${where} at ${ev.name}.`,
     });
   }
@@ -485,7 +485,7 @@ function handleTitle(w: World, rng: Rng, b: Bout, winner: Fighter | null, loser:
       ps.interim[d] = winner.id;
       startReign(w, winner, b, "interim", true);
       note(winner, "Won the interim title");
-      addNews(w, { kind: "title", promo: b.promo, ev: b.ev, fighters: [winner.id], big: true, text: `${fullName(winner)} is the interim ${belt.replace("title", "champion")}.` });
+      addNews(w, { kind: "title", promo: b.promo, ev: b.ev, fighters: [winner.id], big: bigStage(b.promo), text: `${fullName(winner)} is the interim ${belt.replace("title", "champion")}.` });
     } else if (winner) note(winner, "Missed weight: not eligible for the belt");
     return;
   }
@@ -498,7 +498,7 @@ function handleTitle(w: World, rng: Rng, b: Bout, winner: Fighter | null, loser:
       }
       startReign(w, winner, b, "vacant");
       note(winner, "Won the vacant title");
-      addNews(w, { kind: "title", promo: b.promo, ev: b.ev, fighters: [winner.id], big: true, text: `${fullName(winner)} wins the vacant ${belt}${ev ? ` at ${ev.name}` : ""}.` });
+      addNews(w, { kind: "title", promo: b.promo, ev: b.ev, fighters: [winner.id], big: bigStage(b.promo), text: `${fullName(winner)} wins the vacant ${belt}${ev ? ` at ${ev.name}` : ""}.` });
     } else if (winner) note(winner, "Missed weight: not eligible for the belt");
     updateRankings(w, b.promo, [d]);
     return;
@@ -548,7 +548,7 @@ function handleTitle(w: World, rng: Rng, b: Bout, winner: Fighter | null, loser:
   }
   startReign(w, winner, b, "won");
   note(winner, wasInterim ? "Unified the titles" : "Won the title");
-  addNews(w, { kind: "title", promo: b.promo, ev: b.ev, fighters: [winner.id, loser.id], big: true, text: `NEW CHAMPION: ${fullName(winner)} beats ${fullName(loser)} for the ${belt}${ev ? ` at ${ev.name}` : ""}.` });
+  addNews(w, { kind: "title", promo: b.promo, ev: b.ev, fighters: [winner.id, loser.id], big: bigStage(b.promo), text: `NEW CHAMPION: ${fullName(winner)} beats ${fullName(loser)} for the ${belt}${ev ? ` at ${ev.name}` : ""}.` });
 }
 
 /** The end of a card: bonuses, rankings, contenders, the pound-for-pound list. */
@@ -603,6 +603,12 @@ function dwcsContracts(w: World, rng: Rng, ev: MMAEvent): void {
     signTo(w, f, "ufc", rng);
     addNews(w, { kind: "signing", promo: "ufc", fighters: [f.id], text: `${fullName(f)} earns a UFC contract on the Contender Series.` });
   }
+}
+
+/** A story big enough to lead: the regional promotions and up, not an amateur or local show. */
+function bigStage(promo: string): boolean {
+  const t = PROMOTIONS[promo as keyof typeof PROMOTIONS].tier;
+  return t !== "amateur" && t !== "local";
 }
 
 export function signTo(w: World, f: Fighter, promo: "ufc" | "pfl" | string, rng: Rng, opts: { fights?: number; show?: number } = {}): void {

@@ -60,7 +60,7 @@ export function Fighters() {
         <span className="small dim">{rows.length} fighters</span>
       </div>
       <div className="panel">
-        <Table cols={cols} rows={rows} rowKey={(f) => f.id} onRow={(f) => go(`/fighter/${f.id}`)} highlight={(f) => !!f.ctrl} initial={{ key: "ovr" }} limit={300} />
+        <Table cols={cols} rows={rows} rowKey={(f) => f.id} onRow={(f) => go(`/fighter/${f.id}`)} highlight={(f) => !!f.ctrl} initial={{ key: "ovr" }} page={50} />
       </div>
     </div>
   );

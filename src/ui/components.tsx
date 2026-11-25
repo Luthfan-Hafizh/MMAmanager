@@ -1,6 +1,6 @@
 // Shared interface pieces.
 
-import { useMemo, useState, type ReactNode } from "react";
+import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { flagUrl, countryOf } from "../data/countries";
 import { DIVISIONS, type DivisionId } from "../data/divisions";
 import { PROMOTIONS, type PromoId } from "../data/promotions";
@@ -159,8 +159,13 @@ export interface Col<R> {
   title?: string;
 }
 
-export function Table<R>({ cols, rows, rowKey, onRow, highlight, initial, compact, limit }: { cols: Col<R>[]; rows: R[]; rowKey: (r: R) => string; onRow?: (r: R) => void; highlight?: (r: R) => boolean; initial?: { key: string; desc?: boolean }; compact?: boolean; limit?: number }) {
+/** A sortable table. `page`: that many rows at a time, with Previous and Next under it. */
+export function Table<R>({ cols, rows, rowKey, onRow, highlight, initial, compact, limit, page }: { cols: Col<R>[]; rows: R[]; rowKey: (r: R) => string; onRow?: (r: R) => void; highlight?: (r: R) => boolean; initial?: { key: string; desc?: boolean }; compact?: boolean; limit?: number; page?: number }) {
   const [sort, setSort] = useState<{ key: string; desc: boolean } | null>(initial ? { key: initial.key, desc: initial.desc ?? true } : null);
+  const [at, setAt] = useState(0);
+  const top = useRef<HTMLDivElement | null>(null);
+  // A new filter or a new sort starts from the first page.
+  useEffect(() => setAt(0), [rows, sort]);
   const sorted = useMemo(() => {
     if (!sort) return rows;
     const c = cols.find((x) => x.key === sort.key);
@@ -173,9 +178,18 @@ export function Table<R>({ cols, rows, rowKey, onRow, highlight, initial, compac
       return sort.desc ? -d : d;
     });
   }, [rows, sort, cols]);
-  const shown = limit ? sorted.slice(0, limit) : sorted;
+  const pages = page ? Math.max(1, Math.ceil(sorted.length / page)) : 1;
+  const cur = Math.min(at, pages - 1);
+  const shown = page ? sorted.slice(cur * page, (cur + 1) * page) : limit ? sorted.slice(0, limit) : sorted;
+  const turn = (n: number) => {
+    setAt(n);
+    // Back to the top of the table, below the bars that stay on screen.
+    const el = top.current;
+    if (el) window.scrollTo({ top: Math.max(0, el.getBoundingClientRect().top + window.scrollY - 120), behavior: "instant" as ScrollBehavior });
+  };
   return (
-    <div className="tbl-wrap">
+    <>
+    <div className="tbl-wrap" ref={top}>
       <table className={`tbl${compact ? " compact" : ""}`}>
         <thead>
           <tr>
@@ -207,6 +221,17 @@ export function Table<R>({ cols, rows, rowKey, onRow, highlight, initial, compac
         </tbody>
       </table>
     </div>
+    {page && sorted.length > page && (
+      <div className="tbl-pager">
+        <span className="small dim">{(cur * page + 1).toLocaleString()}–{Math.min(sorted.length, (cur + 1) * page).toLocaleString()} of {sorted.length.toLocaleString()}</span>
+        <div className="row">
+          <button type="button" className="btn sm" disabled={cur === 0} onClick={() => turn(cur - 1)}>Previous</button>
+          <span className="small">Page {cur + 1} of {pages}</span>
+          <button type="button" className="btn sm" disabled={cur >= pages - 1} onClick={() => turn(cur + 1)}>Next</button>
+        </div>
+      </div>
+    )}
+    </>
   );
 }
 

@@ -31,6 +31,12 @@ export function Rankings({ promo, div }: { promo?: string; div?: string }) {
         }
       />
       <div className="wrap page-body">
+        <nav className="rk-divs" aria-label="Divisions">
+          <button type="button" className={`btn sm${!only ? " on" : ""}`} onClick={() => go(`/rankings/${pid}`)}>All divisions</button>
+          {p.divisions.map((d) => (
+            <button key={d} type="button" className={`btn sm${only === d ? " on" : ""}`} title={DIVISIONS[d].name} onClick={() => go(`/rankings/${pid}/${d}`)}>{DIVISIONS[d].short}</button>
+          ))}
+        </nav>
         {(pid === "ufc" || pid === "pfl") && !only && <P4P w={w} promo={pid} />}
         <div className="rk-grid">
           {divs.map((d) => <DivisionColumn key={d} w={w} promo={pid} d={d} />)}

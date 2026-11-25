@@ -591,7 +591,8 @@ function dwcsContracts(w: World, rng: Rng, ev: MMAEvent): void {
     if (b.status !== "done" || !b.res?.winner) continue;
     const f = w.fighters[b.res.winner === "a" ? b.a : b.b];
     const perf = b.res.perf[b.res.winner === "a" ? 0 : 1];
-    const p = b.res.method !== "DEC" ? 0.72 : perf >= 7.2 ? 0.4 : 0.12;
+    // Most winners who impress get the call, as in recent seasons: about 30 contracts from 50 fights.
+    const p = b.res.method !== "DEC" ? 0.9 : perf >= 7.2 ? 0.7 : 0.35;
     if (!rng.chance(p)) continue;
     f.tags = [...(f.tags ?? []), "dwcs"];
     if (f.ctrl) {

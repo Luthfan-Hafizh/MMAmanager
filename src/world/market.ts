@@ -9,10 +9,10 @@ import { countryOf, REGION_IDS, type RegionId } from "../data/countries";
 import { DIVISIONS, DIVISION_IDS, type DivisionId } from "../data/divisions";
 import { PROMOTIONS, PROMO_IDS, TIER_RANK, promoFor, type PromoId } from "../data/promotions";
 import { ovrOf } from "../model/attributes";
-import type { Fighter, World } from "../model/types";
+import type { Fighter, FightRecord, World } from "../model/types";
 import { addNews, freeAgents, fullName, isChampion, nextId, rankOf, rosterOf, stageFights, touch } from "./core";
 import { contractFor, levelOf, pickGym } from "./create";
-import { generateFighter, makeRecord } from "./generate";
+import { blankRecord, generateFighter, makeRecord } from "./generate";
 import { entryElo } from "./rankings";
 import { clockShift } from "./development";
 import { signTo } from "./results";
@@ -169,26 +169,70 @@ function shortOfContenders(w: World, promo: PromoId, d: DivisionId, want: number
 
 /** A proven fighter from elsewhere: drawn like the promotion's roster at the start, from the part at UFC level. */
 function fromElsewhere(w: World, rng: Rng, promo: PromoId, d: DivisionId): Fighter {
-  const p = PROMOTIONS[promo];
   const [mean, sd] = levelOf(promo)!;
   let o = rng.normal(mean, sd);
   for (let k = 0; k < 40 && o < UFC_LEVEL; k++) o = rng.normal(mean, sd);
   o = clamp(o, UFC_LEVEL, 80);
   const age = Math.round(clamp(rng.normal(27, 3.2), 21, 33));
+  return newcomer(w, rng, promo, d, o, age, false);
+}
+
+/** A fighter from a show the game doesn't run, signed to a regional promotion. */
+function newcomer(w: World, rng: Rng, promo: PromoId, d: DivisionId, o: number, age: number, prospect: boolean): Fighter {
+  const p = PROMOTIONS[promo];
   const f = generateFighter(rng, { id: nextId(w, "f"), region: p.region as RegionId, div: d, ovr: o, age, day: w.day });
   f.gym = pickGym(w, rng, f.country, o).id;
-  f.rec = makeRecord(rng, o, age, 2, false);
+  f.rec = prospect ? prospectRecord(rng) : makeRecord(rng, o, age, 2, false);
   f.am = makeRecord(rng, o, Math.min(age, 22), 0, true);
   f.promo = promo;
   f.contract = contractFor(promo, f, w.day, rng);
   f.elo = entryElo(promo, ovrOf(f.attrs), 1500) + (f.rec.w - f.rec.l) * 6;
-  f.lastFight = w.day - rng.int(30, 150);
-  f.streak = rng.chance(0.6) ? rng.int(1, 3) : -rng.int(1, 2);
+  f.lastFight = w.day - rng.int(prospect ? 60 : 30, 150);
+  f.streak = prospect ? rng.int(2, 5) : rng.chance(0.6) ? rng.int(1, 3) : -rng.int(1, 2);
   f.pop = Math.round(clamp((o - 40) * 0.6 + rng.normal(0, 5), 1, 40));
   f.joined = w.day;
   w.fighters[f.id] = f;
   touch(w);
   return f;
+}
+
+/** A prospect's record: five to eleven wins, the finishes a scout notices, and no more than two losses. */
+function prospectRecord(rng: Rng): FightRecord {
+  const r = blankRecord();
+  const wins = rng.int(5, 11);
+  const losses = rng.chance(0.3) ? 0 : rng.int(1, 2);
+  for (let k = 0; k < wins; k++) {
+    r.w++;
+    const m = rng.next();
+    if (m < 0.42) r.koW++;
+    else if (m < 0.68) r.subW++;
+    else r.decW++;
+  }
+  for (let k = 0; k < losses; k++) {
+    r.l++;
+    const m = rng.next();
+    if (m < 0.33) r.koL++;
+    else if (m < 0.58) r.subL++;
+    else r.decL++;
+  }
+  return r;
+}
+
+/** Where Contender Series hopefuls come from: the Americas most, then Europe, then the rest. */
+const TRYOUT_REGIONS: Record<RegionId, number> = { na: 4, sa: 2.5, we: 1.2, ee: 1.5, ea: 0.6, af: 0.5, wa: 0.5, oc: 0.6 };
+
+/**
+ * A prospect for the Contender Series from a show the game doesn't run (the real
+ * one scouts the whole world, not eight regional promotions): 21 to 31, at the
+ * level of a UFC newcomer, on a run. Signed to the regional promotion of the
+ * region, so whatever happens on the night there is a career to go back to.
+ */
+export function tryoutProspect(w: World, rng: Rng, d: DivisionId): Fighter {
+  const regions = REGION_IDS.filter((r) => promoFor(r, "regional")?.divisions.includes(d));
+  const region = rng.weighted(regions, (r) => TRYOUT_REGIONS[r]);
+  const o = clamp(rng.normal(65.5, 1.8), 64, 70);
+  const age = Math.round(clamp(rng.normal(26, 2.4), 21, 31));
+  return newcomer(w, rng, promoFor(region, "regional")!.id, d, o, age, true);
 }
 
 /** Promotions fill their divisions from the level below and from free agents. */

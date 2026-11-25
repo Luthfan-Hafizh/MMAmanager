@@ -11,6 +11,7 @@ import { ovrOf } from "../model/attributes";
 import type { Bout, BoutKind, Fact, FightOffer, Fighter, MMAEvent, World } from "../model/types";
 import { addNews, availableFrom, daysSinceFight, fullName, isControlled, nextId, rankLabel, rankOf, rosterOf, stageFights } from "./core";
 import { lostToRecently, ratingFor } from "./rankings";
+import { tryoutProspect } from "./market";
 import { setOdds } from "./odds";
 import { calloutFor } from "../career/fightweek";
 import { grudgeBonus, heatOf, rivalsOf } from "../career/rivals";
@@ -416,6 +417,22 @@ export function fillCard(w: World, rng: Rng, ev: MMAEvent, size: number): void {
   }
 }
 
+/**
+ * The records the Contender Series invites: a prospect's (no more than half as many
+ * losses as wins, or two), a fighter on a run with a winning record, or a regional
+ * champion. Records built in this world fill up with the losses of an even regional
+ * scene, and a stricter rule (a third as many losses) left later seasons half empty.
+ */
+function tryoutRecord(w: World, f: Fighter): boolean {
+  const { w: won, l: lost } = f.rec;
+  return lost <= Math.max(2, won / 2) || (f.streak >= 2 && won >= lost * 1.5) || (!!f.promo && w.promos[f.promo]?.champs[f.div] === f.id);
+}
+
+/** Who the scouts put first: the talent, the form and a clean record. */
+function tryoutScore(f: Fighter): number {
+  return ovrOf(f.attrs) + Math.max(-1, f.streak) + clamp((f.rec.w - 2 * f.rec.l) * 0.3, -3, 3);
+}
+
 /** Ten weeks of tryouts: the best prospects from the regional scene, one fight for a UFC deal. */
 function buildDwcs(w: World, rng: Rng, ev: MMAEvent): void {
   const cands = Object.values(w.fighters).filter((f) => {
@@ -425,12 +442,12 @@ function buildDwcs(w: World, rng: Rng, ev: MMAEvent): void {
     if (f.tags?.includes("ufc-alum")) return false;
     const age = (w.day - f.birth) / 365.25;
     if (age > 32 || f.rec.w < 4) return false;
-    if (f.rec.l > Math.max(2, f.rec.w / 3)) return false;
+    if (!tryoutRecord(w, f)) return false;
     if (availableFrom(f) > ev.day - 21) return false;
     if (f.lastFight !== null && ev.day - f.lastFight < 49) return false;
     return ovrOf(f.attrs) >= 64;
   });
-  cands.sort((a, b) => ovrOf(b.attrs) + b.streak - (ovrOf(a.attrs) + a.streak));
+  cands.sort((a, b) => tryoutScore(b) - tryoutScore(a));
   const pool = cands.slice(0, 60);
   const byDiv = new Map<DivisionId, Fighter[]>();
   for (const f of pool) {
@@ -455,13 +472,22 @@ function buildDwcs(w: World, rng: Rng, ev: MMAEvent): void {
     while (list.length >= 2 && ev.bouts.length < 5 && n < 8) {
       const a = list.shift()!;
       const j = list.findIndex((x) => !teammates(a, x) && !x.booked);
-      if (j < 0) break;
+      if (j < 0) continue; // only teammates left for this one: the others in the division can still meet
       const b = list.splice(j, 1)[0];
       if (a.booked || b.booked) continue;
       makeBout(w, ev, a, b, "tryout");
       n++;
     }
     if (ev.bouts.length >= 5) break;
+  }
+  // Short of prospects on the shows the game runs, the scouts look further: the rest
+  // of the card goes to prospects from elsewhere, at the weights the UFC carries most.
+  for (let k = 0; ev.bouts.length < 5 && k < 10; k++) {
+    const d = rng.weighted(PROMOTIONS.dwcs.divisions, (x) => DIVISIONS[x].ufc);
+    const a = tryoutProspect(w, rng, d);
+    let b = tryoutProspect(w, rng, d);
+    for (let t = 0; t < 3 && teammates(a, b); t++) b = tryoutProspect(w, rng, d);
+    if (!teammates(a, b)) makeBout(w, ev, a, b, "tryout");
   }
 }
 

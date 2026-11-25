@@ -6,12 +6,12 @@ import type { Rng } from "../core/rng";
 import { clamp } from "../core/util";
 import { ageAt, ymd } from "../core/time";
 import { countryOf, REGION_IDS, type RegionId } from "../data/countries";
-import { DIVISIONS, type DivisionId } from "../data/divisions";
+import { DIVISIONS, DIVISION_IDS, type DivisionId } from "../data/divisions";
 import { PROMOTIONS, PROMO_IDS, TIER_RANK, promoFor, type PromoId } from "../data/promotions";
 import { ovrOf } from "../model/attributes";
 import type { Fighter, World } from "../model/types";
-import { addNews, freeAgents, fullName, isChampion, nextId, rankOf, rosterOf, touch } from "./core";
-import { contractFor, pickGym } from "./create";
+import { addNews, freeAgents, fullName, isChampion, nextId, rankOf, rosterOf, stageFights, touch } from "./core";
+import { contractFor, levelOf, pickGym } from "./create";
 import { generateFighter, makeRecord } from "./generate";
 import { entryElo } from "./rankings";
 import { clockShift } from "./development";
@@ -93,7 +93,9 @@ export function monthlyMarket(w: World, rng: Rng): void {
     // Losing runs.
     if (isChampion(w, f) || f.booked) continue;
     const top = f.promo === "ufc" || f.promo === "pfl";
-    const fightsHere = f.bouts.filter((id) => w.bouts[id]?.promo === f.promo && w.bouts[id]?.status === "done").length;
+    // Fights on this stage, counting a real fighter's before the world began: a
+    // ten-fight UFC veteran on a two-fight skid is not a newcomer who started 0-2.
+    const fightsHere = stageFights(w, f, f.promo);
     let pCut = 0;
     if (f.streak <= -3) pCut = top ? 0.6 : 0.3;
     else if (f.streak <= -2 && top && fightsHere <= 4 && rankOf(w, f) === null) pCut = 0.28;
@@ -106,9 +108,17 @@ export function monthlyMarket(w: World, rng: Rng): void {
   touch(w);
 }
 
+/**
+ * The UFC's month-to-month signings fill each division to 96% of its real size
+ * (641 of 668), leaving room for the Contender Series contracts handed out every
+ * autumn whatever the room: the roster rises with them and settles back through
+ * the year, at about 620-660.
+ */
+const UFC_FILL = 0.96;
+
 function rosterTarget(promo: PromoId, d: DivisionId): number {
   const p = PROMOTIONS[promo];
-  if (promo === "ufc") return DIVISIONS[d].ufc;
+  if (promo === "ufc") return Math.round(DIVISIONS[d].ufc * UFC_FILL);
   if (promo === "pfl") return DIVISIONS[d].sex === "F" ? 14 : 22;
   return Math.round(p.rosterPerDiv * (DIVISIONS[d].sex === "F" ? 0.6 : 1));
 }
@@ -124,6 +134,63 @@ function signable(f: Fighter, wins: number, ratio: number): boolean {
   return f.rec.w >= wins && f.rec.w >= f.rec.l * ratio;
 }
 
+/** The overall the UFC signs from. */
+const UFC_LEVEL = 65;
+
+/**
+ * The regional shows the game doesn't run. Each region's regional promotion
+ * stands for dozens of real ones, and the UFC signs over a hundred fighters a
+ * year from all of them; the eight here can't raise that many from their own
+ * local shows, and without help the top of the regional scene (and with it the
+ * Contender Series and the UFC's signings) ran dry within two years. So a
+ * regional division keeps about a quarter of its roster at UFC level (65 and
+ * up, 33 or younger), about as many as when the world began, more at the
+ * weights where the UFC carries more fighters (four lightweights, two
+ * flyweights): with fewer, it fills an opening with one, from its local show
+ * or free agency if anyone that good is there, otherwise a proven fighter from
+ * a show the game doesn't run.
+ */
+const CONTENDER_SHARE = 0.25;
+
+function isContender(w: World, f: Fighter): boolean {
+  return ovrOf(f.attrs) >= UFC_LEVEL && ageAt(f.birth, w.day) <= 33;
+}
+
+/** The UFC's roster at this weight against the average of its divisions for the same sex. */
+function ufcWeight(d: DivisionId): number {
+  const same = DIVISION_IDS.filter((x) => DIVISIONS[x].sex === DIVISIONS[d].sex);
+  return (DIVISIONS[d].ufc * same.length) / same.reduce((a, x) => a + DIVISIONS[x].ufc, 0);
+}
+
+function shortOfContenders(w: World, promo: PromoId, d: DivisionId, want: number): boolean {
+  const keep = Math.round(want * CONTENDER_SHARE * ufcWeight(d));
+  return rosterOf(w, promo, d).filter((f) => isContender(w, f)).length < keep;
+}
+
+/** A proven fighter from elsewhere: drawn like the promotion's roster at the start, from the part at UFC level. */
+function fromElsewhere(w: World, rng: Rng, promo: PromoId, d: DivisionId): Fighter {
+  const p = PROMOTIONS[promo];
+  const [mean, sd] = levelOf(promo)!;
+  let o = rng.normal(mean, sd);
+  for (let k = 0; k < 40 && o < UFC_LEVEL; k++) o = rng.normal(mean, sd);
+  o = clamp(o, UFC_LEVEL, 80);
+  const age = Math.round(clamp(rng.normal(27, 3.2), 21, 33));
+  const f = generateFighter(rng, { id: nextId(w, "f"), region: p.region as RegionId, div: d, ovr: o, age, day: w.day });
+  f.gym = pickGym(w, rng, f.country, o).id;
+  f.rec = makeRecord(rng, o, age, 2, false);
+  f.am = makeRecord(rng, o, Math.min(age, 22), 0, true);
+  f.promo = promo;
+  f.contract = contractFor(promo, f, w.day, rng);
+  f.elo = entryElo(promo, ovrOf(f.attrs), 1500) + (f.rec.w - f.rec.l) * 6;
+  f.lastFight = w.day - rng.int(30, 150);
+  f.streak = rng.chance(0.6) ? rng.int(1, 3) : -rng.int(1, 2);
+  f.pop = Math.round(clamp((o - 40) * 0.6 + rng.normal(0, 5), 1, 40));
+  f.joined = w.day;
+  w.fighters[f.id] = f;
+  touch(w);
+  return f;
+}
+
 /** Promotions fill their divisions from the level below and from free agents. */
 function signings(w: World, rng: Rng): void {
   const order: PromoId[] = ["ufc", "pfl", ...PROMO_IDS.filter((id) => PROMOTIONS[id].tier === "regional"), ...PROMO_IDS.filter((id) => PROMOTIONS[id].tier === "local")];
@@ -136,6 +203,15 @@ function signings(w: World, rng: Rng): void {
       if (need <= 0) continue;
       const cands = candidatesFor(w, promo, d);
       cands.sort((a, b) => candidateScore(w, b) - candidateScore(w, a));
+      if (p.tier === "regional" && shortOfContenders(w, promo, d, want)) {
+        // A contender already on hand (from its local show, or a free agent) first, then one from elsewhere.
+        const own = cands.find((f) => isContender(w, f));
+        if (own) cands.unshift(...cands.splice(cands.indexOf(own), 1));
+        else {
+          fromElsewhere(w, rng, promo, d);
+          need--;
+        }
+      }
       for (const f of cands) {
         if (need <= 0) break;
         if (f.booked) continue;
@@ -162,7 +238,7 @@ function candidatesFor(w: World, promo: PromoId, d: DivisionId): Fighter[] {
     const age = ageAt(f.birth, w.day);
     const o = ovrOf(f.attrs);
     if (promo === "ufc") {
-      if (o < 65 || age > 34) return;
+      if (o < UFC_LEVEL || age > 34) return;
       if (f.promo && PROMOTIONS[f.promo].tier === "league" && f.contract && f.contract.left > 0) return;
       // From the regional scene: a champion, a fighter on a run, or a proven record and the talent.
       if (f.promo && PROMOTIONS[f.promo].tier === "regional" && !(isChampion(w, f) || (f.streak >= 2 && signable(f, 5, 1.5)) || (f.streak >= 0 && signable(f, 7, 2.5) && o >= 66))) return;

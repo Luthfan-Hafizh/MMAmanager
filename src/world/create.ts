@@ -298,11 +298,19 @@ export function contractFor(promo: PromoId, f: Fighter, day: number, rng: Rng, o
   };
 }
 
-function populate(w: World, rng: Rng, promo: PromoId): void {
+/** A promotion's level: its fighters' mean overall and spread, by tier and prestige. */
+export function levelOf(promo: PromoId): [number, number] | null {
   const p = PROMOTIONS[promo];
   const lvl = TIER_LEVEL[p.tier];
-  if (!lvl || p.region === "global") return;
+  if (!lvl) return null;
   const prestigeShift = (p.prestige - (p.tier === "regional" ? 40 : p.tier === "local" ? 17 : 6)) * 0.12;
+  return [lvl[0] + prestigeShift, lvl[1]];
+}
+
+function populate(w: World, rng: Rng, promo: PromoId): void {
+  const p = PROMOTIONS[promo];
+  const lvl = levelOf(promo);
+  if (!lvl || p.region === "global") return;
   for (const d of p.divisions) {
     const women = DIVISIONS[d].sex === "F";
     const count = Math.round(p.rosterPerDiv * (women ? 0.6 : 1));
@@ -310,7 +318,7 @@ function populate(w: World, rng: Rng, promo: PromoId): void {
     for (let k = 0; k < count; k++) {
       const ageMean = p.tier === "amateur" ? 21 : p.tier === "local" ? 25.5 : 27.5;
       const age = Math.round(clamp(rng.normal(ageMean, p.tier === "amateur" ? 2.2 : 3.6), p.tier === "amateur" ? 17 : 19, 38));
-      const o = clamp(rng.normal(lvl[0] + prestigeShift, lvl[1]), 35, 80);
+      const o = clamp(rng.normal(lvl[0], lvl[1]), 35, 80);
       const f = generateFighter(rng, { id: nextId(w, "f"), region: p.region as RegionId, div: d, ovr: o, age, day: w.day, amateur: p.tier === "amateur" });
       f.gym = pickGym(w, rng, f.country, o).id;
       if (p.tier === "amateur") f.am = makeRecord(rng, o, age, 0, true);

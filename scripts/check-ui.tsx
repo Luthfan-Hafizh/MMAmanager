@@ -57,6 +57,8 @@ import { neckWork, templatePlan, trainingWeek } from "../src/career/training";
 import { justDethroned, updateRankings } from "../src/world/rankings";
 import { rankOf } from "../src/world/core";
 import { repair } from "../src/world/create";
+import { declineChoices, rapport, rapportLabel } from "../src/career/promoter";
+import { DeclinePicker } from "../src/ui/decline";
 
 const g = globalThis as unknown as Record<string, unknown>;
 g.window = { location: { hash: "" }, addEventListener() {}, removeEventListener() {} };
@@ -678,6 +680,74 @@ pages(tw, "Retired fighter turned manager");
   const qs = withRng(pw, (rng) => preQuestions(pw, rng, me, bt, opp, "respect")).filter(Boolean);
   if (!qs.some((q) => q!.q.includes("is your home town"))) fail("no home-town question for a fight in the fighter's home town");
   else console.log(`PFL pound for pound (#1 ${pw.fighters[pw.promos.pfl.p4p![0]].surname}), every PFL division ranked, no "new" on the first rankings; finished fights show the ranks going in; ${me.hometown} gets its own press question`);
+}
+
+// Turning a fight down: the matchmaker weighs the reason, the relationship pays for a
+// weak one, ducking a name gets out, a valuable fighter can say no to the money once,
+// and whoever was turned down is not the next offer.
+{
+  const fail = (what: string) => { failures++; console.log(`  FAIL ${what}`); };
+  const dw = createWorld(roster, { name: "UI", seed: 97, mode: "fighter", difficulty: "normal", created: { first: "Turn", surname: "Down", sex: "M", country: "US", div: "WW", age: 25, height: 72, reach: 74, stance: "orthodox", art: "wrestling", talent: "prospect", start: "regional" } });
+  setWorld(dw);
+  const me = dw.fighters[dw.career.fighters[0]];
+  const promo = me.promo!;
+  const free = () => {
+    if (me.booked && dw.bouts[me.booked]) cancelBout(dw, dw.bouts[me.booked], "test");
+    me.booked = null;
+    me.injury = null;
+    me.susp = 0;
+    me.lastFight = dw.day - 120;
+  };
+  const evs = dw.upcoming.map((id) => dw.events[id]).filter((e) => e.promo === promo && e.day - dw.day > 30);
+  const msgOf = (id: string) => dw.inbox.find((m) => m.ref === id && m.needs && !m.done);
+  free();
+  const o1 = withRng(dw, (rng) => offerFight(dw, rng, evs[0], me));
+  if (!o1) fail(`no ${promo} offer to turn down`);
+  else {
+    const choices = declineChoices(dw, o1);
+    const picker = renderToString(<DeclinePicker w={dw} o={o1} onPick={() => {}} onCancel={() => {}} />).replace(/<!-- -->/g, "");
+    if (choices.length !== 7 || choices.filter((c) => c.best).length !== 1 || !picker.includes("Tell the matchmaker why") || !picker.includes("Best reason")) fail("the reasons for turning a fight down don't show, or no single best reason");
+    const before = rapport(dw, me.id, promo);
+    const reply = answer(dw, msgOf(o1.id)!.id, "decline:hurt");
+    const after = rapport(dw, me.id, promo);
+    const firstOpp = o1.opp;
+    if (after !== before - 6 || !/aren't convinced/.test(reply) || !dw.inbox.some((m) => m.subject === `Re: ${dw.fighters[firstOpp].surname}`)) fail(`a fit fighter claiming an injury should cost 6 and get a reply (${before} -> ${after}: ${reply})`);
+    free();
+    const o2 = withRng(dw, (rng) => offerFight(dw, rng, evs[1], me));
+    if (!o2 || o2.opp === firstOpp) fail(`after turning down ${dw.fighters[firstOpp].surname}, the next offer should be someone else (got ${o2 ? dw.fighters[o2.opp].surname : "nothing"})`);
+    else {
+      // Ducking: a better, better-known opponent, turned down for "a bigger name".
+      const opp = dw.fighters[o2.opp];
+      opp.elo = me.elo + 120;
+      opp.pop = 45;
+      const news = dw.news.length;
+      const r0 = rapport(dw, me.id, promo);
+      answer(dw, msgOf(o2.id)!.id, "decline:bigger");
+      const ducked = dw.news.slice(0, dw.news.length - news + 1).some((n) => n.text.includes(`turned down a fight with ${opp.first} ${opp.surname}`));
+      if (rapport(dw, me.id, promo) !== r0 - 9 || !ducked || heatOf(dw, me.id, opp.id) < 8) fail(`turning down a better name for "a bigger name" should cost 9, make the news and start bad blood (${r0} -> ${rapport(dw, me.id, promo)}, news ${ducked}, heat ${heatOf(dw, me.id, opp.id)})`);
+      // The money: a fighter the promotion values hears back once with more.
+      free();
+      me.pop = 55;
+      // On strained terms (35 after those two) there's no better number: back to good terms first.
+      dw.career.fc[me.id].rapport = { ...dw.career.fc[me.id].rapport, [promo]: 60 };
+      const o3 = withRng(dw, (rng) => offerFight(dw, rng, evs[2], me));
+      if (!o3 || o3.opp === firstOpp || o3.opp === opp.id) fail(`the third offer should be a third opponent (got ${o3 ? dw.fighters[o3.opp].surname : "nothing"})`);
+      else {
+        const show = o3.show;
+        answer(dw, msgOf(o3.id)!.id, "decline:money");
+        const again = msgOf(o3.id);
+        const raised = o3.status === "open" && !!o3.raised && o3.show > show && !!again;
+        if (again) answer(dw, again.id, "decline:money");
+        if (!raised || o3.status !== "declined") fail(`a valuable fighter's "not for this money" should bring one better number, then the matchmaker walks (raised ${raised}, ${o3.status})`);
+        else {
+          setWorld(dw);
+          const page = renderToString(<Contracts id={me.id} />).replace(/<!-- -->/g, "");
+          if (!page.includes("Matchmakers") || !page.includes("Turned down")) fail("the Contracts page doesn't show the matchmakers and what moved them");
+          else console.log(`Turning fights down: an excuse cost 6, ducking ${opp.surname} cost 9 and made the news, the money got ${PROMOTIONS[promo].short} up from ${show} to ${o3.show} once; three offers, three opponents; ${PROMOTIONS[promo].short} now ${rapportLabel(rapport(dw, me.id, promo)).toLowerCase()} terms (${Math.round(rapport(dw, me.id, promo))})`);
+        }
+      }
+    }
+  }
 }
 
 const mw = createWorld(roster, { name: "UI", seed: 79, mode: "manager", difficulty: "normal", agency: "Check Management" });

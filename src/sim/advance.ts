@@ -27,6 +27,7 @@ import { fightWeekDaily } from "../career/fightweek";
 import { pressDaily } from "../career/media";
 import { lifeAfterEvent, lifeWeekly } from "../career/life";
 import { coolHeat } from "../career/rivals";
+import { driftRapport } from "../career/promoter";
 import { walkMonthly } from "../career/moves";
 import { legacyMonthly } from "../world/legacy";
 import { retirementTalk } from "../career/retire";
@@ -114,6 +115,7 @@ function weekly(w: World, rng: Rng): void {
   }
   weeklySponsors(w);
   coolHeat(w);
+  driftRapport(w);
   lifeWeekly(w, rng);
 }
 

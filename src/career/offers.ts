@@ -20,6 +20,7 @@ import { entryElo } from "../world/rankings";
 import { startCamp } from "./camp";
 import { closeMessages, notify } from "./inbox";
 import { ledger } from "./money";
+import { adjustRapport, applyDecline, dealFactor, passOn, rapport, rapportFacts, type DeclineReason } from "./promoter";
 
 // ---------- fights ----------
 
@@ -35,6 +36,14 @@ export function acceptFight(w: World, offerId: string): string {
   }
   o.status = "accepted";
   b.pending = undefined;
+  {
+    // Saying yes is remembered, stepping in on short notice most of all.
+    const them = w.fighters[o.opp];
+    const notice = Math.max(0, o.day - w.day);
+    if (o.shortNotice && !o.stay) adjustRapport(w, f, o.promo, 6, `Stepped in against ${them.surname} on ${notice} days' notice`);
+    else if (o.stay) adjustRapport(w, f, o.promo, 2, `Took ${them.surname} as the new opponent`);
+    else adjustRapport(w, f, o.promo, 1, `Took the fight with ${them.surname}`);
+  }
   // A bigger promotion's short-notice call comes with its contract.
   if (o.debut && f.promo !== o.debut) {
     const from = f.promo;
@@ -93,11 +102,46 @@ export function acceptFight(w: World, offerId: string): string {
   return "Fight accepted.";
 }
 
-export function declineFight(w: World, offerId: string, auto = false): string {
+/**
+ * Turn a fight down. With a reason the matchmaker answers (and a fighter worth it
+ * who says no to the money hears back with more); without one, or when the offer
+ * lapses, the relationship takes a knock. Either way the opponent is off the table
+ * for a while. `moved`: the offers fall away with a change of division or gym.
+ */
+export function declineFight(w: World, offerId: string, auto = false, reason?: DeclineReason | "moved"): string {
   const o = w.career.fightOffers.find((x) => x.id === offerId);
   if (!o || o.status !== "open") return "This offer is no longer open.";
-  o.status = auto ? "expired" : "declined";
   const f = w.fighters[o.fighter];
+  const opp = w.fighters[o.opp];
+  const p = PROMOTIONS[o.promo];
+  let reply = "";
+  if (!auto && reason && reason !== "moved") {
+    const out = withRng(w, (rng) => applyDecline(w, rng, o, reason));
+    if (out.raised) {
+      // The same fight for more money: a new message to answer.
+      closeMessages(w, o.id, "Asked for more");
+      notify(w, {
+        kind: "offer",
+        fighter: f.id,
+        ref: o.id,
+        from: `${p.short} matchmaker`,
+        subject: `A better number for ${opp.surname}`,
+        body: out.reply,
+        needs: true,
+        actions: [
+          { id: "accept", label: "Take it", primary: true },
+          { id: "decline", label: "Turn it down", danger: true },
+        ],
+      });
+      touch(w);
+      return out.reply;
+    }
+    reply = out.reply;
+  } else if (reason !== "moved" && opp) {
+    adjustRapport(w, f, o.promo, auto ? -(o.shortNotice ? 2 : 4) : -3, auto ? `Let the offer to fight ${opp.surname} lapse` : `Turned down ${opp.surname} without a reason`);
+    passOn(w, f, opp, o.promo);
+  }
+  o.status = auto ? "expired" : "declined";
   const b = Object.values(w.bouts).find((x) => x.pending === o.id);
   if (b && b.status === "booked") {
     b.pending = undefined;
@@ -112,8 +156,10 @@ export function declineFight(w: World, offerId: string, auto = false): string {
     } else cancelBout(w, b, "Declined");
   }
   const fc = w.career.fc[o.fighter];
-  if (fc && !o.shortNotice) fc.lastAsk = w.day + (o.kind === "title" ? 10 : 14);
+  // With a reason, the matchmaker has already set the wait.
+  if (fc && !o.shortNotice && !reply) fc.lastAsk = w.day + (o.kind === "title" ? 10 : 14);
   closeMessages(w, o.id, auto ? "Expired" : "Declined");
+  if (reply) notify(w, { kind: "info", fighter: f.id, from: `${p.short} matchmaker`, subject: `Re: ${opp.surname}`, body: reply, facts: rapportFacts(w, f, o.promo) });
   // A champion turning down defences, or an interim champion the fights for the belts, loses the belt on the second.
   const holder = o.kind === "title" && isChampion(w, f) ? "champ" : (o.kind === "title" || o.kind === "interim") && isInterim(w, f) ? "interim" : null;
   if (holder === "interim") {
@@ -150,7 +196,7 @@ export function declineFight(w: World, offerId: string, auto = false): string {
     }
   }
   touch(w);
-  return auto ? "The offer expired." : "Fight declined.";
+  return auto ? "The offer expired." : reply || "Fight declined.";
 }
 
 export function expireOffers(w: World): void {
@@ -206,7 +252,8 @@ export function valueOf(w: World, f: Fighter, promo: PromoId): number {
 export function makeContractOffer(w: World, rng: Rng, f: Fighter, promo: PromoId, opts: { renewal?: boolean; note?: string; rivals?: number } = {}): ContractOffer | null {
   if (w.career.contractOffers.some((o) => o.fighter === f.id && o.promo === promo && o.status === "open")) return null;
   const p = PROMOTIONS[promo];
-  const value = valueOf(w, f, promo);
+  // The relationship with the promotion moves where its deal opens and how far it will go.
+  const value = valueOf(w, f, promo) * dealFactor(rapport(w, f.id, promo));
   const fc = w.career.fc[f.id];
   const mgr = w.career.mode === "manager" ? 0.08 + (w.career.agency?.rep ?? 20) / 800 : fc?.manager ? 0.06 + fc.manager.quality / 1000 : 0;
   const opening = Math.round((value * (0.82 + rng.next() * 0.1) * (1 + mgr)) / 100) * 100;

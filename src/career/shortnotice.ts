@@ -13,6 +13,7 @@ import { PROMOTIONS, TIER_RANK, type PromoId } from "../data/promotions";
 import { ovrOf } from "../model/attributes";
 import type { Bout, Fighter, MMAEvent, World } from "../model/types";
 import { rankOf } from "../world/core";
+import { callFactor, passedOn, rapport } from "./promoter";
 
 /** The weight a bout is contracted at. */
 export function boutLimit(b: Pick<Bout, "div" | "limit">): number {
@@ -132,6 +133,9 @@ export function findCall(w: World, ev: MMAEvent, b: Bout, stay: Fighter, days: n
     // division up, a catchweight, or walking near the limit) can be called days
     // out; one facing a hard cut rarely gets the call.
     if (days <= 7) chance *= cut.risk === "none" || cut.risk === "easy" ? 1.35 : cut.risk === "hard" ? 0.45 : 0.85;
+    // The matchmaker rings the fighters it trusts first, and not about an opponent you just turned down.
+    if (passedOn(w, f, ev.promo).has(stay.id)) continue;
+    chance *= callFactor(rapport(w, f.id, ev.promo));
     if (!best || chance > best.chance) best = { f, limit, debut, chance };
   }
   return best;

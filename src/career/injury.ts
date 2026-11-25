@@ -16,6 +16,7 @@ import { orderCard, withdraw } from "../world/matchmaking";
 import { setOdds } from "../world/odds";
 import { vacate } from "../world/titles";
 import { notify } from "./inbox";
+import { adjustRapport } from "./promoter";
 
 /** "Torn ACL" in a sentence: "torn ACL". */
 export function lc(name: string): string {
@@ -173,6 +174,8 @@ export function answerInjury(w: World, rng: Rng, f: Fighter, action: string, ref
   const b = ref ? w.bouts[ref] : undefined;
   if (!b || b.status !== "booked") return "That fight is no longer on.";
   if (action === "pull-out") {
+    // Hurt is hurt, but a hole in the card still costs the matchmaker a little.
+    adjustRapport(w, f, b.promo, -2, `Pulled out of the ${w.fighters[b.a === f.id ? b.b : b.a]?.surname ?? ""} fight hurt`.replace("the  fight", "a fight"));
     withdraw(w, rng, b, f.id, lc(f.injury?.name ?? "injury"));
     if (fc) fc.camp = null;
     return "Pulled out of the fight. The promotion will find your opponent someone else.";

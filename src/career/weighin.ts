@@ -16,6 +16,7 @@ import { cancelBout } from "../world/matchmaking";
 import { notify } from "./inbox";
 import { ledger, payShowOnly } from "./money";
 import { addHeat, addMoment, addPop, heatOf, stageMul } from "./rivals";
+import { adjustRapport } from "./promoter";
 import { boutLimit } from "./shortnotice";
 import { tierFine } from "./media";
 
@@ -90,6 +91,8 @@ function weighFacts(w: World, b: Bout, f: Fighter, opp: Fighter, side: Side): Fa
 }
 
 function missDecision(w: World, b: Bout, f: Fighter, opp: Fighter, side: Side): void {
+  // The matchmaker remembers who doesn't make weight.
+  adjustRapport(w, f, b.promo, -6, `Missed weight for ${opp.surname}`);
   const lim = boutLimit(b);
   const allow = weightAllowance(b);
   const wt = b.weighIn![side];

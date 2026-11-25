@@ -5,6 +5,7 @@ import { answer } from "../../career/actions";
 import { openSession, sessionById } from "../../career/media";
 import { adviseContract, adviseInjury } from "../../career/advisor";
 import { AdviceCard, FightOfferView } from "../advice";
+import { DeclinePicker } from "../decline";
 import { changed, toast, useWorld } from "../../state/store";
 import { go, Link } from "../router";
 import { Empty, Facts, Seg } from "../components";
@@ -36,6 +37,8 @@ const KIND: Record<Message["kind"], string> = {
 export function Inbox({ id }: { id?: string }) {
   const w = useWorld();
   const [filter, setFilter] = useState<"all" | "decide" | "unread">("all");
+  // The reasons for turning a fight down, open for this message.
+  const [picking, setPicking] = useState<string | null>(null);
   // On a phone the list and the message stack: opening one scrolls to it.
   const bodyRef = useRef<HTMLDivElement | null>(null);
   useEffect(() => {
@@ -63,7 +66,7 @@ export function Inbox({ id }: { id?: string }) {
       return;
     }
     const text = answer(w, cur.id, a);
-    if (text) toast(text, a === "decline" || a === "reject" || a === "pull-out" ? "info" : "good");
+    if (text) toast(text, a.startsWith("decline") || a === "reject" || a === "pull-out" ? "info" : "good");
     changed();
   };
   const markAll = () => {
@@ -134,11 +137,19 @@ export function Inbox({ id }: { id?: string }) {
                 const f = o ? w.fighters[o.fighter] : null;
                 return o && f && o.status === "open" ? <div style={{ marginTop: 18 }}><AdviceCard a={adviseContract(w, f, o)} /></div> : null;
               })()}
-              {cur.actions && !cur.done && (
+              {cur.actions && !cur.done && picking === cur.id && cur.kind === "offer" && (() => {
+                const o = w.career.fightOffers.find((x) => x.id === cur.ref && x.status === "open");
+                return o ? (
+                  <div style={{ marginTop: 18 }}>
+                    <DeclinePicker w={w} o={o} onCancel={() => setPicking(null)} onPick={(r) => { setPicking(null); act(`decline:${r}`); }} />
+                  </div>
+                ) : null;
+              })()}
+              {cur.actions && !cur.done && picking !== cur.id && (
                 <div className="row" style={{ marginTop: 18 }}>
                   {cur.actions.map((a) => (
-                    <button key={a.id} className={`btn${a.primary ? " primary" : a.danger ? " danger" : ""}`} onClick={() => act(a.id)}>
-                      {a.label}
+                    <button key={a.id} className={`btn${a.primary ? " primary" : a.danger ? " danger" : ""}`} onClick={() => (cur.kind === "offer" && a.id === "decline" ? setPicking(cur.id) : act(a.id))}>
+                      {a.label}{cur.kind === "offer" && a.id === "decline" ? "…" : ""}
                     </button>
                   ))}
                   {cur.kind === "offer" && cur.ref && (() => {

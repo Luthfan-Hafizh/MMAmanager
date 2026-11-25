@@ -449,6 +449,8 @@ export interface FightOffer {
   stay?: boolean;
   /** Who pulled out. */
   replaced?: string;
+  /** Turned down for the money once, and the purse went up. */
+  raised?: boolean;
 }
 
 export interface ContractOffer {
@@ -574,6 +576,14 @@ export interface FighterCareer {
   bmfCall?: number;
   /** Invited cageside at an event (where a face-off with the champion can happen). */
   cageside?: { ev: string; champ?: string };
+  /** The working relationship with each promotion's matchmaker, 0..100 (50 when missing). */
+  rapport?: Partial<Record<PromoId, number>>;
+  /** What moved it, newest first. */
+  rapportLog?: { day: number; promo: PromoId; d: number; why: string }[];
+  /** Opponents turned down: off the table until the day given. */
+  passed?: { opp: string; promo: PromoId; until: number }[];
+  /** What the next offer should be after a no: a step up, or a more even fight. */
+  want?: { promo: PromoId; kind: "up" | "even"; until: number };
 }
 
 export interface Rivalry {

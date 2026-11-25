@@ -23,6 +23,7 @@ import { runwayMonths } from "../../career/money";
 import { sponsorIncomeFor } from "../../career/sponsors";
 import { primeText } from "../../world/development";
 import { useState } from "react";
+import { DeclinePicker } from "../decline";
 import { becomeManager, careerRecap } from "../../career/retire";
 import { moneyline } from "../../world/odds";
 import { FightOfferView, InjuryCard } from "../advice";
@@ -68,6 +69,7 @@ function AfterFighting({ w }: { w: World }) {
 export function NextFightCard({ w, f }: { w: World; f: Fighter }) {
   const b = f.booked ? w.bouts[f.booked] : null;
   const offer = w.career.fightOffers.find((o) => o.fighter === f.id && o.status === "open");
+  const [picking, setPicking] = useState<string | null>(null);
   if (b && b.status === "booked" && !b.pending) {
     const opp = w.fighters[b.a === f.id ? b.b : b.a];
     const ev = w.events[b.ev];
@@ -110,13 +112,25 @@ export function NextFightCard({ w, f }: { w: World; f: Fighter }) {
     return (
       <Panel title={offer.stay ? "New opponent" : offer.shortNotice ? "Short-notice call" : `${PROMOTIONS[offer.promo].short} fight offer`} hint={offer.expires <= w.day ? "answer today" : `answer by ${fmtDate(offer.expires)}`} className={offer.shortNotice ? "accent" : "gold"}>
         <FightOfferView w={w} o={offer} f={f} compact />
-        {msg && (
+        {msg && picking !== offer.id && (
           <div className="row" style={{ marginTop: 14 }}>
             <button className="btn primary" onClick={() => { toast(answer(w, msg.id, "accept"), "good"); changed(); }}>{yes}</button>
-            <button className="btn danger" onClick={() => { toast(answer(w, msg.id, "decline")); changed(); }}>{no}</button>
+            <button className="btn danger" onClick={() => setPicking(offer.id)}>{no}…</button>
             <Link to={`/inbox/${msg.id}`} className="textlink">All the reasons</Link>
             <Link to={`/fighter/${opp.id}`} className="textlink">Scout {opp.surname}</Link>
           </div>
+        )}
+        {msg && picking === offer.id && (
+          <DeclinePicker
+            w={w}
+            o={offer}
+            onCancel={() => setPicking(null)}
+            onPick={(r) => {
+              toast(answer(w, msg.id, `decline:${r}`));
+              setPicking(null);
+              changed();
+            }}
+          />
         )}
       </Panel>
     );

@@ -12,6 +12,7 @@ import { moneyline } from "../world/odds";
 import { rankLabel, recordText } from "../world/core";
 import { defOf, SEVERITY_TEXT } from "../data/injuries";
 import { Link } from "./router";
+import { RapportLine } from "./decline";
 
 /** The adviser's verdict, the headline and the reasons for and against. */
 export function AdviceCard({ a, compact }: { a: Advice; compact?: boolean }) {
@@ -99,7 +100,7 @@ export function FightOfferView({ w, o, f, compact }: { w: World; o: FightOffer; 
         <div>
           <div className="label">Purse</div>
           <div><b>{o.show ? money(o.show) : "No purse"}</b>{o.win ? <span className="small dim"> + {money(o.win)} to win</span> : null}</div>
-          <div className="small dim">{o.shortNotice && !o.stay ? "Short-notice money" : PROMOTIONS[o.promo].short}</div>
+          <div className="small dim">{o.raised ? "Their better number" : o.shortNotice && !o.stay ? "Short-notice money" : PROMOTIONS[o.promo].short} · <RapportLine w={w} fighter={f.id} promo={o.promo} /></div>
         </div>
       </div>
       <AdviceCard a={advice} compact={compact} />

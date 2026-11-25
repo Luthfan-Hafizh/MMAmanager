@@ -9,7 +9,9 @@ import { AdviceCard } from "../advice";
 import { TeamPanel } from "../team";
 import { fullName, withRng } from "../../world/core";
 import { changed, toast, useWorld } from "../../state/store";
-import { Empty, Panel, PromoBadge } from "../components";
+import { Bar, Empty, Panel, PromoBadge } from "../components";
+import { rapport, rapportLabel, rapportTone } from "../../career/promoter";
+import type { PromoId } from "../../data/promotions";
 import { FighterSwitch } from "./Training";
 
 export function Contracts({ id }: { id?: string }) {
@@ -46,6 +48,7 @@ export function Contracts({ id }: { id?: string }) {
             <Empty title="Free agent">Offers arrive in the inbox at the start of each month.</Empty>
           )}
         </Panel>
+        {fc && <MatchmakerPanel w={w} f={f} />}
         {fc && <TeamPanel w={w} f={f} />}
       </div>
       <div className="c7 stack">
@@ -120,6 +123,50 @@ function OfferCard({ w, o, f }: { w: World; o: ContractOffer; f: Fighter }) {
         <div style={{ flex: 1 }} />
         <span className="tiny dim">{fullName(f)}</span>
       </div>
+    </Panel>
+  );
+}
+
+/** How each promotion's matchmaker sees the fighter, what that changes, and what moved it lately. */
+function MatchmakerPanel({ w, f }: { w: World; f: Fighter }) {
+  const fc = w.career.fc[f.id];
+  const promos = [...new Set([f.promo, ...(Object.keys(fc?.rapport ?? {}) as PromoId[])])].filter((p): p is PromoId => !!p && PROMOTIONS[p].tier !== "amateur");
+  if (!promos.length) return null;
+  const here = f.promo && promos.includes(f.promo) ? rapport(w, f.id, f.promo) : null;
+  const what =
+    here === null ? null
+    : here >= 65 ? "Good terms: the next offer comes sooner after a no, short-notice calls come to you first, and a new deal opens up to 6% higher."
+    : here >= 45 ? "Fair terms: nothing for or against you yet. Taking fights, stepping in on short notice and winning build it; weak excuses, missed weight and unanswered offers wear it down."
+    : here >= 30 ? "Strained: a longer wait after a no, fewer short-notice calls, and a new deal opens lower."
+    : "Poor terms: you're left off some cards, the phone rarely rings, and a new deal opens up to 8% lower.";
+  const log = (fc?.rapportLog ?? []).slice(0, 6);
+  return (
+    <Panel title="Matchmakers" hint="How the promotions see you">
+      <div className="rp-rows">
+        {promos.map((p) => {
+          const r = rapport(w, f.id, p);
+          const tone = rapportTone(r);
+          return (
+            <div key={p} className="rp-row">
+              <span className="rp-name"><PromoBadge p={p} /></span>
+              <Bar v={r} kind={tone === "good" ? "info" : tone === "bad" ? "red" : tone === "warn" ? "warn" : "gold"} title={`${Math.round(r)} of 100`} />
+              <b className={tone === "good" ? "good" : tone === "bad" ? "bad" : tone === "warn" ? "gold-t" : ""}>{rapportLabel(r)}</b>
+            </div>
+          );
+        })}
+      </div>
+      {what && <p className="small muted" style={{ marginTop: 10 }}>{what}</p>}
+      {log.length > 0 && (
+        <ul className="rp-log">
+          {log.map((e, i) => (
+            <li key={i}>
+              <b className={e.d < 0 ? "bad" : "good"}>{e.d > 0 ? `+${Math.max(1, Math.round(e.d))}` : Math.min(-1, Math.round(e.d))}</b>
+              <span>{e.why}</span>
+              <span className="dim">{PROMOTIONS[e.promo].short} · {fmtDate(e.day, { year: false })}</span>
+            </li>
+          ))}
+        </ul>
+      )}
     </Panel>
   );
 }

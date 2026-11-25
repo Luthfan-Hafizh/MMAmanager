@@ -12,6 +12,7 @@ import type { Bout, BoutKind, Fact, FightOffer, Fighter, MMAEvent, World } from 
 import { addNews, availableFrom, daysSinceFight, fullName, isControlled, nextId, rankLabel, rankOf, rosterOf, stageFights } from "./core";
 import { lostToRecently, ratingFor } from "./rankings";
 import { tryoutProspect } from "./market";
+import { clearWant, nextWant, passedOn, snubbed } from "../career/promoter";
 import { setOdds } from "./odds";
 import { calloutFor } from "../career/fightweek";
 import { grudgeBonus, heatOf, rivalsOf } from "../career/rivals";
@@ -369,10 +370,10 @@ export function buildCard(w: World, rng: Rng, ev: MMAEvent): void {
     return;
   }
   const size = ev.kind === "numbered" ? 13 : p.cardSize;
-  // Offers to the player's fighters first.
+  // Offers to the player's fighters first (on poor terms with the matchmaker, not on every card).
   for (const id of w.career.fighters) {
     const f = w.fighters[id];
-    if (f && f.promo === ev.promo && wantsOffer(w, f, ev)) offerFight(w, rng, ev, f);
+    if (f && f.promo === ev.promo && wantsOffer(w, f, ev) && !snubbed(w, rng, f, ev.promo)) offerFight(w, rng, ev, f);
   }
   const bmf = bmfPairing(w, rng, ev, (f) => readyFor(w, f, ev) && !w.career.fightOffers.some((o) => o.fighter === f.id && o.status === "open"));
   if (bmf) {
@@ -518,7 +519,9 @@ export function offerFight(w: World, rng: Rng, ev: MMAEvent, f: Fighter, opp?: F
   let k: BoutKind = kind ?? "regular";
   let o = opp ?? null;
   if (!o) {
-    const pool = rosterOf(w, ev.promo, d).filter((x) => x.id !== f.id && !x.ctrl && readyFor(w, x, ev, { shortNotice }));
+    // Whoever the fighter turned down lately is off the table: the offer is somebody else.
+    const passed = passedOn(w, f, ev.promo);
+    const pool = rosterOf(w, ev.promo, d).filter((x) => x.id !== f.id && !x.ctrl && !passed.has(x.id) && readyFor(w, x, ev, { shortNotice }));
     const champ = ps.champs[d];
     // Belt holders aren't ordinary opponents: they fight for their belts.
     const free = pool.filter((x) => x.id !== champ && x.id !== ps.interim[d]);
@@ -544,7 +547,8 @@ export function offerFight(w: World, rng: Rng, ev: MMAEvent, f: Fighter, opp?: F
       } else return null; // The champion is nearly back: the next fight is the unification.
     } else if (champ && ps.contender[d] === f.id) {
       const c = w.fighters[champ];
-      if (c && !c.ctrl && readyFor(w, c, ev)) {
+      // A title shot turned down: the matchmaker has moved on for now.
+      if (c && !c.ctrl && !passed.has(c.id) && readyFor(w, c, ev)) {
         o = c;
         k = "title";
       }
@@ -585,6 +589,18 @@ export function offerFight(w: World, rng: Rng, ev: MMAEvent, f: Fighter, opp?: F
         const gap = Math.abs((rankOf(w, f) ?? 18) - (rankOf(w, hot.f) ?? 18));
         if (gap <= 8 && rng.chance(hot.r.heat / 130)) o = hot.f;
       }
+    }
+    // After a no for the right reasons: a step up, or a more even fight.
+    const want = nextWant(w, f, ev.promo);
+    if (!o && want) {
+      const mine = bookedAt(f, p.tier);
+      const rf = rankOf(w, f);
+      const fits = free.filter((x) => {
+        const rx = rankOf(w, x);
+        return want === "up" ? bookedAt(x, p.tier) >= mine + 25 || (rx !== null && rx > 0 && (rf === null || rx < rf)) : Math.abs(bookedAt(x, p.tier) - mine) <= 35;
+      });
+      o = bestOpponent(w, rng, f, fits, ev.promo, new Set());
+      if (o) clearWant(w, f);
     }
     if (!o) o = bestOpponent(w, rng, f, free, ev.promo, new Set());
   }

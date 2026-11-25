@@ -18,6 +18,7 @@ import { addHeat, addMoment, addPop, heatOf, ppvShare, stageMul } from "./rivals
 import { boutLimit } from "./shortnotice";
 import { neckWork } from "./training";
 import { beltNote } from "../world/belts";
+import { adjustRapport } from "./promoter";
 
 export function afterFightCareer(w: World, rng: Rng, b: Bout, o: FightOutcome, chinBefore: Record<string, number> = {}): void {
   for (const side of ["a", "b"] as const) {
@@ -138,5 +139,10 @@ export function payControlled(w: World, b: Bout): void {
     if (bonusCount) {
       notify(w, { kind: "result", fighter: f.id, from: PROMOTIONS[b.promo].short, subject: (b.res.bonus ?? []).includes("fotn") ? "Fight of the Night!" : "Performance of the Night!", body: `${fullName(f)} takes home a ${money(100000)} bonus${bonusCount > 1 ? " twice over" : ""}.` });
     }
+    // The matchmaker remembers a good night: a win, a finish, a bonus, a belt.
+    const them = w.fighters[b[other]];
+    const belt = !!beltNote(b, f.id)?.startsWith("Won");
+    const gain = (won ? 2 + (finish ? 1 : 0) : 0) + (bonusCount ? 2 : 0) + (belt ? 3 : 0);
+    if (gain) adjustRapport(w, f, b.promo, gain, won ? `Beat ${them.surname}${finish ? " inside the distance" : ""}${bonusCount ? ", with a bonus" : ""}${belt ? ", and the belt" : ""}` : `A bonus against ${them.surname}`);
   }
 }

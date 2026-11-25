@@ -110,7 +110,7 @@ export function moveDivision(w: World, f: Fighter, to: DivisionId): string {
   const from = f.div;
   const up = DIVISIONS[to].order > DIVISIONS[from].order;
   if (chk.vacates) vacate(w, f, "moved");
-  for (const o of w.career.fightOffers) if (o.fighter === f.id && o.status === "open") declineFight(w, o.id, true);
+  for (const o of w.career.fightOffers) if (o.fighter === f.id && o.status === "open") declineFight(w, o.id, true, "moved");
   f.div = to;
   const a = f.attrs;
   if (up) {

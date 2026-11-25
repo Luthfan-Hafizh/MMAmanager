@@ -9,6 +9,7 @@ import { answerInjury } from "./injury";
 import { autoPlay, sessionById, skipSession } from "./media";
 import { answerScale } from "./weighin";
 import { answerLife } from "./life";
+import type { DeclineReason } from "./promoter";
 
 export function answer(w: World, msgId: string, action: string): string {
   const m = w.inbox.find((x) => x.id === msgId);
@@ -16,7 +17,8 @@ export function answer(w: World, msgId: string, action: string): string {
   m.read = true;
   let text = "";
   if (m.kind === "offer" && m.ref) {
-    text = action === "accept" ? acceptFight(w, m.ref) : declineFight(w, m.ref);
+    // "decline:<reason>" says why; a bare "decline" (an old message) gives no reason.
+    text = action === "accept" ? acceptFight(w, m.ref) : declineFight(w, m.ref, false, action.startsWith("decline:") ? (action.slice(8) as DeclineReason) : undefined);
   } else if (m.kind === "contract" && m.ref) {
     if (action === "sign") text = withRng(w, (rng) => signContract(w, rng, m.ref!));
     else if (action === "reject") text = rejectContract(w, m.ref);

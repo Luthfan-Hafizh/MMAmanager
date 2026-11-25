@@ -33,16 +33,35 @@ function townOf(cf: CreatedFighter): string {
 
 const OTHER_TOWN = "__other";
 
-const TALENT: { v: Talent; label: string; desc: string }[] = [
-  { v: "average", label: "Hard worker", desc: "Limited ceiling (potential around 72). A grinder's career." },
-  { v: "prospect", label: "Prospect", desc: "Real talent (potential around 82): a UFC fighter if it goes right." },
-  { v: "phenom", label: "Phenom", desc: "Once in a generation (potential around 90): built to be champion." },
+const TALENT: { v: Talent; label: string; sub: string; desc: string }[] = [
+  { v: "average", label: "Hard worker", sub: "Potential about 72", desc: "A limited ceiling and a grinder's career." },
+  { v: "prospect", label: "Prospect", sub: "Potential about 82", desc: "Real talent: a UFC fighter if it goes right." },
+  { v: "phenom", label: "Phenom", sub: "Potential about 90", desc: "Once in a generation: built to be champion." },
 ];
-const START: { v: StartLevel; label: string; desc: string }[] = [
-  { v: "amateur", label: "Amateur", desc: "0-0 on your region's IMMAF circuit. No purses; turn pro when a promoter calls." },
-  { v: "debut", label: "Pro debut", desc: "0-0 as a pro at your region's local show, after a 4-1 amateur career." },
-  { v: "regional", label: "Regional prospect", desc: "5-1 and signed to your region's regional promotion." },
+const START: { v: StartLevel; label: string; record: string; desc: string }[] = [
+  { v: "amateur", label: "Amateur", record: "0-0", desc: "0-0 on your region's IMMAF circuit. No purses; turn pro when a promoter calls." },
+  { v: "debut", label: "Pro debut", record: "0-0", desc: "0-0 as a pro at your region's local show, after a 4-1 amateur career." },
+  { v: "regional", label: "Regional prospect", record: "5-1", desc: "5-1 and signed to your region's regional promotion." },
 ];
+
+/** Where a created fighter starts: the region's amateur circuit, local show or regional promotion. */
+function startPromo(cf: CreatedFighter, start: StartLevel = cf.start) {
+  return promoFor(countryOf(cf.country).region, start === "amateur" ? "amateur" : start === "debut" ? "local" : "regional") ?? PROMOTIONS.cffc;
+}
+
+/** One of a few options as small tiles: a name and a short line each (the full text goes under the tiles). */
+function Tiles<T extends string>({ label, value, options, onChange }: { label: string; value: T; options: { v: T; label: string; sub?: string; title?: string }[]; onChange: (v: T) => void }) {
+  return (
+    <div className="tiles" role="radiogroup" aria-label={label}>
+      {options.map((o) => (
+        <button key={o.v} type="button" className={`tile${o.v === value ? " on" : ""}`} role="radio" aria-checked={o.v === value} aria-label={o.sub ? `${o.label}, ${o.sub}` : o.label} title={o.title} onClick={() => onChange(o.v)}>
+          <b>{o.label}</b>
+          {o.sub && <span>{o.sub}</span>}
+        </button>
+      ))}
+    </div>
+  );
+}
 
 export function NewGame() {
   const [step, setStep] = useState<Step>("mode");
@@ -197,7 +216,7 @@ export function NewGame() {
                   {cf.surname}
                 </b>
                 , {cf.age}, from {townOf(cf)}, {countryOf(cf.country).name}; {DIVISIONS[cf.div].name.toLowerCase()}, {ARTS[cf.art].name.toLowerCase()} background ({FIGHT_STYLES[(cf.strike ?? styleChoices(cf.art, "strike")[0]) as StrikeStyle].name.toLowerCase()}, {FIGHT_STYLES[(cf.grapple ?? styleChoices(cf.art, "grapple")[0]) as GrappleStyle].name.toLowerCase()}). Starts as a{" "}
-                {START.find((s) => s.v === cf.start)?.label.toLowerCase()} at {(promoFor(countryOf(cf.country).region, cf.start === "amateur" ? "amateur" : cf.start === "debut" ? "local" : "regional") ?? PROMOTIONS.cffc).name}.
+                {START.find((s) => s.v === cf.start)?.label.toLowerCase()} at {startPromo(cf).name}.
               </p>
             )}
             <p>Difficulty: {difficulty}. The game saves itself in this browser after every step of the calendar; export a save file from Settings to keep a copy.</p>
@@ -267,7 +286,13 @@ export function CreateForm({ cf, setCf, onBack, onNext }: { cf: CreatedFighter; 
   };
   const setDiv = (div: DivisionId) => setCf({ ...cf, div, height: Math.round(DIVISIONS[div].height), reach: Math.round(DIVISIONS[div].reach) });
   const regions = Object.values(REGIONS);
+  const styleOf = (kind: "strike" | "grapple") => (kind === "strike" ? cf.strike : cf.grapple) ?? styleChoices(cf.art, kind)[0];
+  const talent = TALENT.find((t) => t.v === cf.talent)!;
+  const start = START.find((t) => t.v === cf.start)!;
+  const name = [cf.first.trim(), cf.nick?.trim() ? `"${cf.nick.trim()}"` : "", cf.surname.trim()].filter(Boolean).join(" ");
+  const missing = !cf.first.trim() || !cf.surname.trim() ? "Give your fighter a first name and a surname." : townMissing ? "Type your home town, or pick one from the list." : null;
   return (
+    <div className="create">
     <div className="grid">
       <div className="c7 stack">
         <Panel title="Identity">
@@ -339,7 +364,7 @@ export function CreateForm({ cf, setCf, onBack, onNext }: { cf: CreatedFighter; 
       </div>
       <div className="c5 stack">
         <Panel title="Background">
-          <select className="input" style={{ width: "100%" }} value={cf.art} onChange={(e) => setCf({ ...cf, art: e.target.value as BaseArt, strike: undefined, grapple: undefined })}>
+          <select className="input" style={{ width: "100%" }} value={cf.art} onChange={(e) => setCf({ ...cf, art: e.target.value as BaseArt, strike: undefined, grapple: undefined })} aria-label="Martial arts background">
             {ART_IDS.map((a) => (
               <option key={a} value={a}>{ARTS[a].name}</option>
             ))}
@@ -347,57 +372,69 @@ export function CreateForm({ cf, setCf, onBack, onNext }: { cf: CreatedFighter; 
           <p className="small muted" style={{ marginTop: 8 }}>{ARTS[cf.art].desc}</p>
           {(["strike", "grapple"] as const).map((kind) => {
             const opts = styleChoices(cf.art, kind);
-            const cur = (kind === "strike" ? cf.strike : cf.grapple) ?? opts[0];
-            const all = kind === "strike" ? STRIKE_STYLES : GRAPPLE_STYLES;
+            const cur = styleOf(kind);
+            const all: string[] = kind === "strike" ? STRIKE_STYLES : GRAPPLE_STYLES;
+            const what = kind === "strike" ? "How you strike" : "How you grapple";
             return (
-              <div key={kind} style={{ marginTop: 14 }}>
-                <div className="label" style={{ marginBottom: 6 }}>{kind === "strike" ? "How you strike" : "How you grapple"}</div>
-                <div className="stack" style={{ gap: 6 }}>
-                  {opts.map((id) => (
-                    <button key={id} className={`choice${cur === id ? " on" : ""}`} onClick={() => setCf({ ...cf, [kind]: id })}>
-                      <b>{FIGHT_STYLES[id as StrikeStyle].name}{FIGHT_STYLES[id as StrikeStyle].arts.includes(cf.art) ? "" : " · from another background"}</b>
-                      <span>{FIGHT_STYLES[id as StrikeStyle].desc}</span>
-                    </button>
-                  ))}
-                </div>
-                <select className="input" style={{ width: "100%", marginTop: 6 }} value={opts.includes(cur) ? "" : cur} onChange={(e) => e.target.value && setCf({ ...cf, [kind]: e.target.value })} aria-label={`Other ${kind === "strike" ? "striking" : "grappling"} styles`}>
+              <div key={kind} className="style-pick">
+                <div className="label">{what}</div>
+                <Tiles
+                  label={what}
+                  value={cur}
+                  onChange={(id) => setCf({ ...cf, [kind]: id })}
+                  options={opts.map((id) => {
+                    const s = FIGHT_STYLES[id as StrikeStyle];
+                    return { v: id, label: s.name, sub: s.arts.includes(cf.art) ? "Your background" : s.from, title: s.desc };
+                  })}
+                />
+                <p className="tile-desc">
+                  {!opts.includes(cur) && <b>{FIGHT_STYLES[cur as StrikeStyle].name}: </b>}
+                  {FIGHT_STYLES[cur as StrikeStyle].desc}
+                </p>
+                <select className="input" style={{ width: "100%" }} value={opts.includes(cur) ? "" : cur} onChange={(e) => e.target.value && setCf({ ...cf, [kind]: e.target.value })} aria-label={`Other ${kind === "strike" ? "striking" : "grappling"} styles`}>
                   <option value="">Other styles…</option>
                   {all.filter((id) => !opts.includes(id)).map((id) => (
-                    <option key={id} value={id}>{FIGHT_STYLES[id].name} ({FIGHT_STYLES[id].from})</option>
+                    <option key={id} value={id}>{FIGHT_STYLES[id as StrikeStyle].name} ({FIGHT_STYLES[id as StrikeStyle].from})</option>
                   ))}
                 </select>
               </div>
             );
           })}
-          <p className="tiny dim" style={{ marginTop: 10 }}>A style from your own background starts deeper; any style can be built later with style coaching.</p>
+          <p className="tiny dim" style={{ marginTop: 12 }}>A style from your own background starts deeper; any style can be built later with style coaching.</p>
         </Panel>
-        <Panel title="Talent">
-          <div className="stack">
-            {TALENT.map((t) => (
-              <button key={t.v} className={`choice${cf.talent === t.v ? " on" : ""}`} onClick={() => set("talent", t.v)}>
-                <b>{t.label}</b>
-                <span>{t.desc}</span>
-              </button>
-            ))}
-          </div>
-        </Panel>
-        <Panel title="Start">
-          <div className="stack">
-            {START.map((t) => (
-              <button key={t.v} className={`choice${cf.start === t.v ? " on" : ""}`} onClick={() => setCf({ ...cf, start: t.v, age: t.v !== "amateur" && cf.age < 18 ? 18 : cf.age })}>
-                <b>{t.label}</b>
-                <span>{t.desc}</span>
-              </button>
-            ))}
-          </div>
-        </Panel>
-        <div className="row">
-          <button className="btn" onClick={onBack}>Back</button>
-          <div style={{ flex: 1 }} />
-          {townMissing && <span className="small warn">Type your home town, or pick one from the list.</span>}
-          <button className="btn primary" onClick={onNext} disabled={!cf.first.trim() || !cf.surname.trim() || townMissing}>Next</button>
-        </div>
       </div>
+      <div className="c6">
+        <Panel title="Talent">
+          <Tiles label="Talent" value={cf.talent} onChange={(v) => set("talent", v)} options={TALENT.map((t) => ({ v: t.v, label: t.label, sub: t.sub }))} />
+          <p className="tile-desc">{talent.desc}</p>
+        </Panel>
+      </div>
+      <div className="c6">
+        <Panel title="Start">
+          <Tiles
+            label="Start"
+            value={cf.start}
+            onChange={(v) => setCf({ ...cf, start: v, age: v !== "amateur" && cf.age < 18 ? 18 : cf.age })}
+            options={START.map((t) => ({ v: t.v, label: t.label, sub: `${t.record} · ${startPromo(cf, t.v).short}` }))}
+          />
+          <p className="tile-desc">{start.desc}</p>
+        </Panel>
+      </div>
+    </div>
+    {/* The way on stays in view: who you are making, and Back / Next. */}
+    <div className="create-bar">
+      <div className="cb-who">
+        <b>{name || "Your fighter"}</b>
+        <span>
+          {cf.age}, {DIVISIONS[cf.div].name.toLowerCase()} · {ARTS[cf.art].name} · {FIGHT_STYLES[styleOf("strike") as StrikeStyle].name}, {FIGHT_STYLES[styleOf("grapple") as GrappleStyle].name.toLowerCase()} · {talent.label} · {start.label}, {startPromo(cf).short}
+        </span>
+      </div>
+      {missing && <span className="cb-hint">{missing}</span>}
+      <div className="cb-acts">
+        <button className="btn" onClick={onBack}>Back</button>
+        <button className="btn primary" onClick={onNext} disabled={!!missing}>Next</button>
+      </div>
+    </div>
     </div>
   );
 }

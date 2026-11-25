@@ -588,6 +588,14 @@ pages(tw, "Retired fighter turned manager");
   const base = { first: "Home", surname: "Town", sex: "M" as const, country: "BR", div: "BW" as const, age: 21, height: 67, reach: 69, stance: "orthodox" as const, art: "bjj" as const, talent: "prospect" as const, start: "debut" as const };
   const form = renderToString(<CreateForm cf={base} setCf={() => {}} onBack={() => {}} onNext={() => {}} />);
   if (!form.includes("Home town") || !form.includes("Curitiba") || !form.includes("Somewhere else")) fail("the creation form does not offer the country's towns and somewhere else");
+  // The picks are small tiles and Next sits in the bar at the foot of the screen, so
+  // nobody scrolls to the bottom of a long column of cards to go on.
+  const flat = form.replace(/<!-- -->/g, "");
+  const bar = flat.slice(flat.indexOf('class="create-bar"'));
+  if (!flat.includes('class="create-bar"') || !bar.includes(">Next</button>")) fail("the creation form has no bar with Next");
+  else if (flat.includes('class="choice')) fail("the creation form lays its picks out as big cards again");
+  else if (!bar.includes("<b>Home Town</b>")) fail("the creation form's bar does not name the fighter");
+  else console.log(`Creating a fighter: ${(flat.match(/class="tile[ "]/g) ?? []).length} pick tiles; Next in the bar at the foot of the screen, under "Home Town"`);
   const typed = renderToString(<CreateForm cf={{ ...base, hometown: "Itaquaquecetuba" }} setCf={() => {}} onBack={() => {}} onNext={() => {}} />);
   if (!typed.includes('value="Itaquaquecetuba"')) fail("a typed home town does not show in its own box");
   const hw = createWorld(roster, { name: "UI", seed: 93, mode: "fighter", difficulty: "normal", created: { ...base, hometown: "Itaquaquecetuba" } });

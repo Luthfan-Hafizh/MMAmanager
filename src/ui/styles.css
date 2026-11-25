@@ -607,6 +607,38 @@ input[type="checkbox"] { accent-color: var(--red); width: 16px; height: 16px; }
 .choice.on { border-color: var(--red); box-shadow: inset 4px 0 0 var(--red); }
 .choice b { display: block; font-stretch: 62%; font-weight: 900; font-size: 22px; text-transform: uppercase; margin-bottom: 6px; }
 .choice span { font-size: 13px; color: var(--ink-2); }
+/* Creating a fighter: small tiles for the picks (the chosen one's text under them),
+   and a bar at the foot of the screen that keeps the fighter and Back / Next in view. */
+.tiles { display: grid; grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); gap: 6px; }
+.tile { min-width: 0; text-align: left; padding: 9px 11px 8px; background: var(--sheet); color: var(--ink); border: 1.5px solid var(--line); border-radius: var(--r); cursor: pointer; transition: border-color 0.15s, background 0.15s; }
+.tile:hover { border-color: var(--ink); }
+.tile.on { border-color: var(--red); background: var(--sheet-2); box-shadow: inset 3px 0 0 var(--red); }
+.tile b { display: block; font-stretch: 62%; font-weight: 900; font-size: 17px; line-height: 1.05; text-transform: uppercase; }
+.tile span { display: block; margin-top: 3px; font-size: 11.5px; color: var(--ink-3); }
+.tile-desc { margin-top: 8px; min-height: 2.8em; font-size: 13px; color: var(--ink-2); }
+.style-pick { margin-top: 16px; }
+.style-pick .label { margin-bottom: 6px; }
+.style-pick .tile-desc { margin-bottom: 8px; }
+.create-bar { position: sticky; bottom: 0; z-index: 5; display: flex; align-items: center; gap: 14px; margin-top: 18px; padding: 12px 18px; background: var(--band); color: var(--band-ink); border-top: 3px solid var(--red); box-shadow: 0 -12px 28px -18px rgba(0, 0, 0, 0.5); }
+.cb-who { flex: 1 1 auto; min-width: 0; }
+.cb-who b { display: block; font-stretch: 62%; font-weight: 900; font-size: 24px; line-height: 1; text-transform: uppercase; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.cb-who span { display: block; margin-top: 4px; font-size: 12.5px; color: var(--band-ink-2); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.cb-hint { flex: 0 1 260px; font-size: 12.5px; line-height: 1.3; color: var(--gold); text-align: right; }
+.cb-acts { display: flex; gap: 8px; flex-shrink: 0; }
+.create-bar .btn { color: var(--band-ink); border-color: var(--band-line); }
+.create-bar .btn:hover { background: var(--band-3); }
+.create-bar .btn.primary { background: var(--red); border-color: var(--red); color: #fff; }
+.create-bar .btn.primary:hover { background: var(--red-2); border-color: var(--red-2); }
+.create-bar .btn:disabled:hover { background: transparent; color: var(--band-ink); }
+.create-bar .btn.primary:disabled:hover { background: var(--red); color: #fff; }
+@media (max-width: 640px) {
+  .create-bar { flex-wrap: wrap; gap: 6px 10px; margin-left: -16px; margin-right: -16px; padding: 10px 16px; }
+  .cb-who { flex: 1 1 0; }
+  .cb-who b { font-size: 19px; }
+  .cb-who span { font-size: 11.5px; }
+  .cb-hint { order: -1; flex: 1 1 100%; text-align: left; }
+  .cb-acts .btn { padding: 0 12px; }
+}
 
 /* toast, busy, modal, empty */
 .toast { position: fixed; bottom: 24px; left: 50%; transform: translateX(-50%); background: var(--ink); color: var(--sheet); padding: 12px 20px; z-index: var(--z-toast); font-weight: 600; max-width: min(560px, 92vw); box-shadow: var(--shadow-lift); border-left: 4px solid var(--red); animation: rise 0.25s ease-out; }

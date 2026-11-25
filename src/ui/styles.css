@@ -409,7 +409,7 @@ input[type="checkbox"] { accent-color: var(--red); width: 16px; height: 16px; }
 .kv dd { margin: 0; font-weight: 600; text-align: right; }
 
 /* stat tiles (UFC athlete page) */
-.stat-tiles { display: grid; grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); gap: 1px; background: var(--line); border: 1px solid var(--line); }
+.stat-tiles { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 1px; background: var(--line); border: 1px solid var(--line); }
 .tile { background: var(--sheet); padding: 14px 16px; }
 .tile .k { font-stretch: 75%; font-weight: 800; font-size: 10.5px; letter-spacing: 0.13em; text-transform: uppercase; color: var(--ink-3); }
 .tile .v { font-stretch: 62%; font-weight: 900; font-size: 34px; line-height: 1; margin-top: 8px; }
@@ -518,7 +518,7 @@ input[type="checkbox"] { accent-color: var(--red); width: 16px; height: 16px; }
 .rk-col { background: var(--sheet); border-radius: var(--r); box-shadow: var(--shadow); overflow: hidden; }
 .rk-champ { background: var(--band); color: var(--band-ink); padding: 16px 16px 14px; display: grid; grid-template-columns: 1fr auto; align-items: end; min-height: 128px; position: relative; isolation: isolate; overflow: hidden; }
 .rk-champ .belt { font-stretch: 62%; font-weight: 900; font-size: 76px; line-height: 0.78; color: transparent; -webkit-text-stroke: 1.5px var(--gold); }
-.rk-champ .belt.none { -webkit-text-stroke-color: var(--band-line); }
+
 .rk-champ::before { content: ""; position: absolute; inset: 0; z-index: -1; background: radial-gradient(240px 160px at 85% 30%, rgba(210, 32, 31, 0.28), transparent 70%); }
 .rk-champ .div { font-stretch: 75%; font-weight: 800; font-size: 11px; letter-spacing: 0.14em; text-transform: uppercase; color: var(--red-2); }
 .rk-champ .cn { font-stretch: 62%; font-weight: 900; font-size: 24px; line-height: 0.95; text-transform: uppercase; margin: 6px 0 4px; }
@@ -1191,3 +1191,8 @@ a.badge { text-decoration: none; }
 .forecast-chin { border-top: 1px solid var(--line); padding-top: 8px; margin-top: 2px; }
 .forecast-chin .tiny { margin-top: 4px; }
 .town-note { margin: -4px 0 2px; }
+.bar-nav .inner[data-more="1"] { -webkit-mask-image: linear-gradient(to right, #000 calc(100% - 56px), transparent); mask-image: linear-gradient(to right, #000 calc(100% - 56px), transparent); }
+.save-row { flex-wrap: wrap; }
+.save-who { flex: 1 1 180px; min-width: 0; }
+.title-facts b { white-space: nowrap; }
+@media (max-width: 520px) { .title-facts div:nth-child(3) { grid-column: 1 / -1; } }

@@ -130,17 +130,19 @@ export function rankMove(w: World, promo: PromoId, d: DivisionId, id: string): n
   const numbered = (list: string[] | undefined) => (list ?? []).filter((x) => x !== ps.interim[d] && x !== ps.champs[d]);
   const now = numbered(ps.ranks[d]).indexOf(id);
   if (now < 0) return null;
+  // The first ranking has nothing to compare with: no arrows, no "new" for everybody.
+  if (!ps.prevRanks[d]?.length) return null;
   const before = numbered(ps.prevRanks[d]).indexOf(id);
   if (before < 0) return "new";
   return before - now;
 }
 
-/** Pound for pound: rating against the division, plus the belt and recent form. */
-export function updateP4P(w: World): void {
+/** Pound for pound in a promotion: rating against the division, plus the belt and recent form. */
+export function p4pOf(w: World, promo: PromoId, n: number): string[] {
   const scored: { id: string; s: number }[] = [];
-  const ps = w.promos.ufc;
-  for (const d of PROMOTIONS.ufc.divisions) {
-    const roster = rosterOf(w, "ufc", d);
+  const ps = w.promos[promo];
+  for (const d of PROMOTIONS[promo].divisions) {
+    const roster = rosterOf(w, promo, d);
     if (!roster.length) continue;
     const scores = roster.map((f) => rankScore(w, f));
     const mean = scores.reduce((a, b) => a + b, 0) / scores.length;
@@ -157,7 +159,13 @@ export function updateP4P(w: World): void {
     }
   }
   scored.sort((a, b) => b.s - a.s);
-  w.p4p = scored.slice(0, 15).map((x) => x.id);
+  return scored.slice(0, n).map((x) => x.id);
+}
+
+/** The UFC's pound-for-pound top fifteen and the PFL's top ten. */
+export function updateP4P(w: World): void {
+  w.p4p = p4pOf(w, "ufc", 15);
+  if (w.promos.pfl) w.promos.pfl.p4p = p4pOf(w, "pfl", 10);
 }
 
 /** After a card: name a number one contender who has earned it. */

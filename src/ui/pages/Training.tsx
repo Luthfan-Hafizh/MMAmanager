@@ -66,7 +66,7 @@ export function Training({ id }: { id?: string }) {
       {camp && (
         <div className="c12">
           <div className="notice row">
-            In camp for <b>{fullName(w.fighters[w.bouts[camp.bout]?.a === f.id ? w.bouts[camp.bout].b : w.bouts[camp.bout]?.a])}</b>. Hard sparring builds sharpness; taper in the last week so you arrive fresh.
+            <span>In camp for <b>{fullName(w.fighters[w.bouts[camp.bout]?.a === f.id ? w.bouts[camp.bout].b : w.bouts[camp.bout]?.a])}</b>. Hard sparring builds sharpness; taper in the last week so you arrive fresh.</span>
             <div style={{ flex: 1 }} />
             <button className="btn sm" onClick={() => setTemplate("camp")}>Use the camp week</button>
             <button className="btn sm" onClick={() => setTemplate("taper")}>Taper</button>

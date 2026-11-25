@@ -31,7 +31,7 @@ export function Rankings({ promo, div }: { promo?: string; div?: string }) {
         }
       />
       <div className="wrap page-body">
-        {pid === "ufc" && !only && <P4P w={w} />}
+        {(pid === "ufc" || pid === "pfl") && !only && <P4P w={w} promo={pid} />}
         <div className="rk-grid">
           {divs.map((d) => <DivisionColumn key={d} w={w} promo={pid} d={d} />)}
         </div>
@@ -63,7 +63,7 @@ function DivisionColumn({ w, promo, d }: { w: World; promo: PromoId; d: Division
             </>
           )}
         </div>
-        <span className={`belt${champ ? "" : " none"}`} aria-hidden="true">{champ ? "C" : "—"}</span>
+        {champ && <span className="belt" aria-hidden="true">C</span>}
       </div>
       {ps.interim[d] && w.fighters[ps.interim[d]!] && (
         <div className="rk-interim">
@@ -100,12 +100,14 @@ function DivisionColumn({ w, promo, d }: { w: World; promo: PromoId; d: Division
   );
 }
 
-function P4P({ w }: { w: World }) {
-  const top = w.p4p.slice(0, 15).map((id) => w.fighters[id]).filter(Boolean);
+function P4P({ w, promo }: { w: World; promo: PromoId }) {
+  const list = promo === "ufc" ? w.p4p : w.promos[promo]?.p4p ?? [];
+  const top = list.slice(0, 15).map((id) => w.fighters[id]).filter(Boolean);
   const first = top[0];
+  if (!first) return null;
   return (
     <section className="sec">
-      <div className="sec-h"><h2>Pound for pound</h2><span className="hint">The best fighters in the UFC regardless of weight</span></div>
+      <div className="sec-h"><h2>Pound for pound</h2><span className="hint">The best {top.length} fighters in the {PROMOTIONS[promo].short} regardless of weight</span></div>
       <div className="rk-col p4p-col">
         {first && (
           <div className="rk-champ" style={{ minHeight: 220 }}>

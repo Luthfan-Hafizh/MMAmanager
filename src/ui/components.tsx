@@ -39,7 +39,7 @@ export function FighterLink({ w, id, rank, flag = true, short, record }: { w: Wo
 
 export function Form({ w, f, n = 5 }: { w: World; f: Fighter; n?: number }) {
   const form = formOf(w, f, n).reverse();
-  if (!form.length) return <span className="dim small">No fights yet</span>;
+  if (!form.length) return <span className="dim small">{f.rec.w + f.rec.l + f.rec.d + f.am.w + f.am.l + f.am.d > 0 ? "None in this world yet" : "No fights yet"}</span>;
   return (
     <span className="form">
       {form.map((r, i) => (

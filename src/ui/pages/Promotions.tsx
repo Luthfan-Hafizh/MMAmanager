@@ -28,9 +28,9 @@ export function Promotions() {
                     <td><span className="row tight"><span className="promo-dot" style={{ background: d.color }} /><b>{d.name}</b> <span className="dim">{d.short}</span></span></td>
                     <td>{d.region === "global" ? "Worldwide" : REGIONS[d.region].name}</td>
                     <td className="r">{d.eventsPerYear}</td>
-                    <td className="r">{promoRoster(w, p).length}</td>
-                    <td className="r small">{d.showLow ? `${money(d.showLow)} to ${money(d.showHigh)}` : "Amateur"}</td>
-                    <td className="small">{next ? `${next.name}, ${fmtDate(next.day)}` : "-"}</td>
+                    <td className="r">{d.tier === "tryout" ? <span className="dim">Invited</span> : promoRoster(w, p).length}</td>
+                    <td className="r small">{!d.showLow ? "Amateur" : d.showLow === d.showHigh ? money(d.showLow) : `${money(d.showLow)} to ${money(d.showHigh)}`}</td>
+                    <td className="small">{next ? `${next.name}, ${fmtDate(next.day)}` : d.tier === "tryout" ? <span className="dim">Next summer</span> : "-"}</td>
                   </tr>
                 );
               })}

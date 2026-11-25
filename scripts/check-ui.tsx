@@ -42,7 +42,10 @@ import { INJURY, makeInjury } from "../src/data/injuries";
 import { Media, PressRoom } from "../src/ui/pages/Media";
 import { callOut, calloutChoices, talkableFights, talkFight } from "../src/career/social";
 import { heatOf } from "../src/career/rivals";
-import { answerQuestion, finishSession, startSession } from "../src/career/media";
+import { answerQuestion, finishSession, preQuestions, startSession } from "../src/career/media";
+import { rankThen } from "../src/ui/pages/Events";
+import { PROMOTIONS } from "../src/data/promotions";
+import type { Bout } from "../src/model/types";
 import { scaleDay } from "../src/career/weighin";
 import { forceLife, LIFE_IDS } from "../src/career/life";
 import { boutLimit } from "../src/career/shortnotice";
@@ -642,6 +645,31 @@ pages(tw, "Retired fighter turned manager");
     else if (!o || o.kind !== "title" || o.opp !== champ.id) fail(`a #${rf} contender who called out the champion was offered ${o ? `a ${o.kind} fight` : "nothing"}`);
     else console.log(`#${rf} ${me.surname} called out the champion ${champ.surname}: offered the title fight`);
   }
+}
+
+// The PFL's pound for pound and full rankings from the start, past fights' ranks, and the home town at the press conference.
+{
+  const fail = (what: string) => { failures++; console.log(`  FAIL ${what}`); };
+  const pw = createWorld(roster, { name: "UI", seed: 96, mode: "fighter", difficulty: "normal", takeover: "ufc-arman-tsarukyan" });
+  setWorld(pw);
+  const pfl = renderToString(<Rankings promo="pfl" />).replace(/<!-- -->/g, "");
+  if ((pw.promos.pfl.p4p?.length ?? 0) < 10 || !pfl.includes("Pound for pound") || !pfl.includes("in the PFL")) fail("the PFL has no pound-for-pound list");
+  const unranked = PROMOTIONS.pfl.divisions.filter((d) => !pw.promos.pfl.ranks[d]?.length && Object.values(pw.fighters).some((f) => f.promo === "pfl" && f.div === d));
+  if (unranked.length) fail(`PFL divisions with fighters and no rankings: ${unranked.join(", ")}`);
+  if (pfl.includes(">NEW<")) fail("the first rankings mark everybody as new");
+  const past = { rankA: 0, rankB: 3, kind: "title", res: { belt: { b: "Won the title" } } } as unknown as Bout;
+  const unify = { rankA: 0, rankB: 1, kind: "title", stake: "unify", res: { belt: {} } } as unknown as Bout;
+  if (rankThen(past, "a") !== "C" || rankThen(past, "b") !== "#3" || rankThen(unify, "b") !== "IC") fail("a finished fight does not show the ranks the fighters took into it");
+  const me = pw.fighters[pw.career.fighters[0]];
+  const ev = pw.upcoming.map((id) => pw.events[id]).find((e) => e.promo === "ufc" && e.day - pw.day > 20)!;
+  const opp = Object.values(pw.fighters).find((x) => x.promo === "ufc" && x.div === me.div && x.id !== me.id && !x.booked && x.status === "active" && x.country !== me.country)!;
+  if (me.booked && pw.bouts[me.booked]) cancelBout(pw, pw.bouts[me.booked], "test");
+  const bt = makeBout(pw, ev, me, opp, "regular");
+  ev.city = me.hometown;
+  ev.country = me.country;
+  const qs = withRng(pw, (rng) => preQuestions(pw, rng, me, bt, opp, "respect")).filter(Boolean);
+  if (!qs.some((q) => q!.q.includes("is your home town"))) fail("no home-town question for a fight in the fighter's home town");
+  else console.log(`PFL pound for pound (#1 ${pw.fighters[pw.promos.pfl.p4p![0]].surname}), every PFL division ranked, no "new" on the first rankings; finished fights show the ranks going in; ${me.hometown} gets its own press question`);
 }
 
 const mw = createWorld(roster, { name: "UI", seed: 79, mode: "manager", difficulty: "normal", agency: "Check Management" });

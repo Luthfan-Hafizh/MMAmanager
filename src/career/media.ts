@@ -82,7 +82,7 @@ function oppLinesFor(rng: Rng, opp: Fighter, f: Fighter, tone: AnswerTone, kind:
   return [pick(rng, [`${n} is a great fighter and I've prepared for a hard fight.`, `Nothing but respect. May the best one win.`])];
 }
 
-function preQuestions(w: World, rng: Rng, f: Fighter, b: Bout, opp: Fighter, otone: AnswerTone): Q[] {
+export function preQuestions(w: World, rng: Rng, f: Fighter, b: Bout, opp: Fighter, otone: AnswerTone): Q[] {
   const ev = w.events[b.ev];
   const when = fmtDate(b.day, { year: false });
   const out: Q[] = [];
@@ -246,8 +246,19 @@ function preQuestions(w: World, rng: Rng, f: Fighter, b: Bout, opp: Fighter, oto
         { tone: "deflect", text: "Ask my manager." },
       ],
     });
-  // Home or away.
-  if (ev && ev.country === f.country)
+  // Home or away, and the home town itself.
+  const town = (s?: string) => (s ?? "").split(",")[0].trim().toLowerCase();
+  if (ev && ev.country === f.country && town(ev.city) === town(f.hometown))
+    out.push({
+      q: `${ev.city} is your home town. The arena will be full of people who knew you before any of this. Pressure, or a boost?`,
+      answers: [
+        { tone: "respect", text: "Fighting in front of the people I grew up with is a dream." },
+        { tone: "confident", text: "My city, my night. Nobody takes that from me." },
+        { tone: "trash", text: "{He}'s walking into my town. Bad idea." },
+        { tone: "funny", text: "The hard part was the ticket list. My whole street wants in." },
+      ],
+    });
+  else if (ev && ev.country === f.country)
     out.push({
       q: `Fighting at home in ${ev.city}. Pressure, or a boost?`,
       answers: [
@@ -259,7 +270,7 @@ function preQuestions(w: World, rng: Rng, f: Fighter, b: Bout, opp: Fighter, oto
     });
   else if (ev && ev.country === opp.country)
     out.push({
-      q: `${opp.surname} is fighting at home. A whole arena against you. Bothered?`,
+      q: `${opp.surname} is fighting at home${town(ev.city) === town(opp.hometown) ? `, in ${ev.city}, where ${opp.sex === "F" ? "she" : "he"} grew up` : ""}. A whole arena against you. Bothered?`,
       answers: [
         { tone: "respect", text: "I love it. That's what we do this for." },
         { tone: "confident", text: "I'll quiet them down early." },

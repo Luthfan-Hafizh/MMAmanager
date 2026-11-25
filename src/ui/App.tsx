@@ -1,7 +1,7 @@
 // The shell: a black broadcast bar (date, bank, Continue) over a white navigation
 // strip, then the page. Every page opens with a dark hero band.
 
-import { useEffect, type ReactNode } from "react";
+import { useEffect, useRef, type ReactNode } from "react";
 import { fmtDate, DOW, ymd } from "../core/time";
 import { money } from "../core/util";
 import { DIVISIONS } from "../data/divisions";
@@ -198,6 +198,26 @@ function Shell() {
   useEffect(() => {
     document.title = `${page.title} · MMA Manager`;
   }, [page.title]);
+  // The nav scrolls sideways on smaller screens: fade the edge while there's more, and keep the current page in view.
+  const navRef = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    const el = navRef.current;
+    if (!el) return;
+    const check = () => {
+      el.dataset.more = el.scrollWidth - el.scrollLeft - el.clientWidth > 4 ? "1" : "";
+    };
+    check();
+    el.addEventListener("scroll", check, { passive: true });
+    window.addEventListener("resize", check);
+    return () => {
+      el.removeEventListener("scroll", check);
+      window.removeEventListener("resize", check);
+    };
+  }, []);
+  useEffect(() => {
+    const on = navRef.current?.querySelector<HTMLElement>("a.on");
+    if (on && navRef.current && navRef.current.scrollWidth > navRef.current.clientWidth) on.scrollIntoView({ block: "nearest", inline: "center" });
+  }, [at]);
   const me = w.career.fighters[0] ? w.fighters[w.career.fighters[0]] : undefined;
   const nav = (to: string, label: string, count?: number, soft?: boolean) => (
     <Link to={to} className={at === to.split("/")[1] ? "on" : ""}>
@@ -225,7 +245,7 @@ function Shell() {
         </div>
       </header>
       <nav className="bar-nav" aria-label="Main">
-        <div className="inner">
+        <div className="inner" ref={navRef}>
           {nav("/home", "Home")}
           {nav("/inbox", "Inbox", decide || u, !decide)}
           {mode === "fighter" ? (

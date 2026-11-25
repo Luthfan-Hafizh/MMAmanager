@@ -134,10 +134,22 @@ export function EventPage({ id }: { id: string }) {
   );
 }
 
+/** The rank a fighter took into a finished fight ("C", "IC", "#n" or "" unranked), or null when it wasn't recorded. */
+export function rankThen(b: Bout, side: "a" | "b"): string | null {
+  const r = side === "a" ? b.rankA : b.rankB;
+  if (r === undefined) return null;
+  if (r === null) return "";
+  if (r === 0) return "C";
+  const note = b.res?.belt?.[side];
+  if (b.stake === "unify" || note === "Defended the interim title" || (b.kind === "interim" && note === "Lost the interim title")) return "IC";
+  return `#${r}`;
+}
+
 function Corner({ w, b, id, side, result, bonus }: { w: World; b: Bout; id: string; side: "a" | "b"; result: "W" | "L" | "D" | null; bonus?: boolean }) {
   const f = w.fighters[id];
   if (!f) return <div />;
-  const rl = rankLabel(w, f);
+  // A finished fight shows the ranks going into it, an upcoming one the ranks now.
+  const rl = (b.status === "done" ? rankThen(b, side) : null) ?? rankLabel(w, f);
   return (
     <div className={side}>
       {side === "b" && result && <span className={`wl ${result}`}>{result}</span>}
@@ -208,7 +220,7 @@ function BoutRow({ w, b }: { w: World; b: Bout }) {
   );
 }
 
-export function BoutPreview({ w, b }: { w: World; b: Bout }) {
+export function BoutPreview({ w, b, tape = true }: { w: World; b: Bout; tape?: boolean }) {
   const A = w.fighters[b.a];
   const B = w.fighters[b.b];
   const pv = preview(w, b);
@@ -231,7 +243,7 @@ export function BoutPreview({ w, b }: { w: World; b: Bout }) {
   return (
     <div className="expand">
       <div className="grid">
-        <div className="c6">
+        {tape && <div className="c6">
           <div className="label" style={{ marginBottom: 6 }}>Tale of the tape</div>
           <div className="versus"><div className="l">{boutRecord(w, A, b)}</div><div className="m">Record</div><div className="r">{boutRecord(w, B, b)}</div></div>
           <div className="versus"><div className="l small">{styleLabel(A)}</div><div className="m">Styles</div><div className="r small">{styleLabel(B)}</div></div>
@@ -240,8 +252,8 @@ export function BoutPreview({ w, b }: { w: World; b: Bout }) {
           <Versus label="Striking" a={groupScore(A.attrs, "striking")} b={groupScore(B.attrs, "striking")} fmt={(v) => v.toFixed(1)} />
           <Versus label="Grappling" a={groupScore(A.attrs, "grappling")} b={groupScore(B.attrs, "grappling")} fmt={(v) => v.toFixed(1)} />
           <Versus label="Win streak" a={Math.max(0, A.streak)} b={Math.max(0, B.streak)} />
-        </div>
-        <div className="c6">
+        </div>}
+        <div className={tape ? "c6" : "c12"}>
           <div className="label" style={{ marginBottom: 6 }}>Preview</div>
           <p className="small"><b>{pv.summary}</b>{b.odds !== undefined ? ` Implied chances ${Math.round(b.odds * 100)}% to ${Math.round((1 - b.odds) * 100)}%.` : ""}</p>
           <div className="keys">

@@ -74,10 +74,10 @@ export function Title() {
             ) : (
               saves.map((s) => (
                 <div className="save-row" key={s.id}>
-                  <div style={{ flex: 1, minWidth: 0 }}>
+                  <div className="save-who">
                     <div className="disp up ellip" style={{ fontSize: 20 }}>{s.who}</div>
                     <div className="small" style={{ color: "var(--band-ink-3)" }}>
-                      {s.mode === "manager" ? "Manager" : "Fighter"} · {fmtDate(s.day)} · saved {new Date(s.savedAt).toLocaleDateString()}
+                      {s.mode === "manager" ? "Manager" : "Fighter"} · {fmtDate(s.day)} · saved {new Date(s.savedAt).toLocaleString("en-GB", { day: "numeric", month: "short", year: "numeric", hour: "2-digit", minute: "2-digit" })}
                     </div>
                   </div>
                   {compatible(s) ? (

@@ -324,7 +324,7 @@ function History({ w, f }: { w: World; f: Fighter }) {
       <div className="sec-h"><h2>Fight history</h2><span className="hint">{bouts.length} fights in this world</span></div>
       <div className="panel">
         {bouts.length === 0 ? (
-          <Empty title="No fights yet" />
+          <Empty title={f.rec.w + f.rec.l + f.rec.d + f.am.w + f.am.l + f.am.d > 0 ? "No fights in this world yet" : "No fights yet"} />
         ) : (
           <div className="tbl-wrap">
             <table className="tbl">

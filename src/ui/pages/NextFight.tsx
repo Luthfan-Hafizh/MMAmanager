@@ -51,7 +51,7 @@ export function NextFight({ id }: { id?: string }) {
       <FightHeader w={w} b={b} f={f} opp={opp} />
       <div className="wrap page-body">
         <div className="row" style={{ marginBottom: 16 }}><FighterSwitch w={w} id={fid} base="/fight" /></div>
-        <div className="panel" style={{ marginBottom: 18 }}><BoutPreview w={w} b={b} /></div>
+        <div className="panel" style={{ marginBottom: 18 }}><BoutPreview w={w} b={b} tape={false} /></div>
         <div className="grid">
           <div className="c5 stack">
             <TaleOfTheTape w={w} f={f} opp={opp} b={b} />
@@ -93,7 +93,7 @@ function FightHeader({ w, b, f, opp }: { w: World; b: Bout; f: Fighter; opp: Fig
       }
     >
       <div className="bignums">
-        <div><div className="n">{days}</div><div className="k">{days === 1 ? "Day to go" : "Days to go"}</div></div>
+        <div><div className="n">{days <= 0 ? "Tonight" : days}</div><div className="k">{days <= 0 ? "Fight night" : days === 1 ? "Day to go" : "Days to go"}</div></div>
         <div><div className="n">{recordText(f)}</div><div className="k">{rankLabel(w, f) || "Unranked"} · you</div></div>
         <div><div className="n">{recordText(opp)}</div><div className="k">{rankLabel(w, opp) || "Unranked"} · <Link to={`/fighter/${opp.id}`} className="link">profile</Link></div></div>
       </div>

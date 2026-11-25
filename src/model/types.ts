@@ -337,6 +337,8 @@ export interface PromoState {
   contender: Partial<Record<DivisionId, string | null>>;
   /** The UFC's BMF title (lightweight). */
   bmf?: BmfState;
+  /** Pound for pound, for the PFL (the UFC's is World.p4p). */
+  p4p?: string[];
 }
 
 export interface BmfReign {

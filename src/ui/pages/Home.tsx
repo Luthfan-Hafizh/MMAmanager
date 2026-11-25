@@ -82,9 +82,9 @@ export function NextFightCard({ w, f }: { w: World; f: Fighter }) {
             <span className="rec">{f.first}</span>
           </div>
           <div className="mid">
-            <div className="rd">{title ? stakeLabel(b) : `${b.rounds} rounds`}</div>
+            <div className="rd">{stakeLabel(b) ?? `${b.rounds} rounds`}</div>
             <div className="clock">{days <= 0 ? "Tonight" : days}</div>
-            <div className="pos">{days <= 0 ? ev?.name : days === 1 ? "day to go" : "days to go"}</div>
+            <div className="pos">{days <= 0 ? `${title || b.kind === "eliminator" ? `${b.rounds} rounds` : b.order === 0 ? "Main event" : b.order === 1 ? "Co-main event" : `${DIVISIONS[b.div].name} bout`}` : days === 1 ? "day to go" : "days to go"}</div>
           </div>
           <div className="side b">
             <span className="label" style={{ color: "rgba(255,255,255,0.7)" }}>{recordText(opp)} · {rankLabel(w, opp) || "Unranked"}</span>
@@ -97,7 +97,7 @@ export function NextFightCard({ w, f }: { w: World; f: Fighter }) {
             <b style={{ color: "var(--band-ink)" }}>{ev?.name}</b> · {fmtDate(b.day, { dow: true })} · {ev?.venue}, {ev?.city}
             {w.career.fc[f.id]?.camp ? ` · Preparation: ${prepText(campPrep(w, f, b))}` : ""}
           </span>
-          <Link to={`/fight/${f.id}`} className="btn primary sm">Fight camp</Link>
+          {days <= 0 ? <Link to="/fightnight" className="btn primary sm">Fight night</Link> : <Link to={`/fight/${f.id}`} className="btn primary sm">Fight camp</Link>}
         </div>
       </section>
     );
@@ -306,7 +306,7 @@ function FighterHome({ w, f }: { w: World; f: Fighter }) {
               <Panel title={`${PROMOTIONS[f.promo].short} ${DIVISIONS[f.div].name}`} acts={<Link to={`/rankings/${f.promo}`} className="textlink">Rankings</Link>} flush>
                 <div className="rk-list">
                   {champ && (
-                    <div className={`rk-item${w.fighters[champ]?.ctrl ? " me" : ""}`}><span className="rank c">C</span><FighterLink w={w} id={champ} /><span /></div>
+                    <div className={`rk-item${w.fighters[champ]?.ctrl ? " me" : ""}`}><span className="rank c">C</span><FighterLink w={w} id={champ} /><span className="tiny dim">{w.fighters[champ] ? recordText(w.fighters[champ]) : ""}</span></div>
                   )}
                   {ranks.slice(0, 10).map((id, i) => (
                     <div key={id} className={`rk-item${w.fighters[id]?.ctrl ? " me" : ""}`}>{ps.interim[f.div] === id ? <span className="rank ic">IC</span> : <span className="n">{rankNumber(ranks, ps.interim[f.div] ?? null, i)}</span>}<FighterLink w={w} id={id} /><span className="tiny dim">{recordText(w.fighters[id])}</span></div>

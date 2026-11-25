@@ -17,7 +17,7 @@ import { ensureSchedule } from "./calendar";
 import { addNews, fullName, nextId, rankOf, touch, withRng } from "./core";
 import { generateFighter, makeRecord, pickCountry } from "./generate";
 import { currentStreak, potentialNoise, prospectRoom, realFighter, realGym, type RosterFile } from "./real";
-import { entryElo, updateP4P, updateRankings } from "./rankings";
+import { entryElo, p4pOf, updateP4P, updateRankings } from "./rankings";
 import { managerPerson } from "../career/advisor";
 import { initBmf, isBeltFight } from "./belts";
 import { notify } from "../career/inbox";
@@ -152,6 +152,13 @@ export function repair(w: World): World {
       }
     }
   }
+  // Divisions with fighters but nobody ranked yet (the PFL's unranked ones), and the PFL's pound for pound.
+  for (const [pid, ps] of Object.entries(w.promos)) {
+    const p = PROMOTIONS[pid as PromoId];
+    if (!p?.rankSize) continue;
+    for (const d of p.divisions) if (!ps.ranks[d]?.length && Object.values(w.fighters).some((f) => f.promo === pid && f.div === d && f.status === "active")) updateRankings(w, pid as PromoId, [d]);
+  }
+  if (w.promos.pfl && !w.promos.pfl.p4p) w.promos.pfl.p4p = p4pOf(w, "pfl", 10);
   // Champions and interim champions used to be booked in fights with no belt on the line.
   for (const id of w.upcoming) {
     const ev = w.events[id];
@@ -495,6 +502,9 @@ export function createWorld(roster: RosterFile, o: NewGameOptions): World {
       w.fighters[f.id] = f;
     }
   }
+  // Divisions the real PFL rankings don't cover are ranked by rating; then the PFL's pound for pound.
+  for (const d of PROMOTIONS.pfl.divisions) if (!pps.ranks[d]?.length) updateRankings(w, "pfl", [d]);
+  pps.p4p = p4pOf(w, "pfl", 10);
 
   // Every region's ladder.
   for (const id of PROMO_IDS) populate(w, rng, id);

@@ -134,16 +134,20 @@ export interface WeekResult {
 /** Which sessions build a style, and how much each counts. */
 export function styleSessions(id: StyleId): Partial<Record<SessionId, number>> {
   switch (id) {
-    case "outBoxer": case "pressure": case "counter": case "slugger": return { boxing: 1, sparring: 0.6, kickboxing: 0.3, drilling: 0.5, film: 0.3 };
-    case "dutch": return { kickboxing: 1, boxing: 0.6, muaythai: 0.4, sparring: 0.6, drilling: 0.5 };
+    case "outBoxer": case "pressure": case "counter": case "slugger": case "peekaboo": case "boxerPuncher": return { boxing: 1, sparring: 0.6, kickboxing: 0.3, drilling: 0.5, film: 0.3 };
+    case "dutch": case "k1": return { kickboxing: 1, boxing: 0.6, muaythai: 0.4, sparring: 0.6, drilling: 0.5 };
+    case "sniper": return { kickboxing: 1, muaythai: 0.5, sparring: 0.5, drilling: 0.6, film: 0.3 };
+    case "kyokushin": return { kickboxing: 1, boxing: 0.5, sparring: 0.7, conditioning: 0.3, drilling: 0.4 };
+    case "sanda": return { kickboxing: 1, wrestling: 0.5, sparring: 0.6, drilling: 0.5 };
     case "point": case "flash": return { kickboxing: 1, sparring: 0.6, boxing: 0.3, drilling: 0.6, film: 0.3 };
-    case "khao": case "femur": return { muaythai: 1, kickboxing: 0.5, sparring: 0.6, drilling: 0.5 };
+    case "khao": case "femur": case "tae": case "mat": case "sok": case "bouk": case "lak": return { muaythai: 1, kickboxing: 0.5, sparring: 0.6, drilling: 0.5 };
     case "volume": return { boxing: 0.7, kickboxing: 0.7, sparring: 0.8, conditioning: 0.3, drilling: 0.4 };
     case "brawler": return { sparring: 1, boxing: 0.6, drilling: 0.3 };
     case "basic": return { boxing: 0.6, sparring: 0.8, drilling: 0.4 };
-    case "chain": case "blast": case "grinder": case "pounder": return { wrestling: 1, sparring: 0.5, bjj: 0.3, drilling: 0.5 };
+    case "chain": case "blast": case "grinder": case "pounder": case "rider": case "wrestleBoxer": case "clincher": return { wrestling: 1, sparring: 0.5, bjj: 0.3, drilling: 0.5 };
+    case "catchWrestler": return { wrestling: 0.9, bjj: 0.6, sparring: 0.4, drilling: 0.5 };
     case "scrambler": return { wrestling: 0.8, bjj: 0.8, sparring: 0.5, drilling: 0.4 };
-    case "passer": case "guard": case "backTaker": case "legLocker": return { bjj: 1, wrestling: 0.3, sparring: 0.4, drilling: 0.5 };
+    case "passer": case "guard": case "backTaker": case "legLocker": case "subHunter": return { bjj: 1, wrestling: 0.3, sparring: 0.4, drilling: 0.5 };
     case "thrower": return { wrestling: 0.8, bjj: 0.5, sparring: 0.4, drilling: 0.5 };
     case "sprawl": return { wrestling: 0.8, sparring: 0.6, drilling: 0.3 };
   }
@@ -236,7 +240,7 @@ export function trainingWeek(w: World, f: Fighter, plan: TrainingPlan, rng: Rng,
       const cur = def.kind === "strike" ? st.sm : st.gm;
       const weights = styleSessions(plan.style);
       const rel = plan.week.reduce((a, s) => a + (weights[s] ?? 0), 0);
-      const coach = coachQuality(gym, def.kind === "strike" ? "striking" : def.id === "chain" || def.id === "blast" || def.id === "grinder" || def.id === "pounder" || def.id === "sprawl" ? "wrestling" : "grappling");
+      const coach = coachQuality(gym, def.kind === "strike" ? "striking" : def.group === "Wrestling" || def.id === "sprawl" ? "wrestling" : "grappling");
       const step = rel * 0.3 * (0.5 + styleFit(f.attrs, plan.style) / 100) * (0.55 + coach / 110) * (0.75 + f.attrs.fightIQ / 40) * INT_GROWTH[plan.intensity] * (1 - cur / 125) * hurtTrain * fatPenalty;
       const after = clamp(cur + step, 0, 99);
       styled = { id: plan.style, before: cur, after };

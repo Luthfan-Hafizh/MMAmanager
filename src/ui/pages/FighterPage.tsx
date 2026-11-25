@@ -20,7 +20,7 @@ import { AttrGrid, Empty, FighterLink, Flag, Form, Panel, Stars, Tabs } from "..
 import { Band, BodyTarget, Donut, Mark } from "../art";
 import { goatRank, legacyText } from "../../world/legacy";
 import { headToHead } from "../../world/odds";
-import { FIGHT_STYLES, masteryName, styleFit, type StyleId } from "../../data/fightstyles";
+import { FIGHT_STYLES, masteryName, styleFit, TRAIT_NAMES, type StyleId, type TraitKey } from "../../data/fightstyles";
 import { fightStyle } from "../../world/fightstyle";
 import { useHistory, realTitleWin, type FighterHistory } from "../../state/history";
 import { dayOf } from "../../core/time";
@@ -555,6 +555,15 @@ function StyleCard({ f, id, m, kind }: { f: Fighter; id: StyleId; m: number; kin
         </div>
         <p className="small" style={{ marginTop: 10 }}>{sd.desc}</p>
         <ul className="style-how">{sd.how.map((h) => <li key={h}>{h}</li>)}</ul>
+        <div className="label" style={{ marginTop: 10 }}>In the cage, at this mastery</div>
+        <div className="sp-traits">
+          {(Object.entries(sd.t) as [TraitKey, number][]).filter(([, v]) => v > 0).sort((a, b) => b[1] - a[1]).slice(0, 4).map(([k, v]) => (
+            <div key={k} className="sp-trait">
+              <span>{TRAIT_NAMES[k]}</span>
+              <i title={`${Math.round(v * Math.pow(m / 100, 0.9) * 100)} of ${Math.round(v * 100)} at full mastery`}><em style={{ width: `${Math.round(v * Math.pow(m / 100, 0.9) * 100)}%` }} /></i>
+            </div>
+          ))}
+        </div>
         <div className="small dim" style={{ marginTop: 8 }}>
           Built on {sd.keys.map((k) => ATTR_INFO[k].name.toLowerCase()).join(", ")}: {fit >= 70 ? "a natural fit" : fit >= 45 ? "a good fit" : "not where the strengths are"} ({fit}%).
         </div>

@@ -21,7 +21,8 @@ export type StrikeId =
   | "spinFist"
   | "superman"
   | "flyKnee"
-  | "questionMark";
+  | "questionMark"
+  | "elbow";
 
 export type Zone = "head" | "body" | "leg";
 
@@ -62,6 +63,8 @@ export const STRIKES: Record<StrikeId, StrikeDef> = {
   spinFist: S({ id: "spinFist", name: "spinning backfist", zone: "head", kick: false, acc: 0.26, dmg: 1.0, ko: 1.25, cost: 1.1, skill: "power", w: 0.8, range: [0.6, 1.2, 0.6], tech: "spinningBackfist", exclusive: true, power: true }),
   superman: S({ id: "superman", name: "superman punch", zone: "head", kick: false, acc: 0.3, dmg: 1.0, ko: 1.0, cost: 1.1, skill: "speed", w: 1, range: [1.5, 0.9, 0.2], tech: "superman", exclusive: true, power: true }),
   flyKnee: S({ id: "flyKnee", name: "flying knee", zone: "head", kick: true, acc: 0.24, dmg: 1.5, ko: 1.6, cost: 1.8, skill: "speed", w: 0.6, range: [0.9, 1.2, 0.4], tech: "flyingKnee", exclusive: true, power: true }),
+  // A slashing elbow in the pocket: rare, except for the elbow fighters, and the cuts come with it.
+  elbow: S({ id: "elbow", name: "elbow", zone: "head", kick: false, acc: 0.31, dmg: 0.95, ko: 0.9, cost: 0.7, skill: "clinchStrikes", w: 0.45, range: [0.02, 0.55, 1.5], tech: "elbows", power: true }),
   questionMark: S({ id: "questionMark", name: "question mark kick", zone: "head", kick: true, acc: 0.26, dmg: 1.3, ko: 1.3, cost: 1.4, skill: "kicks", w: 0.8, range: [1.4, 0.8, 0.2], tech: "questionMark", exclusive: true, power: true }),
 };
 

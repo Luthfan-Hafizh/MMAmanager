@@ -20,6 +20,8 @@ export interface RealSignals {
 }
 
 const STRIKER_ARTS = new Set(["boxing", "kickboxing", "muaythai", "karate", "taekwondo", "brawler"]);
+/** The Muay Thai styles: a Thai background, or a real fighter who kicks like one. */
+const THAI = new Set<StyleId>(["khao", "femur", "tae", "mat", "sok", "bouk", "lak"]);
 const GRAPPLER_ARTS = new Set(["wrestling", "greco", "sambo", "judo", "bjj"]);
 
 function avg(a: Record<AttrKey, number>, keys: AttrKey[]): number {
@@ -44,11 +46,27 @@ function realBonus(id: StyleId, r: RealSignals): number {
     case "point": return (r.range - 0.6) * 45 + (r.kicking - 0.45) * 12 + (r.counter - 0.4) * 10;
     case "flash": return (r.kicking - 0.62) * 70 + (r.range - 0.55) * 15;
     case "khao": return (r.clinch - 0.45) * 50 + (r.clinchShare - 11) * 1.4 + (r.kicking - 0.45) * 10;
+    case "peekaboo": return (r.def - 54) * 1.2 + (r.pocket - 0.5) * 30 + (r.kd - 0.45) * 15 - (r.kicking - 0.45) * 22 - 4;
+    case "boxerPuncher": return (r.acc - 47) * 0.9 + (r.kd - 0.45) * 25 + (r.range - 0.5) * 10 - (r.kicking - 0.45) * 22;
+    case "k1": return (r.kicking - 0.5) * 35 + (r.pace - 0.6) * 30 + (r.slpm - 4.2) * 6;
+    case "sniper": return (r.leg - 20) * 1.6 + (r.range - 0.55) * 30 + (r.kicking - 0.5) * 15;
+    case "tae": return (r.kicking - 0.6) * 55 + (r.body - 18) * 0.8;
+    case "mat": return (r.kd - 0.45) * 20 + (r.pocket - 0.5) * 25 + (r.kicking - 0.45) * 10 + (r.body - 18) * 0.6;
+    case "sok": return (r.clinch - 0.5) * 30 + (r.finish - 0.5) * 20 + (r.clinchShare - 12) * 0.8 - 6;
+    case "bouk": return (r.pressure - 0.55) * 45 + (r.clinch - 0.45) * 20 + (r.kicking - 0.45) * 10;
+    case "lak": return (r.counter - 0.45) * 40 + (r.def - 52) * 0.6 + (r.kicking - 0.45) * 10;
+    case "kyokushin": return (r.body - 20) * 1.2 + (r.leg - 18) * 0.8 + (r.pressure - 0.5) * 20;
+    case "sanda": return (r.kicking - 0.55) * 30 + (r.clinch - 0.45) * 10 - 10;
     case "femur": return (r.kicking - 0.5) * 30 + (r.counter - 0.4) * 25 + (r.body - 18) * 0.8;
     case "volume": return (r.slpm - 4.6) * 12 + (r.pace - 0.65) * 40;
     case "brawler": return (r.risk - 0.6) * 30 + (r.sapm - 4.2) * 6 - (r.def - 50) * 0.8;
     case "basic": return 0;
     case "chain": return (r.td - 2) * 9 + (r.tdEntry - 0.5) * 40 + (r.top - 0.5) * 15;
+    case "rider": return (r.top - 0.6) * 45 + (r.td - 2) * 6 + (r.groundShare - 18) * 0.6;
+    case "wrestleBoxer": return (r.td - 1.5) * 6 + (r.tdDef - 65) * 0.6 + (r.kd - 0.4) * 12;
+    case "clincher": return (r.clinch - 0.5) * 40 + (r.clinchShare - 12) * 1.2;
+    case "catchWrestler": return (r.subHunt - 0.45) * 25 + (r.top - 0.55) * 25 - 8;
+    case "subHunter": return (r.subHunt - 0.5) * 45 + (r.sub - 0.6) * 15 + (r.scramble - 0.5) * 15;
     case "blast": return (r.td - 1.6) * 6 + (r.tdEntry - 0.5) * 30 - (r.clinch - 0.45) * 15;
     case "grinder": return (r.clinch - 0.45) * 35 + (r.clinchShare - 11) * 1 + (r.tdEntry - 0.4) * 20;
     case "scrambler": return (r.scramble - 0.5) * 40 + (r.tdEntry - 0.35) * 15;
@@ -77,7 +95,12 @@ export function pickStyles(f: Fighter, rng: Rng, real: RealSignals | null, level
     if (id === "brawler" && f.base !== "brawler") v += a.aggression > 14 && a.strikeDef < 11 ? 0 : -25;
     if (id === "legLocker" && f.base !== "sambo" && f.base !== "bjj") v -= 30;
     if ((id === "flash" || id === "point") && !["karate", "taekwondo", "kickboxing"].includes(f.base) && (!real || real.kicking < 0.6)) v -= 14;
-    if ((id === "khao" || id === "femur") && f.base !== "muaythai" && (!real || real.kicking < 0.55)) v -= 12;
+    if (THAI.has(id) && f.base !== "muaythai" && (!real || real.kicking < 0.55)) v -= 22;
+    if (id === "kyokushin" && f.base !== "karate" && f.base !== "kickboxing") v -= 14;
+    if (id === "peekaboo" && f.base !== "boxing" && f.base !== "brawler") v -= 12;
+    if (id === "sanda" && f.base !== "kickboxing") v -= 20;
+    if (id === "catchWrestler" && f.base !== "wrestling" && f.base !== "sambo") v -= 20;
+    if (id === "clincher" && f.base !== "greco" && f.base !== "wrestling" && (!real || real.clinch < 0.6)) v -= 12;
     return v;
   };
   const best = <T extends StyleId>(list: T[]): T => {
@@ -132,6 +155,7 @@ export function traitsOf(f: Fighter): Traits {
 export const TRAIT_KEYS: TraitKey[] = [
   "jab", "headMove", "range", "cage", "body", "volume", "counter", "power", "lowKick", "blitz", "flash", "clinch", "teep",
   "read", "mix", "chain", "shot", "fence", "scramble", "gnp", "pass", "guard", "back", "legs", "throw", "sprawl",
+  "elbow", "kick", "catch",
 ];
 
 /** Change one of a fighter's styles. What they knew is kept, in case they come back to it. */

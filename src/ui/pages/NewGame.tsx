@@ -2,7 +2,9 @@ import { useEffect, useMemo, useState } from "react";
 import { COUNTRY_LIST, REGIONS, countryOf } from "../../data/countries";
 import { DIVISIONS, DIVISION_IDS, typicalWalk, type DivisionId, type Sex } from "../../data/divisions";
 import { apeBand, bodyEffects, BUILD_IDS, BUILDS, cutDifficulty, defaultWalk, walkRange, type Build } from "../../data/body";
-import { ATTR_INFO, type AttrKey } from "../../model/attributes";
+import { ATTR_INFO, ATTRS, type AttrKey } from "../../model/attributes";
+import { GROUP_BIAS } from "../../world/generate";
+import { StylePicker } from "../stylepicker";
 import { ARTS, ART_IDS, type BaseArt } from "../../data/styles";
 import { PROMOTIONS, promoFor } from "../../data/promotions";
 import { ovr } from "../../model/attributes";
@@ -17,12 +19,12 @@ import { go } from "../router";
 import { Flag, Ovr, Panel, Seg } from "../components";
 import { Logo } from "../icons";
 import { fullName, recordText } from "../../world/core";
-import { FIGHT_STYLES, GRAPPLE_STYLES, STRIKE_STYLES, stylesForArt, type GrappleStyle, type StrikeStyle } from "../../data/fightstyles";
+import { FIGHT_STYLES, stylesForArt, type GrappleStyle, type StrikeStyle, type StyleId } from "../../data/fightstyles";
 
-/** The styles a background offers first: its own, then the common ones. */
-function styleChoices(art: BaseArt, kind: "strike" | "grapple"): string[] {
+/** The styles a background offers first: its own, then the common ones. The first is the default. */
+function styleChoices(art: BaseArt, kind: "strike" | "grapple"): StyleId[] {
   const own = stylesForArt(art, kind);
-  const common = kind === "strike" ? ["volume", "pressure", "counter", "basic"] : ["scrambler", "sprawl", "chain", "backTaker"];
+  const common: StyleId[] = kind === "strike" ? ["volume", "pressure", "counter", "basic"] : ["scrambler", "sprawl", "chain", "backTaker"];
   return [...new Set([...own, ...common])].slice(0, 5);
 }
 
@@ -272,6 +274,12 @@ function bodyWalk(cf: CreatedFighter): number {
   return clamp(cf.walk ?? defaultWalk(cf.div, cf.build ?? "athletic"), lo, hi);
 }
 
+/** Roughly how a background and a body shape the attributes, at an even level: for the style fit. */
+function previewAttrs(art: BaseArt, div: DivisionId, height: number, walk: number, build: Build): Record<AttrKey, number> {
+  const fx = bodyEffects(div, height, walk, build);
+  return Object.fromEntries(ATTRS.map((k) => [k, 11 + (ARTS[art].mods[k] ?? 0) * 0.85 + (GROUP_BIAS[k] ?? 0) + (fx[k] ?? 0)])) as Record<AttrKey, number>;
+}
+
 /** Inches, with the half when there is one: 84.5". */
 function inches(x: number): string {
   return `${Number.isInteger(x) ? x : x.toFixed(1)}"`;
@@ -323,6 +331,8 @@ export function CreateForm({ cf, setCf, onBack, onNext }: { cf: CreatedFighter; 
   // What the frame does, as the generator applies it, biggest first.
   const fx = (Object.entries(bodyEffects(cf.div, cf.height, walk, build)) as [AttrKey, number][]).filter(([, v]) => Math.abs(v) >= 0.15).sort((a, b) => Math.abs(b[1]) - Math.abs(a[1]));
   const reachEdge = cf.reach - d.reach;
+  // The fighter as the background and the body would make them: what the style fit is read from.
+  const preview = previewAttrs(cf.art, cf.div, cf.height, walk, build);
   const regions = Object.values(REGIONS);
   const styleOf = (kind: "strike" | "grapple") => (kind === "strike" ? cf.strike : cf.grapple) ?? styleChoices(cf.art, kind)[0];
   const talent = TALENT.find((t) => t.v === cf.talent)!;
@@ -443,36 +453,12 @@ export function CreateForm({ cf, setCf, onBack, onNext }: { cf: CreatedFighter; 
             ))}
           </select>
           <p className="small muted" style={{ marginTop: 8 }}>{ARTS[cf.art].desc}</p>
-          {(["strike", "grapple"] as const).map((kind) => {
-            const opts = styleChoices(cf.art, kind);
-            const cur = styleOf(kind);
-            const all: string[] = kind === "strike" ? STRIKE_STYLES : GRAPPLE_STYLES;
-            const what = kind === "strike" ? "How you strike" : "How you grapple";
-            return (
-              <div key={kind} className="style-pick">
-                <div className="label">{what}</div>
-                <Tiles
-                  label={what}
-                  value={cur}
-                  onChange={(id) => setCf({ ...cf, [kind]: id })}
-                  options={opts.map((id) => {
-                    const s = FIGHT_STYLES[id as StrikeStyle];
-                    return { v: id, label: s.name, sub: s.arts.includes(cf.art) ? "Your background" : s.from, title: s.desc };
-                  })}
-                />
-                <p className="tile-desc">
-                  {!opts.includes(cur) && <b>{FIGHT_STYLES[cur as StrikeStyle].name}: </b>}
-                  {FIGHT_STYLES[cur as StrikeStyle].desc}
-                </p>
-                <select className="input" style={{ width: "100%" }} value={opts.includes(cur) ? "" : cur} onChange={(e) => e.target.value && setCf({ ...cf, [kind]: e.target.value })} aria-label={`Other ${kind === "strike" ? "striking" : "grappling"} styles`}>
-                  <option value="">Other styles…</option>
-                  {all.filter((id) => !opts.includes(id)).map((id) => (
-                    <option key={id} value={id}>{FIGHT_STYLES[id as StrikeStyle].name} ({FIGHT_STYLES[id as StrikeStyle].from})</option>
-                  ))}
-                </select>
-              </div>
-            );
-          })}
+          {(["strike", "grapple"] as const).map((kind) => (
+            <div key={kind} className="style-pick">
+              <div className="label">{kind === "strike" ? "How you strike" : "How you grapple"}</div>
+              <StylePicker kind={kind} art={cf.art} value={styleOf(kind)} attrs={preview} onChange={(id) => setCf({ ...cf, [kind]: id })} />
+            </div>
+          ))}
           <p className="tiny dim" style={{ marginTop: 12 }}>A style from your own background starts deeper; any style can be built later with style coaching.</p>
         </Panel>
       </div>

@@ -61,7 +61,7 @@ function cultureFor(rng: Rng, country: string): string {
 const SPREAD = 1.7;
 
 /** How attributes in each group tend to sit relative to the mean at a level. */
-const GROUP_BIAS: Partial<Record<AttrKey, number>> = {
+export const GROUP_BIAS: Partial<Record<AttrKey, number>> = {
   aggression: 0.6, heart: 0.8, workRate: 0, composure: -0.3, discipline: -0.2,
 };
 

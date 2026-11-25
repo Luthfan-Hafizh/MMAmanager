@@ -1091,6 +1091,9 @@ export class FightSim {
       if (sd.id === "teep") w *= 1 + 1.2 * t.teep;
       else if (sd.id === "bodyKick") w *= 1 + 0.5 * t.teep;
       if (sd.id === "superman") w *= 1 + t.blitz;
+      if (sd.id === "bodyKick" || sd.id === "switchKick") w *= 1 + 1.0 * t.kick;
+      else if (sd.id === "headKick") w *= 1 + 0.6 * t.kick;
+      if (sd.id === "elbow") w *= 1 + 8 * t.elbow;
       // The guard: a smart fighter hits what's left open, and told to, anyone tries.
       // Told to stay on one target, they mostly do.
       const z = ZI[sd.zone];
@@ -1126,11 +1129,17 @@ export class FightSim {
       this.buf = [];
       this.hits = lead;
     }
+    let caught = false;
     for (let k = 0; k < n && !this.over; k++) {
       const sd = this.pickStrike(att, def, false, k);
+      if (this.catches(def, att, sd)) {
+        dt += this.caughtKick(def, att, sd);
+        caught = true;
+        break;
+      }
       prevLanded = this.throwStrike(att, def, sd, k, prevLanded, false);
     }
-    if (!this.over) {
+    if (!this.over && !caught) {
       // The counter.
       const pc = clamp((0.1 + 0.34 * this.ce(def, "counters")) * (0.55 + 0.9 * def.d.counter) * (1 + 0.12 * att.d.risk) * (1 + 0.5 * def.tr.counter) * (def.stun > 0 ? 0.3 : 1), 0, 0.66);
       if (this.rng.chance(pc)) {
@@ -1152,6 +1161,52 @@ export class FightSim {
       for (const l of held) this.log.push(l);
     }
     return this.over ? dt : dt + this.rng.range(0.5, 3);
+  }
+
+  /** A kick the defender can catch: the body kick, the switch kick, the teep, less often the head kick. */
+  private catches(def: Side, att: Side, sd: StrikeDef): boolean {
+    if (!def.tr.catch || this.range === 2) return false;
+    if (sd.id !== "bodyKick" && sd.id !== "switchKick" && sd.id !== "teep" && sd.id !== "headKick") return false;
+    const read = 0.5 * this.e(def, "clinchControl") + 0.5 * this.e(def, "speed") - 0.6 * this.e(att, "kicks") - 0.4 * this.e(att, "speed");
+    const p = 0.11 * def.tr.catch * Math.exp(1.2 * read) * (sd.id === "headKick" ? 0.45 : 1) * (def.stun > 0 ? 0.2 : 1);
+    return this.rng.chance(clamp(p, 0, 0.35));
+  }
+
+  /** The kick is caught: the catcher sweeps the standing leg (a takedown), or holds it and punishes. */
+  private caughtKick(c: Side, k: Side, sd: StrikeDef): number {
+    const sk = this.rs(k);
+    sk.sigA++;
+    sk.totA++;
+    if (sd.zone === "head") sk.headA++;
+    else sk.bodyA++;
+    this.spend(k, sd.cost);
+    const sc = this.rs(c);
+    const kick = sd.name;
+    const sweep = clamp(0.5 * Math.exp(1.6 * (0.5 * this.e(c, "takedowns") + 0.5 * this.e(c, "strength") - 0.6 * this.e(k, "tdd") - 0.4 * this.e(k, "footwork"))) * (1 + 0.3 * c.tr.throw), 0.12, 0.8);
+    if (this.rng.chance(sweep)) {
+      sc.tdA++;
+      sc.tdL++;
+      c.gimp[this.round - 1] += 1.1;
+      this.pos = "ground";
+      this.top = c.i;
+      const adv = this.e(c, "topControl") - this.e(k, "bottomGame");
+      this.gpos = this.rng.chance(0.55 - adv * 0.3) ? "guard" : "half";
+      this.fence = -1;
+      this.quiet = 0;
+      this.say(`${c.name} catches the ${kick} and sweeps the standing leg. ${k.name} is in ${GPOS_NAME[this.gpos]}.`, c.i, false, "td");
+      return 3 + this.rng.range(1, 3);
+    }
+    // Holds the leg and fires a right hand while the kicker hops.
+    sc.sigA++;
+    sc.totA++;
+    sc.headA++;
+    this.spend(c, STRIKES.cross.cost);
+    const p = clamp(0.62 * Math.exp(1.2 * (this.e(c, "boxing") - this.e(k, "strikeDef"))), 0.25, 0.85);
+    if (this.rng.chance(p)) {
+      this.say(`${c.name} catches the ${kick} and fires a right hand while ${k.name} hops on one leg.`, c.i, false, "land");
+      this.landed(c, k, "head", STRIKES.cross.dmg, STRIKES.cross.ko, "right hand", true, "dist");
+    } else this.say(`${c.name} catches the ${kick}, but ${k.name} pulls the leg free.`, c.i, false, "miss");
+    return 2;
   }
 
   /** One line for a combination and one for the counter, then anything big. */
@@ -1318,6 +1373,8 @@ export class FightSim {
     if (where !== "ground" && !/kick|knee|teep/.test(name)) force *= 1 + 0.12 * t.power;
     if (zone === "body") force *= 1 + 0.08 * t.body;
     else if (zone === "leg") force *= 1 + 0.1 * t.lowKick;
+    if (zone !== "leg" && /kick/.test(name)) force *= 1 + 0.12 * t.kick;
+    if (name === "elbow") force *= 1 + 0.08 * t.elbow;
     if (counter) force *= 1 + 0.08 * t.counter;
     if (where === "ground") force *= 1 + 0.1 * t.gnp;
     if (this.hits?.length) {
@@ -1596,7 +1653,7 @@ export class FightSim {
         const kind = this.rng.choose({
           kneeBody: (1.1 + techOf(actor.f, "plumKnees") * 0.3) * (1 + 0.6 * actor.tr.clinch),
           kneeHead: (0.35 + techOf(actor.f, "plumKnees") * 0.25) * (1 + 0.6 * actor.tr.clinch),
-          elbow: 0.35 + techOf(actor.f, "elbows") * 0.35,
+          elbow: (0.35 + techOf(actor.f, "elbows") * 0.35) * (1 + 2.5 * actor.tr.elbow),
           dirty: 1.0,
         });
         const cs = CLINCH_STRIKES[kind];

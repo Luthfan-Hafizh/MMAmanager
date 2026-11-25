@@ -692,6 +692,39 @@ div.field { display: flex; flex-direction: column; gap: 6px; }
   .tape > div:last-child { grid-column: 1 / -1; border-right: 0; }
   .body-grid .tiles { grid-template-columns: repeat(2, minmax(0, 1fr)); }
 }
+/* Picking a fighting style: the families as tabs, tiles with a fit meter, a card for the chosen one. */
+/* .style-pick is a grid elsewhere: let the picker shrink to it, so the tabs scroll instead of widening the panel. */
+.sp { min-width: 0; }
+.sp-tabs { display: flex; gap: 2px; overflow-x: auto; scrollbar-width: none; margin-bottom: 8px; border-bottom: 1px solid var(--line); }
+.sp-tabs::-webkit-scrollbar { display: none; }
+.sp-tabs button { flex-shrink: 0; padding: 7px 9px 6px; background: none; border: 0; border-bottom: 2px solid transparent; margin-bottom: -1px; cursor: pointer; font-stretch: 75%; font-weight: 800; font-size: 11.5px; letter-spacing: 0.08em; text-transform: uppercase; color: var(--ink-3); white-space: nowrap; }
+.sp-tabs button:hover { color: var(--ink); }
+.sp-tabs button.on { color: var(--ink); border-bottom-color: var(--red); }
+.sp-tiles { grid-template-columns: repeat(auto-fill, minmax(140px, 1fr)); }
+.sp-tile { position: relative; padding-bottom: 20px; }
+.sp-dots { position: absolute; left: 11px; bottom: 8px; display: flex; gap: 3px; }
+.sp-dots em { width: 6px; height: 6px; border-radius: 50%; background: var(--line-2); }
+.sp-dots em.on { background: var(--win); }
+.sp-card { margin-top: 10px; padding: 12px 14px; background: var(--sheet-2); border-left: 3px solid var(--red); border-radius: var(--r); }
+.sp-head { display: flex; flex-wrap: wrap; align-items: baseline; gap: 4px 10px; }
+.sp-head b { font-stretch: 62%; font-weight: 900; font-size: 20px; line-height: 1; text-transform: uppercase; }
+.sp-tag { font-stretch: 75%; font-weight: 800; font-size: 10.5px; letter-spacing: 0.1em; text-transform: uppercase; color: var(--ink-3); }
+.sp-tag.sp-own { color: var(--win); }
+.sp-fit { margin-left: auto; font-stretch: 75%; font-weight: 800; font-size: 11px; letter-spacing: 0.08em; text-transform: uppercase; }
+.sp-fit.d5, .sp-fit.d4 { color: var(--win); }
+.sp-fit.d3 { color: var(--gold); }
+.sp-fit.d2, .sp-fit.d1 { color: var(--loss); }
+.sp-desc { margin-top: 6px; font-size: 13px; color: var(--ink-2); }
+.sp-cols { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; margin-top: 10px; }
+.sp-how { margin: 6px 0 0; padding-left: 16px; font-size: 12.5px; color: var(--ink-2); }
+.sp-how li + li { margin-top: 2px; }
+.sp-traits { display: flex; flex-direction: column; gap: 6px; margin-top: 7px; }
+.sp-trait { display: grid; grid-template-columns: minmax(0, 1fr) 64px; align-items: center; gap: 8px; font-size: 12px; color: var(--ink-2); }
+.sp-trait i { display: block; height: 5px; background: var(--line); border-radius: 3px; overflow: hidden; }
+.sp-trait em { display: block; height: 100%; background: var(--red); }
+.sp-foot { display: flex; flex-direction: column; gap: 3px; margin-top: 10px; padding-top: 8px; border-top: 1px solid var(--line); font-size: 12px; color: var(--ink-2); }
+.sp-foot b { margin-right: 6px; font-stretch: 75%; font-weight: 800; font-size: 10.5px; letter-spacing: 0.1em; text-transform: uppercase; color: var(--ink-3); }
+@media (max-width: 520px) { .sp-cols { grid-template-columns: 1fr; } }
 /* Turning a fight down: the reasons, how the matchmaker will take each, and the relationship. */
 .decline { margin-top: 14px; border-top: 2px solid var(--ink); padding-top: 12px; }
 .decline-h { display: flex; flex-wrap: wrap; align-items: baseline; justify-content: space-between; gap: 4px 12px; margin-bottom: 8px; }

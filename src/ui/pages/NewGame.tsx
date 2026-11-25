@@ -26,6 +26,13 @@ function styleChoices(art: BaseArt, kind: "strike" | "grapple"): string[] {
 
 type Step = "mode" | "origin" | "create" | "real" | "review" | "agency" | "clients";
 
+/** The home town as it will be saved: what was chosen or typed, or the country's first city. */
+function townOf(cf: CreatedFighter): string {
+  return cf.hometown?.replace(/\s+/g, " ").trim() || countryOf(cf.country).cities[0];
+}
+
+const OTHER_TOWN = "__other";
+
 const TALENT: { v: Talent; label: string; desc: string }[] = [
   { v: "average", label: "Hard worker", desc: "Limited ceiling (potential around 72). A grinder's career." },
   { v: "prospect", label: "Prospect", desc: "Real talent (potential around 82): a UFC fighter if it goes right." },
@@ -85,7 +92,7 @@ export function NewGame() {
         }
         const strike = (cf.strike ?? styleChoices(cf.art, "strike")[0]) as StrikeStyle;
         const grapple = (cf.grapple ?? styleChoices(cf.art, "grapple")[0]) as GrappleStyle;
-        await newGame({ name: "Career", seed, mode, difficulty, created: { ...cf, strike, grapple, first: cf.first.trim(), surname: cf.surname.trim(), nick: cf.nick?.trim() || undefined } });
+        await newGame({ name: "Career", seed, mode, difficulty, created: { ...cf, strike, grapple, first: cf.first.trim(), surname: cf.surname.trim(), nick: cf.nick?.trim() || undefined, hometown: townOf(cf) } });
       }
       go("/home");
     } else if (draft) {
@@ -157,7 +164,7 @@ export function NewGame() {
           <div className="choice-grid">
             <button className="choice" onClick={() => { setTakeover(null); setStep("create"); }}>
               <b>Create a fighter</b>
-              <span>Name, country, weight class, martial arts background, body and talent. Start as an amateur, a debutant or a regional prospect.</span>
+              <span>Name, home town, weight class, martial arts background, body and talent. Start as an amateur, a debutant or a regional prospect.</span>
             </button>
             <button className="choice" onClick={() => setStep("real")}>
               <b>Take over a real fighter</b>
@@ -189,7 +196,7 @@ export function NewGame() {
                   {cf.first} {cf.nick ? `"${cf.nick}" ` : ""}
                   {cf.surname}
                 </b>
-                , {cf.age}, {countryOf(cf.country).name}, {DIVISIONS[cf.div].name.toLowerCase()}, {ARTS[cf.art].name.toLowerCase()} background ({FIGHT_STYLES[(cf.strike ?? styleChoices(cf.art, "strike")[0]) as StrikeStyle].name.toLowerCase()}, {FIGHT_STYLES[(cf.grapple ?? styleChoices(cf.art, "grapple")[0]) as GrappleStyle].name.toLowerCase()}). Starts as a{" "}
+                , {cf.age}, from {townOf(cf)}, {countryOf(cf.country).name}; {DIVISIONS[cf.div].name.toLowerCase()}, {ARTS[cf.art].name.toLowerCase()} background ({FIGHT_STYLES[(cf.strike ?? styleChoices(cf.art, "strike")[0]) as StrikeStyle].name.toLowerCase()}, {FIGHT_STYLES[(cf.grapple ?? styleChoices(cf.art, "grapple")[0]) as GrappleStyle].name.toLowerCase()}). Starts as a{" "}
                 {START.find((s) => s.v === cf.start)?.label.toLowerCase()} at {(promoFor(countryOf(cf.country).region, cf.start === "amateur" ? "amateur" : cf.start === "debut" ? "local" : "regional") ?? PROMOTIONS.cffc).name}.
               </p>
             )}
@@ -238,8 +245,20 @@ export function NewGame() {
   );
 }
 
-function CreateForm({ cf, setCf, onBack, onNext }: { cf: CreatedFighter; setCf: (c: CreatedFighter) => void; onBack: () => void; onNext: () => void }) {
+export function CreateForm({ cf, setCf, onBack, onNext }: { cf: CreatedFighter; setCf: (c: CreatedFighter) => void; onBack: () => void; onNext: () => void }) {
   const set = <K extends keyof CreatedFighter>(k: K, v: CreatedFighter[K]) => setCf({ ...cf, [k]: v });
+  // Home town: the country's cities to pick from, or any town typed in.
+  const cities = countryOf(cf.country).cities;
+  const [otherTown, setOtherTown] = useState(() => !!cf.hometown && !cities.includes(cf.hometown));
+  const setCountry = (country: string) => {
+    setOtherTown(false);
+    setCf({ ...cf, country, hometown: countryOf(country).cities[0] });
+  };
+  const pickTown = (v: string) => {
+    setOtherTown(v === OTHER_TOWN);
+    set("hometown", v === OTHER_TOWN ? "" : v);
+  };
+  const townMissing = otherTown && !cf.hometown?.trim();
   const divs = DIVISION_IDS.filter((d) => DIVISIONS[d].sex === cf.sex);
   const d = DIVISIONS[cf.div];
   const setSex = (s: Sex) => {
@@ -258,7 +277,7 @@ function CreateForm({ cf, setCf, onBack, onNext }: { cf: CreatedFighter; setCf: 
             <label className="field c4">Nickname<input className="input" value={cf.nick} onChange={(e) => set("nick", e.target.value)} placeholder="Optional" /></label>
             <label className="field c6">
               Country
-              <select className="input" value={cf.country} onChange={(e) => set("country", e.target.value)}>
+              <select className="input" value={cf.country} onChange={(e) => setCountry(e.target.value)}>
                 {regions.map((r) => (
                   <optgroup key={r.id} label={r.name}>
                     {COUNTRY_LIST.filter((c) => c.region === r.id).map((c) => (
@@ -268,11 +287,24 @@ function CreateForm({ cf, setCf, onBack, onNext }: { cf: CreatedFighter; setCf: 
                 ))}
               </select>
             </label>
-            <label className="field c3">
+            <label className="field c6">
+              Home town
+              <select className="input" value={otherTown ? OTHER_TOWN : cf.hometown || cities[0]} onChange={(e) => pickTown(e.target.value)}>
+                {cities.map((c) => (
+                  <option key={c} value={c}>{c}</option>
+                ))}
+                <option value={OTHER_TOWN}>Somewhere else…</option>
+              </select>
+              {otherTown && (
+                <input className="input" value={cf.hometown ?? ""} maxLength={40} autoFocus aria-label="Your home town" placeholder={`A town in ${countryOf(cf.country).name}`} onChange={(e) => set("hometown", e.target.value)} />
+              )}
+            </label>
+            <p className="tiny dim c12 town-note">Where the fans back home are: the home-town fan club, the hospital visit and the parade after a title all happen there.</p>
+            <label className="field c6">
               Sex
               <Seg value={cf.sex} onChange={setSex} options={[{ v: "M", label: "Men" }, { v: "F", label: "Women" }]} />
             </label>
-            <label className="field c3">
+            <label className="field c6">
               Age: {cf.age}
               <input type="range" min={cf.start === "amateur" ? 16 : 18} max={34} value={cf.age} onChange={(e) => set("age", Number(e.target.value))} />
             </label>
@@ -362,7 +394,8 @@ function CreateForm({ cf, setCf, onBack, onNext }: { cf: CreatedFighter; setCf: 
         <div className="row">
           <button className="btn" onClick={onBack}>Back</button>
           <div style={{ flex: 1 }} />
-          <button className="btn primary" onClick={onNext} disabled={!cf.first.trim() || !cf.surname.trim()}>Next</button>
+          {townMissing && <span className="small warn">Type your home town, or pick one from the list.</span>}
+          <button className="btn primary" onClick={onNext} disabled={!cf.first.trim() || !cf.surname.trim() || townMissing}>Next</button>
         </div>
       </div>
     </div>

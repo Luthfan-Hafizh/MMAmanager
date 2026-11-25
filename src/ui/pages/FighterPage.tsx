@@ -85,7 +85,7 @@ function Hero({ w, f, tabs }: { w: World; f: Fighter; tabs: React.ReactNode }) {
       tabs={tabs}
     >
       <ul className="bio" aria-label="Bio">
-        <li><Flag code={f.country} /> {countryOf(f.country).name}</li>
+        <li><Flag code={f.country} /> {f.hometown ? `${f.hometown}, ` : ""}{countryOf(f.country).name}</li>
         <li>{ageYears(f.birth, w.day)} years old</li>
         <li>{heightText(f.height)} · {f.reach}" reach</li>
         <li>{f.stance.replace(/^./, (c) => c.toUpperCase())}</li>

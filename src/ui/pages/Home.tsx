@@ -224,7 +224,7 @@ function FighterHome({ w, f }: { w: World; f: Fighter }) {
         }
       >
         <div className="factgrid">
-          <div><div className="k">Country</div><div className="v row tight"><Flag code={f.country} /> {countryOf(f.country).name}</div></div>
+          <div><div className="k">From</div><div className="v row tight" title={`${f.hometown}, ${countryOf(f.country).name}`}><Flag code={f.country} /> <span className="ellip">{f.hometown}, {countryOf(f.country).name}</span></div></div>
           <div><div className="k">Age</div><div className="v">{age} · {primeText(f, w.day).toLowerCase()}</div></div>
           <div><div className="k">Styles</div><div className="v">{FIGHT_STYLES[fightStyle(f).s].name} · {FIGHT_STYLES[fightStyle(f).g].name}</div></div>
           <div><div className="k">Team</div><div className="v ellip">{w.gyms[f.gym]?.name}</div></div>

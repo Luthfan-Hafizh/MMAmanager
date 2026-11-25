@@ -12,6 +12,7 @@ import type { World } from "../src/model/types";
 import { Home } from "../src/ui/pages/Home";
 import { Inbox } from "../src/ui/pages/Inbox";
 import { FighterPage } from "../src/ui/pages/FighterPage";
+import { CreateForm } from "../src/ui/pages/NewGame";
 import { Training } from "../src/ui/pages/Training";
 import { NextFight } from "../src/ui/pages/NextFight";
 import { Contracts } from "../src/ui/pages/Contracts";
@@ -576,6 +577,23 @@ pages(tw, "Retired fighter turned manager");
   champ.lastFight = (champ.lastFight ?? rw.day) + 60;
   if (justDethroned(rw, "ufc", d).has(champ.id)) fail("the former champion kept number one after fighting again");
   else console.log("With an interim champion heading the list, the former champion is still number one; a fight later the rankings take over");
+}
+
+// A home town picked from the country's cities or typed in, and shown where the fighter is from.
+{
+  const fail = (what: string) => { failures++; console.log(`  FAIL ${what}`); };
+  const base = { first: "Home", surname: "Town", sex: "M" as const, country: "BR", div: "BW" as const, age: 21, height: 67, reach: 69, stance: "orthodox" as const, art: "bjj" as const, talent: "prospect" as const, start: "debut" as const };
+  const form = renderToString(<CreateForm cf={base} setCf={() => {}} onBack={() => {}} onNext={() => {}} />);
+  if (!form.includes("Home town") || !form.includes("Curitiba") || !form.includes("Somewhere else")) fail("the creation form does not offer the country's towns and somewhere else");
+  const typed = renderToString(<CreateForm cf={{ ...base, hometown: "Itaquaquecetuba" }} setCf={() => {}} onBack={() => {}} onNext={() => {}} />);
+  if (!typed.includes('value="Itaquaquecetuba"')) fail("a typed home town does not show in its own box");
+  const hw = createWorld(roster, { name: "UI", seed: 93, mode: "fighter", difficulty: "normal", created: { ...base, hometown: "Itaquaquecetuba" } });
+  const me = hw.fighters[hw.career.fighters[0]];
+  setWorld(hw);
+  const page = renderToString(<FighterPage id={me.id} />).replace(/<!-- -->/g, "");
+  const home = renderToString(<Home />).replace(/<!-- -->/g, "");
+  if (me.hometown !== "Itaquaquecetuba" || !page.includes("Itaquaquecetuba, Brazil") || !home.includes("Itaquaquecetuba, Brazil")) fail("the chosen home town is not the fighter's, or does not show on the fighter page and Home");
+  else console.log("Home town: the form offers Brazil's cities or a typed town; Itaquaquecetuba, Brazil shows on the fighter page and Home");
 }
 
 const mw = createWorld(roster, { name: "UI", seed: 79, mode: "manager", difficulty: "normal", agency: "Check Management" });

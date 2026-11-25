@@ -288,7 +288,7 @@ p { margin: 0 0 10px; text-wrap: pretty; }
 .good { color: var(--win); } .bad { color: var(--loss); } .gold-t { color: var(--gold); } .warn { color: var(--a-weak); } .info { color: var(--blue); }
 .right { text-align: right; } .center { text-align: center; }
 .nowrap { white-space: nowrap; }
-.ellip { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.ellip { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; min-width: 0; }
 hr.sep { border: 0; border-top: 1px solid var(--line); margin: 14px 0; }
 .prose { max-width: 68ch; }
 .prose p { color: var(--ink-2); }
@@ -1190,3 +1190,4 @@ a.badge { text-decoration: none; }
 .bignums .k-sub { font-size: 11.5px; color: var(--band-ink-3); margin-top: 3px; }
 .forecast-chin { border-top: 1px solid var(--line); padding-top: 8px; margin-top: 2px; }
 .forecast-chin .tiny { margin-top: 4px; }
+.town-note { margin: -4px 0 2px; }

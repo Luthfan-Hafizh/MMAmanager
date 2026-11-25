@@ -58,9 +58,10 @@ function Hero({ w, f, tabs }: { w: World; f: Fighter; tabs: React.ReactNode }) {
   const o = ovr(f.attrs);
   const rank = rankLabel(w, f);
   const div = DIVISIONS[f.div];
-  const r = f.rec;
+  const r = f.amateur ? f.am : f.rec;
   const champ = isChampion(w, f);
   const finishRate = r.w ? Math.round(((r.koW + r.subW) / r.w) * 100) : null;
+  const amFights = f.am.w + f.am.l + f.am.d;
   return (
     <Band
       eyebrow={
@@ -94,7 +95,11 @@ function Hero({ w, f, tabs }: { w: World; f: Fighter; tabs: React.ReactNode }) {
         <span className="tag" title="Grappling style">{FIGHT_STYLES[fightStyle(f).g].name}</span>
       </div>
       <div className="bignums">
-        <div><div className="n">{recordText(f)}</div><div className="k">Record, W-L-D</div></div>
+        <div>
+          <div className="n">{r.w}-{r.l}{r.d ? `-${r.d}` : ""}</div>
+          <div className="k">{f.amateur ? "Amateur record" : "Pro record"}, W-L-D</div>
+          {!f.amateur && amFights > 0 && <div className="k-sub">Amateur {f.am.w}-{f.am.l}{f.am.d ? `-${f.am.d}` : ""}</div>}
+        </div>
         <div><div className="n">{r.koW}</div><div className="k">Wins by KO/TKO</div></div>
         <div><div className="n">{r.subW}</div><div className="k">Wins by submission</div></div>
         <div><div className="n">{finishRate === null ? "–" : `${finishRate}%`}</div><div className="k">Finish rate</div></div>

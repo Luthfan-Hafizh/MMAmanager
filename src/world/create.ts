@@ -104,6 +104,15 @@ export function migrate(w: World, roster: RosterFile | null): World {
   return w;
 }
 
+/** Fixes for every save on load, whatever its version. */
+export function repair(w: World): World {
+  // Some signings used to leave the amateur flag on a fighter who had turned pro.
+  for (const f of Object.values(w.fighters)) {
+    if (f.amateur && ((f.promo && PROMOTIONS[f.promo].tier !== "amateur") || f.rec.w + f.rec.l + f.rec.d + f.rec.nc > 0)) f.amateur = false;
+  }
+  return w;
+}
+
 export type StartLevel = "amateur" | "debut" | "regional";
 export type Talent = "average" | "prospect" | "phenom";
 

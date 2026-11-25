@@ -225,7 +225,11 @@ function FighterHome({ w, f }: { w: World; f: Fighter }) {
           <div><div className="k">Overall</div><div className="v row tight">{o} <Spark points={(fc?.progress ?? []).map((p) => p.ovr)} w={90} h={20} color="#ea2e2c" /></div></div>
         </div>
         <div className="bignums">
-          <div><div className="n">{r.w}-{r.l}{r.d ? `-${r.d}` : ""}</div><div className="k">{f.amateur ? "Amateur record" : "Pro record"}</div></div>
+          <div>
+            <div className="n">{r.w}-{r.l}{r.d ? `-${r.d}` : ""}</div>
+            <div className="k">{f.amateur ? "Amateur record" : "Pro record"}</div>
+            {!f.amateur && f.am.w + f.am.l + f.am.d > 0 && <div className="k-sub">Amateur {f.am.w}-{f.am.l}{f.am.d ? `-${f.am.d}` : ""}</div>}
+          </div>
           <div><div className="n">{r.koW}</div><div className="k">Wins by knockout</div></div>
           <div><div className="n">{r.subW}</div><div className="k">Wins by submission</div></div>
           <div><div className="n">{money(w.career.money)}</div><div className="k">In the bank</div></div>

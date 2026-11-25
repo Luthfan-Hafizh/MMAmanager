@@ -48,6 +48,8 @@ import { boutLimit } from "../src/career/shortnotice";
 import { makeBout } from "../src/world/matchmaking";
 import { bmfPairing } from "../src/world/belts";
 import { Rng } from "../src/core/rng";
+import { signTo } from "../src/world/results";
+import { repair } from "../src/world/create";
 
 const g = globalThis as unknown as Record<string, unknown>;
 g.window = { location: { hash: "" }, addEventListener() {}, removeEventListener() {} };
@@ -393,6 +395,23 @@ pages(tw, "Retired fighter turned manager");
   check("Fighter (call-out panel)", <FighterPage id={t.id} />);
   check("Contracts (the team)", <Contracts />);
   check("Home (spotlight)", <Home />);
+}
+
+// Turning pro: a debut signing clears the amateur flag, and loading repairs a fighter left as an amateur.
+{
+  const aw = createWorld(roster, { name: "UI", seed: 85, mode: "fighter", difficulty: "normal", created: { first: "Pro", surname: "Debut", sex: "M", country: "RU", div: "LW", age: 18, height: 70, reach: 71, stance: "orthodox", art: "wrestling", talent: "prospect", start: "amateur" } });
+  const me = aw.fighters[aw.career.fighters[0]];
+  me.am = { ...me.am, w: 3, l: 4 };
+  withRng(aw, (rng) => signTo(aw, me, "cffc", rng));
+  if (me.amateur) { failures++; console.log("  FAIL a pro debut left the amateur flag on"); }
+  me.amateur = true;
+  repair(aw);
+  if (me.amateur) { failures++; console.log("  FAIL loading did not repair a pro left as an amateur"); }
+  setWorld(aw);
+  // React marks the joins between text pieces with empty comments.
+  const html = renderToString(<Home />).replace(/<!-- -->/g, "");
+  if (!html.includes("Pro record") || !html.includes("Amateur 3-4")) { failures++; console.log("  FAIL Home does not show the pro record with the amateur record under it"); }
+  else console.log("Turning pro: the flag clears on a debut and on load; Home shows the pro record and Amateur 3-4");
 }
 
 const mw = createWorld(roster, { name: "UI", seed: 79, mode: "manager", difficulty: "normal", agency: "Check Management" });

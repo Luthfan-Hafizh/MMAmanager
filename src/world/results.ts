@@ -604,6 +604,8 @@ export function signTo(w: World, f: Fighter, promo: "ufc" | "pfl" | string, rng:
   const p = PROMOTIONS[id];
   if (f.promo && f.promo !== id) vacate(w, f, "moved");
   f.promo = id;
+  // Signing with a pro promotion makes a pro (a short-notice debut, a signing from the level below).
+  f.amateur = p.tier === "amateur";
   f.joined = w.day;
   f.elo = entryElo(id, ovrOf(f.attrs), f.elo);
   const show = opts.show ?? (id === "ufc" ? 12000 : id === "pfl" ? Math.round(clamp(15000 + (ovrOf(f.attrs) - 66) * 2500, 12000, 80000)) : Math.round(p.showLow + (p.showHigh - p.showLow) * 0.15));

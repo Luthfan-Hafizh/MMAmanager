@@ -1,7 +1,7 @@
 // Saves: compressed JSON in IndexedDB, one record per career, plus export and import.
 
 import type { World } from "../model/types";
-import { migrate, OLDEST_SAVE, SAVE_VERSION } from "../world/create";
+import { migrate, repair, OLDEST_SAVE, SAVE_VERSION } from "../world/create";
 import { loadRoster } from "./roster";
 
 export interface SaveMeta {
@@ -99,6 +99,7 @@ export async function loadWorld(id: string): Promise<World | null> {
 
 /** Bring an older save up to date; the roster file fills in what old saves did not keep. */
 async function upToDate(w: World): Promise<World> {
+  repair(w);
   if (w.v >= SAVE_VERSION) return w;
   return migrate(w, await loadRoster().catch(() => null));
 }

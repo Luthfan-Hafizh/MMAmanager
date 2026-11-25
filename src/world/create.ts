@@ -25,6 +25,7 @@ import { refreshCard } from "./matchmaking";
 import { grantStyleTech, pickStyles, switchStyle } from "./fightstyle";
 import { dayOfIso, realSignals } from "./real";
 import { styleFit, type GrappleStyle, type StrikeStyle } from "../data/fightstyles";
+import type { Build } from "../data/body";
 
 export const SAVE_VERSION = 6;
 /** The oldest save format this version can bring up to date. */
@@ -181,6 +182,9 @@ export interface CreatedFighter {
   age: number;
   height: number;
   reach: number;
+  /** Body composition and the walking weight (lb); the division's usual when missing. */
+  build?: Build;
+  walk?: number;
   stance: Stance;
   art: BaseArt;
   /** The way they strike and grapple, from their background. */
@@ -598,7 +602,9 @@ export function createPlayerFighter(w: World, cf: CreatedFighter, o: NewGameOpti
   const potBy: Record<Talent, number> = { average: 72, prospect: 82, phenom: 90 };
   const pot = potBy[cf.talent] + (o.difficulty === "easy" ? 3 : o.difficulty === "hard" ? -3 : 0);
   const f = withRng(w, (rng) => {
-    const g = generateFighter(rng, { id: nextId(w, "p"), country: cf.country, region, div: cf.div, ovr: level, age: cf.age, day: w.day, art: cf.art, pot });
+    // The chosen body shapes the fighter: height moves strength and footwork.
+    const g = generateFighter(rng, { id: nextId(w, "p"), country: cf.country, region, div: cf.div, ovr: level, age: cf.age, day: w.day, art: cf.art, pot, height: cf.height, reach: cf.reach, build: cf.build, walk: cf.walk });
+    if (cf.build) g.build = cf.build;
     g.first = cf.first;
     g.surname = cf.surname;
     g.nick = cf.nick || undefined;

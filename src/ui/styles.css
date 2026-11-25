@@ -656,6 +656,42 @@ input[type="checkbox"] { accent-color: var(--red); width: 16px; height: 16px; }
 .create-bar .btn.primary:hover { background: var(--red-2); border-color: var(--red-2); }
 .create-bar .btn:disabled:hover { background: transparent; color: var(--band-ink); }
 .create-bar .btn.primary:disabled:hover { background: var(--red); color: #fff; }
+/* Creating a fighter: the body. A tale of the tape on top, the controls, and what the frame does. */
+.tape { display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); background: var(--band); color: var(--band-ink); border-top: 3px solid var(--red); border-radius: var(--r); margin-bottom: 16px; overflow: hidden; }
+.tape > div { padding: 10px 12px 9px; border-right: 1px solid var(--band-line); min-width: 0; }
+.tape > div:last-child { border-right: 0; }
+.tape span { display: block; font-stretch: 75%; font-weight: 800; font-size: 10.5px; letter-spacing: 0.12em; text-transform: uppercase; color: var(--band-ink-3); }
+.tape b { display: block; font-stretch: 62%; font-weight: 900; font-size: 28px; line-height: 1; margin-top: 4px; white-space: nowrap; }
+.tape i { display: block; font-style: normal; font-size: 11.5px; color: var(--band-ink-2); margin-top: 4px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.tape .gold b { color: var(--gold); }
+.tape .good b { color: #3cc47a; }
+.tape .short b { color: var(--band-ink-2); }
+.tape .hot b, .tape .hot i { color: #ff7b78; }
+.body-h { display: flex; justify-content: space-between; align-items: baseline; gap: 8px; }
+.body-h b { font-stretch: 75%; font-weight: 800; font-size: 13px; letter-spacing: 0.02em; text-transform: none; color: var(--ink); white-space: nowrap; }
+/* The build picker isn't a label (it holds four buttons), so its heading takes the label look here. */
+div.field { display: flex; flex-direction: column; gap: 6px; }
+.body-h > span:first-child { font-stretch: 75%; font-weight: 700; font-size: 11.5px; letter-spacing: 0.1em; text-transform: uppercase; color: var(--ink-3); }
+.field-note { font-stretch: 100%; font-weight: 400; font-size: 12px; letter-spacing: 0; text-transform: none; color: var(--ink-3); line-height: 1.4; }
+.body-grid .tiles { grid-template-columns: repeat(4, minmax(0, 1fr)); }
+.body-fx { margin-top: 16px; padding-top: 12px; border-top: 1px solid var(--line); }
+.fx-chips { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 8px; }
+.fx { display: inline-flex; align-items: center; padding: 4px 9px; border-radius: 2px; font-size: 12.5px; font-weight: 600; background: var(--sheet-2); color: var(--ink-2); border: 1px solid var(--line); white-space: nowrap; }
+.fx.gain { color: var(--win); background: var(--win-soft); border-color: transparent; }
+.fx.cost { color: var(--loss); background: var(--loss-soft); border-color: transparent; }
+@media (max-width: 860px) {
+  .tape { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+  .tape > div:nth-child(3) { border-right: 0; }
+  .tape > div:nth-child(n + 4) { border-top: 1px solid var(--band-line); }
+}
+@media (max-width: 520px) {
+  .tape { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .tape > div:nth-child(n) { border-right: 1px solid var(--band-line); border-top: 0; }
+  .tape > div:nth-child(2n) { border-right: 0; }
+  .tape > div:nth-child(n + 3) { border-top: 1px solid var(--band-line); }
+  .tape > div:last-child { grid-column: 1 / -1; border-right: 0; }
+  .body-grid .tiles { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+}
 /* Turning a fight down: the reasons, how the matchmaker will take each, and the relationship. */
 .decline { margin-top: 14px; border-top: 2px solid var(--ink); padding-top: 12px; }
 .decline-h { display: flex; flex-wrap: wrap; align-items: baseline; justify-content: space-between; gap: 4px 12px; margin-bottom: 8px; }

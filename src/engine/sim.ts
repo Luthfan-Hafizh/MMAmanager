@@ -1267,9 +1267,12 @@ export class FightSim {
     if (this.range === 0 && !sd.kick) p *= 1 + 0.1 * t.blitz;
     if (FLASHY.has(sd.id)) p *= 1 + 0.08 * t.flash;
     if (counter) p *= 1 + 0.08 * t.counter;
-    // Reach matters at range for straight shots and kicks.
+    // Reach wins at range for the straight shots and the kicks; inside, in the
+    // pocket, the shorter arms throw the tighter punches and the longer fighter
+    // gives some of it back, which is why the shorter man wants to close the gap.
     const reach = att.f.reach - def.f.reach;
     if (this.range === 0) p *= 1 + clamp(reach, -8, 8) * 0.012;
+    else if (this.range === 1) p *= 1 - clamp(reach, -8, 8) * 0.005;
     if (sd.tech && !sd.exclusive) p *= 1 + techOf(att.f, sd.tech) * 0.035;
     if (sd.exclusive) p *= 0.85 + techOf(att.f, sd.tech!) * 0.07;
     if (def.d.defGuard) p *= sd.zone === "head" ? 0.84 : 1.1;

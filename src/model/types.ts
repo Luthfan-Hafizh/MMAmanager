@@ -1,5 +1,6 @@
 // The shapes of everything in a saved world.
 
+import type { Build } from "../data/body";
 import type { DivisionId, Sex } from "../data/divisions";
 import type { PromoId } from "../data/promotions";
 import type { AttrKey } from "./attributes";
@@ -141,6 +142,8 @@ export interface Fighter {
   reach: number;
   stance: Stance;
   walk: number;
+  /** Body composition, for a created fighter (data/body.ts). */
+  build?: Build;
   attrs: Attrs;
   hid: Hidden;
   pers: Personality;

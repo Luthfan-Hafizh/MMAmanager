@@ -1,6 +1,8 @@
 import { useEffect, useMemo, useState } from "react";
 import { COUNTRY_LIST, REGIONS, countryOf } from "../../data/countries";
-import { DIVISIONS, DIVISION_IDS, type DivisionId, type Sex } from "../../data/divisions";
+import { DIVISIONS, DIVISION_IDS, typicalWalk, type DivisionId, type Sex } from "../../data/divisions";
+import { apeBand, bodyEffects, BUILD_IDS, BUILDS, cutDifficulty, defaultWalk, walkRange, type Build } from "../../data/body";
+import { ATTR_INFO, type AttrKey } from "../../model/attributes";
 import { ARTS, ART_IDS, type BaseArt } from "../../data/styles";
 import { PROMOTIONS, promoFor } from "../../data/promotions";
 import { ovr } from "../../model/attributes";
@@ -10,7 +12,7 @@ import { realFighter, type RosterFile } from "../../world/real";
 import { potentialText } from "../../world/development";
 import { loadRoster, newGame, setBusy, setWorld, toast } from "../../state/store";
 import { saveWorld } from "../../state/persist";
-import { heightText } from "../../core/util";
+import { clamp, heightText } from "../../core/util";
 import { go } from "../router";
 import { Flag, Ovr, Panel, Seg } from "../components";
 import { Logo } from "../icons";
@@ -111,7 +113,7 @@ export function NewGame() {
         }
         const strike = (cf.strike ?? styleChoices(cf.art, "strike")[0]) as StrikeStyle;
         const grapple = (cf.grapple ?? styleChoices(cf.art, "grapple")[0]) as GrappleStyle;
-        await newGame({ name: "Career", seed, mode, difficulty, created: { ...cf, strike, grapple, first: cf.first.trim(), surname: cf.surname.trim(), nick: cf.nick?.trim() || undefined, hometown: townOf(cf) } });
+        await newGame({ name: "Career", seed, mode, difficulty, created: { ...cf, strike, grapple, build: cf.build ?? "athletic", walk: bodyWalk(cf), first: cf.first.trim(), surname: cf.surname.trim(), nick: cf.nick?.trim() || undefined, hometown: townOf(cf) } });
       }
       go("/home");
     } else if (draft) {
@@ -215,7 +217,7 @@ export function NewGame() {
                   {cf.first} {cf.nick ? `"${cf.nick}" ` : ""}
                   {cf.surname}
                 </b>
-                , {cf.age}, from {townOf(cf)}, {countryOf(cf.country).name}; {DIVISIONS[cf.div].name.toLowerCase()}, {ARTS[cf.art].name.toLowerCase()} background ({FIGHT_STYLES[(cf.strike ?? styleChoices(cf.art, "strike")[0]) as StrikeStyle].name.toLowerCase()}, {FIGHT_STYLES[(cf.grapple ?? styleChoices(cf.art, "grapple")[0]) as GrappleStyle].name.toLowerCase()}). Starts as a{" "}
+                , {cf.age}, from {townOf(cf)}, {countryOf(cf.country).name}; {DIVISIONS[cf.div].name.toLowerCase()}, {heightText(cf.height)} with a {inches(cf.reach)} reach, a {BUILDS[cf.build ?? "athletic"].name.toLowerCase()} build walking at {bodyWalk(cf)} lb, {ARTS[cf.art].name.toLowerCase()} background ({FIGHT_STYLES[(cf.strike ?? styleChoices(cf.art, "strike")[0]) as StrikeStyle].name.toLowerCase()}, {FIGHT_STYLES[(cf.grapple ?? styleChoices(cf.art, "grapple")[0]) as GrappleStyle].name.toLowerCase()}). Starts as a{" "}
                 {START.find((s) => s.v === cf.start)?.label.toLowerCase()} at {startPromo(cf).name}.
               </p>
             )}
@@ -264,6 +266,25 @@ export function NewGame() {
   );
 }
 
+/** The walking weight the fighter will have: the one chosen, or the build's usual at the division. */
+function bodyWalk(cf: CreatedFighter): number {
+  const [lo, hi] = walkRange(cf.div);
+  return clamp(cf.walk ?? defaultWalk(cf.div, cf.build ?? "athletic"), lo, hi);
+}
+
+/** Inches, with the half when there is one: 84.5". */
+function inches(x: number): string {
+  return `${Number.isInteger(x) ? x : x.toFixed(1)}"`;
+}
+
+/** What the height does, against the division's average in the UFC. */
+function frameText(h: number, avg: number, div: string): string {
+  const d = Math.round((h - avg) * 2) / 2;
+  if (Math.abs(d) < 1) return `Right on the ${div} average.`;
+  return d > 0 ? `${inches(d)} over the ${div} average: lighter on the feet at range, a little less strength in the clinch.` : `${inches(-d)} under the ${div} average: stronger in the clinch, a little slower on the feet.`;
+}
+
+
 export function CreateForm({ cf, setCf, onBack, onNext }: { cf: CreatedFighter; setCf: (c: CreatedFighter) => void; onBack: () => void; onNext: () => void }) {
   const set = <K extends keyof CreatedFighter>(k: K, v: CreatedFighter[K]) => setCf({ ...cf, [k]: v });
   // Home town: the country's cities to pick from, or any town typed in.
@@ -282,9 +303,26 @@ export function CreateForm({ cf, setCf, onBack, onNext }: { cf: CreatedFighter; 
   const d = DIVISIONS[cf.div];
   const setSex = (s: Sex) => {
     const div = DIVISION_IDS.find((x) => DIVISIONS[x].sex === s && (s === "F" ? x === "WFLY" : x === "LW"))!;
-    setCf({ ...cf, sex: s, div, height: Math.round(DIVISIONS[div].height), reach: Math.round(DIVISIONS[div].reach) });
+    setCf({ ...cf, sex: s, div, height: Math.round(DIVISIONS[div].height), reach: Math.round(DIVISIONS[div].reach), walk: defaultWalk(div, cf.build ?? "athletic") });
   };
-  const setDiv = (div: DivisionId) => setCf({ ...cf, div, height: Math.round(DIVISIONS[div].height), reach: Math.round(DIVISIONS[div].reach) });
+  const build: Build = cf.build ?? "athletic";
+  const setDiv = (div: DivisionId) => setCf({ ...cf, div, height: Math.round(DIVISIONS[div].height), reach: Math.round(DIVISIONS[div].reach), walk: defaultWalk(div, build) });
+  // Changing the height keeps the arms: the reach moves with it.
+  const setHeight = (h: number) => setCf({ ...cf, height: h, reach: clamp(h + (cf.reach - cf.height), h - 5, h + 9) });
+  const ape = Math.round((cf.reach - cf.height) * 2) / 2;
+  const band = apeBand(ape);
+  const [walkLo, walkHi] = walkRange(cf.div);
+  const walk = clamp(cf.walk ?? defaultWalk(cf.div, build), walkLo, walkHi);
+  // A new build carries its usual walking weight with it.
+  const setBuild = (b: Build) => setCf({ ...cf, build: b, walk: clamp(walk + Math.round((BUILDS[b].walk - BUILDS[build].walk) * d.limit), walkLo, walkHi) });
+  const cut = cutDifficulty(cf.div, walk);
+  const cutText =
+    cut.lb === 0
+      ? `Fights at ${walk} lb, under the ${d.limit} lb limit: no cut at all, but giving size away to the big men.`
+      : `Cuts ${cut.lb} lb (${Math.round(cut.pct * 100)}%) to make ${d.limit}: ${cut.label === "brutal" ? "a brutal cut" : `${cut.label === "easy" ? "an" : "a"} ${cut.label} cut`}. Heavier is stronger on fight night; a harder cut drains the gas tank and the chin and makes missing weight likelier.`;
+  // What the frame does, as the generator applies it, biggest first.
+  const fx = (Object.entries(bodyEffects(cf.div, cf.height, walk, build)) as [AttrKey, number][]).filter(([, v]) => Math.abs(v) >= 0.15).sort((a, b) => Math.abs(b[1]) - Math.abs(a[1]));
+  const reachEdge = cf.reach - d.reach;
   const regions = Object.values(REGIONS);
   const styleOf = (kind: "strike" | "grapple") => (kind === "strike" ? cf.strike : cf.grapple) ?? styleChoices(cf.art, kind)[0];
   const talent = TALENT.find((t) => t.v === cf.talent)!;
@@ -335,31 +373,66 @@ export function CreateForm({ cf, setCf, onBack, onNext }: { cf: CreatedFighter; 
             </label>
           </div>
         </Panel>
-        <Panel title="Weight class and body">
-          <div className="row" style={{ marginBottom: 12 }}>
+        <Panel title="Weight class and body" hint="The frame moves points between attributes: the overall stays the same">
+          <div className="row" style={{ marginBottom: 14 }}>
             {divs.map((x) => (
               <button key={x} className={`btn sm${cf.div === x ? " on" : ""}`} onClick={() => setDiv(x)}>
                 {DIVISIONS[x].name.replace("Women's ", "")} <span className="dim">{DIVISIONS[x].limit}</span>
               </button>
             ))}
           </div>
-          <div className="grid">
-            <label className="field c4">
-              Height: {heightText(cf.height)} ({Math.round(cf.height * 2.54)} cm)
-              <input type="range" min={Math.round(d.height - 6)} max={Math.round(d.height + 6)} value={cf.height} onChange={(e) => set("height", Number(e.target.value))} />
+          <div className="tape" aria-label="Tale of the tape">
+            <div><span>Height</span><b>{heightText(cf.height)}</b><i>{Math.round(cf.height * 2.54)} cm</i></div>
+            <div><span>Reach</span><b>{inches(cf.reach)}</b><i>{Math.round(cf.reach * 2.54)} cm</i></div>
+            <div className={band.tone}><span>Ape index</span><b>{ape > 0 ? "+" : ape < 0 ? "−" : ""}{inches(Math.abs(ape))}</b><i>{band.label}</i></div>
+            <div className={cut.label === "hard" || cut.label === "brutal" ? "hot" : ""}><span>Walks at</span><b>{walk} lb</b><i>{cut.lb > 0 ? `cuts ${cut.lb} lb · ${cut.label}` : "no cut"}</i></div>
+            <div><span>Build</span><b>{BUILDS[build].name}</b><i>{BUILDS[build].sub}</i></div>
+          </div>
+          <div className="grid body-grid">
+            <label className="field c6">
+              <span className="body-h"><span>Height</span><b>{heightText(cf.height)} · {Math.round(cf.height * 2.54)} cm</b></span>
+              <input type="range" min={Math.round(d.height - 6)} max={Math.round(d.height + 6)} value={cf.height} onChange={(e) => setHeight(Number(e.target.value))} />
+              <span className="field-note">{frameText(cf.height, d.height, d.name.toLowerCase())}</span>
             </label>
-            <label className="field c4">
-              Reach: {cf.reach}"
-              <input type="range" min={cf.height - 3} max={cf.height + 6} value={cf.reach} onChange={(e) => set("reach", Number(e.target.value))} />
+            <label className="field c6">
+              <span className="body-h"><span>Reach</span><b>{inches(cf.reach)} · {Math.round(cf.reach * 2.54)} cm</b></span>
+              <input type="range" min={cf.height - 5} max={cf.height + 9} step={0.5} value={cf.reach} onChange={(e) => set("reach", Number(e.target.value))} />
+              <span className="field-note">{band.note} Long arms win at range and give a little back in the pocket, where the shorter man wants to be.</span>
             </label>
-            <label className="field c4">
+            <div className="field c12">
+              <span className="body-h"><span>Build</span><b>{BUILDS[build].name}</b></span>
+              <Tiles label="Build" value={build} onChange={setBuild} options={BUILD_IDS.map((b) => ({ v: b, label: BUILDS[b].name, sub: BUILDS[b].sub }))} />
+              <span className="field-note">{BUILDS[build].desc}</span>
+            </div>
+            <label className="field c6">
+              <span className="body-h"><span>Walking weight</span><b>{walk} lb · {Math.round(walk * 0.4536)} kg</b></span>
+              <input type="range" min={walkLo} max={walkHi} value={walk} onChange={(e) => set("walk", Number(e.target.value))} />
+              <span className="field-note">{cutText}</span>
+            </label>
+            <label className="field c6">
               Stance
               <Seg<Stance> value={cf.stance} onChange={(v) => set("stance", v)} options={[{ v: "orthodox", label: "Orthodox" }, { v: "southpaw", label: "Southpaw" }, { v: "switch", label: "Switch" }]} />
+              <span className="field-note">{cf.stance === "southpaw" ? "Lefties are one fighter in five: awkward to prepare for." : cf.stance === "switch" ? "Both stances: the angles change mid-fight." : "Four fighters in five lead with the left foot."}</span>
             </label>
           </div>
-          <p className="small dim" style={{ marginTop: 10 }}>
-            The {d.name.toLowerCase()} average in the UFC is {heightText(d.height)} with a {Math.round(d.reach)}" reach. Reach helps at range; a shorter, denser fighter is stronger in the clinch.
-          </p>
+          <div className="body-fx" aria-label="What the body does">
+            <div className="label">What your body does</div>
+            <div className="fx-chips">
+              {fx.map(([k, v]) => (
+                <span key={k} className={`fx ${v > 0 ? "gain" : "cost"}`}>{ATTR_INFO[k].name} {v > 0 ? "+" : "−"}{Math.abs(v).toFixed(1)}</span>
+              ))}
+              {Math.abs(reachEdge) >= 1 && (
+                <span className={`fx ${reachEdge > 0 ? "gain" : "cost"}`}>At range {reachEdge > 0 ? "+" : "−"}{(Math.min(8, Math.abs(reachEdge)) * 1.2).toFixed(1)}% accuracy</span>
+              )}
+              {Math.abs(reachEdge) >= 1 && (
+                <span className={`fx ${reachEdge > 0 ? "cost" : "gain"}`}>In the pocket {reachEdge > 0 ? "−" : "+"}{(Math.min(8, Math.abs(reachEdge)) * 0.5).toFixed(1)}%</span>
+              )}
+              {fx.length === 0 && Math.abs(reachEdge) < 1 && <span className="fx">A standard frame: nothing given up, nothing extra</span>}
+            </div>
+            <p className="small dim" style={{ marginTop: 8 }}>
+              Against an average {d.name.toLowerCase()} ({heightText(d.height)}, a {inches(Math.round(d.reach * 2) / 2)} reach, walking at {typicalWalk(cf.div)} lb). Attribute points are on the 20-point scale, before the overall is set; the reach numbers are the fight engine's, for punches and kicks.
+            </p>
+          </div>
         </Panel>
       </div>
       <div className="c5 stack">

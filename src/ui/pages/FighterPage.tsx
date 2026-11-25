@@ -3,6 +3,7 @@ import { ageYears, fmtDate, clock } from "../../core/time";
 import { cmOf, heightText } from "../../core/util";
 import { countryOf } from "../../data/countries";
 import { DIVISIONS } from "../../data/divisions";
+import { BUILDS } from "../../data/body";
 import { PROMOTIONS, PROMO_IDS } from "../../data/promotions";
 import { ARTS } from "../../data/styles";
 import { MASTERY_NAMES, TECHNIQUES, TECH_IDS, type TechId } from "../../data/techniques";
@@ -141,7 +142,8 @@ function Overview({ w, f }: { w: World; f: Fighter }) {
             <dt>Hometown</dt><dd>{f.hometown}</dd>
             <dt>Age</dt><dd>{ageYears(f.birth, w.day)}</dd>
             <dt>Height</dt><dd>{heightText(f.height)} ({cmOf(f.height)} cm)</dd>
-            <dt>Reach</dt><dd>{f.reach}" ({Math.round(f.reach * 2.54)} cm)</dd>
+            <dt>Reach</dt><dd>{f.reach}" ({Math.round(f.reach * 2.54)} cm) · ape index {f.reach - f.height > 0 ? "+" : ""}{Math.round((f.reach - f.height) * 2) / 2}"</dd>
+            {f.build && <><dt>Build</dt><dd>{BUILDS[f.build].name}: {BUILDS[f.build].sub.toLowerCase()}</dd></>}
             <dt>Stance</dt><dd>{f.stance.replace(/^./, (c) => c.toUpperCase())}</dd>
             <dt>Background</dt><dd>{ARTS[f.base].name}</dd>
             <dt>Striking</dt><dd>{FIGHT_STYLES[fightStyle(f).s].name}</dd>

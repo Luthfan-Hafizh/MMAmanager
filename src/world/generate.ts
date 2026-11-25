@@ -10,6 +10,7 @@ import { makeName, makeNickname } from "../data/names";
 import { ARTS, COUNTRY_ARTS, DEFAULT_ARTS, type BaseArt } from "../data/styles";
 import { TECH_IDS, TECHNIQUES, type TechId } from "../data/techniques";
 import { ATTRS, ovrOf, type AttrKey } from "../model/attributes";
+import { bodyEffects, type Build } from "../data/body";
 import { grantStyleTech, pickStyles } from "./fightstyle";
 import type { AgingType, Attrs, CareerTotals, Fighter, FightRecord, Hidden, Personality, Stance } from "../model/types";
 
@@ -26,6 +27,11 @@ export interface GenOptions {
   div: DivisionId;
   /** Target overall rating. */
   ovr: number;
+  /** A chosen body (a created fighter): inches, the walking weight in lb, and a build. */
+  height?: number;
+  reach?: number;
+  walk?: number;
+  build?: Build;
   age: number;
   day: number;
   art?: BaseArt;
@@ -69,12 +75,17 @@ export function generateFighter(rng: Rng, o: GenOptions): Fighter {
   const art = o.art ?? pickArt(rng, country);
   const artDef = ARTS[art];
 
-  // Body: height and reach around the division's real averages.
-  const height = Math.round(clamp(def.height + rng.normal(0, 2), def.height - 6, def.height + 6));
+  // Body: height and reach around the division's real averages, or the ones chosen
+  // for a created fighter (the same draws either way, so the world doesn't change).
+  // Reach runs from five inches under the height to nine over, as on the real
+  // rosters (Jon Jones is 6'4" with an 84.5" reach).
+  const rolled = Math.round(clamp(def.height + rng.normal(0, 2), def.height - 6, def.height + 6));
   const ape = rng.normal(1.5, 1.6);
-  const reach = Math.round(clamp(height + ape, height - 3, height + 6));
+  const height = o.height ?? rolled;
+  const reach = o.reach ?? Math.round(clamp(height + ape, height - 5, height + 9));
   const stance: Stance = rng.chance(0.07) ? "switch" : rng.chance(0.22) ? "southpaw" : "orthodox";
-  const walk = Math.round(typicalWalk(o.div) + rng.normal(0, def.limit * 0.025));
+  const rolledWalk = Math.round(typicalWalk(o.div) + rng.normal(0, def.limit * 0.025));
+  const walk = o.walk ?? rolledWalk;
 
   // Attributes: level, background, a personal profile, and the body.
   const mean = (o.ovr - 20) / 4;
@@ -87,10 +98,10 @@ export function generateFighter(rng: Rng, o: GenOptions): Fighter {
     if (["takedowns", "tdd", "clinchControl", "topControl", "bottomGame", "subs", "subDef", "scrambles"].includes(k)) v += talentGrapple;
     a[k] = v;
   }
-  // Body effects: longer fighters have the reach, shorter ones more strength.
-  const tall = (height - def.height) / 3;
-  a.strength += -tall * 0.6 + (walk - typicalWalk(o.div)) / (def.limit * 0.03);
-  a.footwork += tall * 0.3;
+  // Body effects (data/body.ts): taller is footwork, shorter and heavier is
+  // strength, and a chosen build moves its own points. The overall is set below,
+  // so the body changes the shape of a fighter, not the level.
+  for (const [k, v] of Object.entries(bodyEffects(o.div, height, walk, o.build)) as [AttrKey, number][]) a[k] += v;
   a.power += sex === "F" ? -0.6 : 0;
   // Age: young fighters are faster and fitter, older ones wiser.
   const ageAdj = (o.age - 28) / 6;

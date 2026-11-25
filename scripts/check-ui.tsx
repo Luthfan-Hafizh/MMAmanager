@@ -598,6 +598,20 @@ pages(tw, "Retired fighter turned manager");
   else if (flat.includes('class="choice')) fail("the creation form lays its picks out as big cards again");
   else if (!bar.includes("<b>Home Town</b>")) fail("the creation form's bar does not name the fighter");
   else console.log(`Creating a fighter: ${(flat.match(/class="tile[ "]/g) ?? []).length} pick tiles; Next in the bar at the foot of the screen, under "Home Town"`);
+  // The body: reach up to nine inches over the height (Jon Jones is +8.5), a tale of the
+  // tape, and a frame that moves points between attributes without changing the level.
+  if (!flat.includes(`max="${base.height + 9}"`) || !flat.includes('class="tape"') || !flat.includes("What your body does")) fail("the creation form doesn't offer the full reach range, the tale of the tape or what the body does");
+  {
+    const make = (body: Partial<typeof base> & { build: "lean" | "muscular"; walk: number }) => {
+      const bw = createWorld(roster, { name: "UI", seed: 98, mode: "fighter", difficulty: "normal", created: { ...base, div: "LHW", height: 74, reach: 77, ...body } });
+      return bw.fighters[bw.career.fighters[0]];
+    };
+    const big = make({ height: 72, reach: 74, build: "muscular", walk: 238 });
+    const long = make({ height: 76, reach: 84.5, build: "lean", walk: 218 });
+    const lvl = (f: typeof big) => Object.values(f.attrs).reduce((a, v) => a + v, 0) / Object.values(f.attrs).length;
+    if (!(big.attrs.strength > long.attrs.strength + 2 && long.attrs.cardio > big.attrs.cardio + 1.5) || Math.abs(lvl(big) - lvl(long)) > 0.6 || long.reach !== 84.5 || long.build !== "lean" || long.walk !== 218) fail(`the body should trade strength for cardio at the same level (strength ${big.attrs.strength.toFixed(1)} v ${long.attrs.strength.toFixed(1)}, cardio ${big.attrs.cardio.toFixed(1)} v ${long.attrs.cardio.toFixed(1)}, mean ${lvl(big).toFixed(2)} v ${lvl(long).toFixed(2)}, reach ${long.reach})`);
+    else console.log(`The body: 6'0" muscular at 238 lb has strength ${big.attrs.strength.toFixed(1)}, cardio ${big.attrs.cardio.toFixed(1)}; 6'4" lean with an 84.5" reach at 218 lb has ${long.attrs.strength.toFixed(1)} and ${long.attrs.cardio.toFixed(1)}; the same level (${lvl(big).toFixed(2)} v ${lvl(long).toFixed(2)})`);
+  }
   const typed = renderToString(<CreateForm cf={{ ...base, hometown: "Itaquaquecetuba" }} setCf={() => {}} onBack={() => {}} onNext={() => {}} />);
   if (!typed.includes('value="Itaquaquecetuba"')) fail("a typed home town does not show in its own box");
   const hw = createWorld(roster, { name: "UI", seed: 93, mode: "fighter", difficulty: "normal", created: { ...base, hometown: "Itaquaquecetuba" } });

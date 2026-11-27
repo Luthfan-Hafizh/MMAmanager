@@ -1,5 +1,5 @@
 {
-  "_": "The real gyms the source lists more than once (City Kickboxing, and 'The Fight Centre & City Kickboxing' for one fighter who names both), merged into one; and names, cities and countries cleaned of the address pasted into them. Read by scripts/build-data.mjs when the roster is built, and by world/create.ts repair() so saves made before keep the same gyms. British gyms the source codes as 'GB' are put in their home nation (England, Wales) with the real city; Team Topuria is Topuria's own gym in Madrid. Self-named placeholders the UFC's profiles carry for some fighters are put right from their Wikipedia and ESPN teams: Bronx's Gold Team is Chute Boxe Diego Lima in São Paulo (Charles Oliveira, and Ian Machado Garry since 2023), Team Jones is Jackson's MMA Acoma, Team Ortega is Gracie University; 'hc', 'rep', 'fac' and 'q' (head, striking, grappling, wrestling and strength coaches) set the head coach and the levels.",
+  "_": "The real gyms the source lists more than once (City Kickboxing, and 'The Fight Centre & City Kickboxing' for one fighter who names both), merged into one; and names, cities and countries cleaned of the address pasted into them. Read by scripts/build-data.mjs when the roster is built, and by world/create.ts repair() so saves made before keep the same gyms. British gyms the source codes as 'GB' are put in their home nation (England, Wales) with the real city; Team Topuria is Topuria's own gym in Madrid. Self-named placeholders the UFC's profiles carry for some fighters are put right from their Wikipedia and ESPN teams: Bronx's Gold Team is Chute Boxe Diego Lima in São Paulo (Charles Oliveira, and Ian Machado Garry since 2023), Team Jones is Jackson's MMA Acoma, Team Ortega is Gracie University, Team Naurdiev is Top Team Salzburg; 'hc', 'rep', 'fac' and 'q' (head, striking, grappling, wrestling and strength coaches) set the head coach and the levels.",
   "merge": {
     "gym-real-308": "gym-real-70",
     "gym-real-278": "gym-real-2",
@@ -53,7 +53,7 @@
     "gym-real-13": { "n": "Eagles MMA" },
     "gym-real-16": { "city": "Glendale" },
     "gym-real-17": { "city": "Sacramento" },
-    "gym-real-18": { "n": "Tristar Gym" },
+    "gym-real-18": { "n": "Tristar Gym", "hc": "Firas Zahabi", "q": [82, 72, 78, 71, 70] },
     "gym-real-20": { "city": "Belém" },
     "gym-real-27": { "c": "GB-ENG", "city": "Manchester" },
     "gym-real-28": { "n": "Serra-Longo Fight Team" },
@@ -104,6 +104,7 @@
     "gym-real-166": { "n": "Life MMA" },
     "gym-real-174": { "n": "Valle Flow Striking" },
     "gym-real-178": { "c": "GB-ENG", "city": "Birmingham" },
+    "gym-real-181": { "n": "Top Team Salzburg", "c": "AT", "city": "Salzburg" },
     "gym-real-191": { "n": "RRC Gym" },
     "gym-real-208": { "n": "Mid City MMA" },
     "gym-real-212": { "n": "MMA Performance Center" },

@@ -22,5 +22,9 @@
   "ufc-daniel-zellhuber": {
     "gym": "gym-real-72",
     "from": "gym-real-325"
+  },
+  "ufc-nasrat-haqparast": {
+    "gym": "gym-real-18",
+    "from": "gym-real-247"
   }
 }

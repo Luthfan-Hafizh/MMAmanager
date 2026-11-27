@@ -26,6 +26,7 @@ import { lc, playerInjured } from "../career/injury";
 import { handleBmf, isBeltFight, refreshDivision } from "./belts";
 import { notify } from "../career/inbox";
 import { arrivalTitleShot, promiseTitle } from "../career/standing";
+import { drain, type Steps } from "../core/steps";
 
 export { ringRust } from "./core";
 
@@ -55,6 +56,8 @@ export function conditionFor(w: World, f: Fighter, b: Bout, rng: Rng): Partial<C
     // The player's camp decides the cut and the preparation (career/camp.ts).
     c.cut = fc.campCut ?? 0.15;
     c.prep = fc.campPrep ?? 0;
+    // Partners who fought like the opponent, unless the opponent changed.
+    if (fc.camp.drill && !(b.shortNotice && b.sub && b.sub !== f.id)) c.drill = fc.camp.drill;
     // Fighting on an injury: it hurts what that part of the body does.
     c.injury = hurt ? hurtOnNight(hurt, b.day) : 0;
     if (hurt) c.injuryArea = hurt.area;
@@ -210,6 +213,11 @@ export function toResult(o: FightOutcome, keep: boolean): BoutResult {
 
 /** Run a card. Fights involving the player's fighters are held for fight night. */
 export function runEvent(w: World, rng: Rng, ev: MMAEvent): { awaiting: Bout[] } {
+  return drain(runEventSteps(w, rng, ev));
+}
+
+/** The event, a fight at a step. */
+export function* runEventSteps(w: World, rng: Rng, ev: MMAEvent): Steps<{ awaiting: Bout[] }> {
   // What each fight is for, as the belts stand tonight.
   refreshCard(w, ev);
   weighIns(w, rng, ev);
@@ -234,6 +242,7 @@ export function runEvent(w: World, rng: Rng, ev: MMAEvent): { awaiting: Bout[] }
     const seed = rng.int(1, 2 ** 31 - 1);
     const out = simulate(fightInputFor(w, b, rng, seed, false));
     applyResult(w, rng, b, out);
+    yield;
   }
   if (!awaiting.length) finishEvent(w, rng, ev);
   return { awaiting };

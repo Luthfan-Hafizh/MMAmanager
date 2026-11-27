@@ -44,9 +44,9 @@ export function Contracts({ id }: { id?: string }) {
                   <dt>Win money</dt><dd>{c.win ? money(c.win) : "Flat purse"}</dd>
                   <dt>Raise with each win</dt><dd>{money(c.escal)}</dd>
                   <dt>Runs until</dt><dd>{fmtDate(c.end)}</dd>
-                  <dt>Champion's clause</dt><dd>{c.champClause ? "Yes" : "No"}</dd>
+                  <dt>Champion's clause</dt><dd>{c.champClause ? "Yes: while you hold a belt, a finished deal runs on a fight at a time" : "No"}</dd>
                   {(c.rematch || !!c.ppv) && <><dt>Clauses</dt><dd>{[c.rematch ? "Rematch" : "", c.ppv ? `${c.ppv} point${c.ppv === 1 ? "" : "s"} of the pay-per-view` : ""].filter(Boolean).join(", ")}</dd></>}
-                  <dt>Exclusive</dt><dd>{f.promo === "ufc" ? "Binding until it is done" : exclusiveDeal(f.promo) ? "Binding; the UFC can talk to you in the last fight or the last four months" : "The UFC, the PFL and the Contender Series can call"}</dd>
+                  <dt>Exclusive</dt><dd>{f.promo === "ufc" ? "Binding until it is done" : exclusiveDeal(f.promo) ? (c.outClause ? "Binding, but with a UFC out clause: the UFC can sign you at any time" : "Binding; the UFC can talk to you in the last fight or the last four months") : "The UFC, the PFL and the Contender Series can call"}</dd>
                 </>
               )}
             </dl>
@@ -89,11 +89,13 @@ function OfferCard({ w, o, f }: { w: World; o: ContractOffer; f: Fighter }) {
   const [fights, setFights] = useState(o.fights);
   const [rematch, setRematch] = useState(!!o.rematch);
   const [ppv, setPpv] = useState(o.ppv ?? 0);
+  const [noChamp, setNoChamp] = useState(false);
+  const [out, setOut] = useState(!!o.outClause);
   const [log, setLog] = useState<string[]>([]);
   const p = PROMOTIONS[o.promo];
   const leverage = clauseLeverage(w, f, o.promo);
   const counter = () => {
-    const r = withRng(w, (rng) => counterOffer(w, rng, o.id, { show, win: o.win ? win : 0, fights, rematch, ppv }));
+    const r = withRng(w, (rng) => counterOffer(w, rng, o.id, { show, win: o.win ? win : 0, fights, rematch, ppv, noChamp: noChamp && o.champClause, out: out && !o.outClause }));
     setLog((l) => [...l, r.text]);
     setShow(o.show);
     setWin(o.win);
@@ -118,7 +120,7 @@ function OfferCard({ w, o, f }: { w: World; o: ContractOffer; f: Fighter }) {
   const walks = walksAsChampion(w, f, o);
   const paid = marketPay(w, f);
   const notes: { text: string; tone?: "good" | "warn" }[] = [];
-  if (o.approach && f.promo && f.promo !== o.promo && f.contract && f.contract.left > 0) notes.push({ text: `Starts after your last ${PROMOTIONS[f.promo].short} fight (${f.contract.left} left). Sign now and the move is done; the ${PROMOTIONS[f.promo].short} can't stop it.` });
+  if (o.approach && f.promo && f.promo !== o.promo && f.contract && f.contract.left > 0) notes.push({ text: o.promo === "ufc" && f.contract.outClause ? `The out clause in your ${PROMOTIONS[f.promo].short} deal: sign and the move is done now.` : `Starts after your last ${PROMOTIONS[f.promo].short} fight (${f.contract.left} left). Sign now and the move is done; the ${PROMOTIONS[f.promo].short} can't stop it.` });
   if (o.matches) notes.push({ text: `Matches the ${PROMOTIONS[o.matches].short}'s money to keep you. Same money: the stage decides.`, tone: "good" });
   if (o.last) notes.push({ text: `Last time ${p.short} offered ${money(o.last.show)}${o.last.win ? ` + ${money(o.last.win)}` : " flat"} (${o.last.how === "rejected" ? "turned down" : o.last.how === "expired" ? "left to lapse" : "withdrawn"} ${fmtDate(o.last.day, { year: false })}): it comes back at that level, moved by the results since.` });
   if (paid && paid.promo !== o.promo) notes.push({ text: `${paid.current ? "Paid now" : "Last deal"}: ${PROMOTIONS[paid.promo].short}, ${money(paid.show)}${paid.win ? ` + ${money(paid.win)}` : " flat"}.` });
@@ -133,7 +135,7 @@ function OfferCard({ w, o, f }: { w: World; o: ContractOffer; f: Fighter }) {
         <div className="c3"><div className="tile co-all"><div className="k">A fight, all in</div><div className="v">{money(perFight(o.show, o.win))}</div></div></div>
       </div>
       <p className="small dim" style={{ marginTop: 8 }}>
-        +{money(o.escal)} after each win{o.signBonus ? ` · ${money(o.signBonus)} to sign` : ""} · {Math.round(o.termDays / 365)} years{o.champClause ? " · champion's clause" : ""}{o.rematch ? " · rematch clause" : ""}{o.ppv ? ` · ${o.ppv} point${o.ppv === 1 ? "" : "s"} of the pay-per-view` : ""}
+        +{money(o.escal)} after each win{o.signBonus ? ` · ${money(o.signBonus)} to sign` : ""} · {Math.round(o.termDays / 365)} years{o.champClause ? " · champion's clause" : ""}{o.rematch ? " · rematch clause" : ""}{o.outClause ? " · UFC out clause" : ""}{o.ppv ? ` · ${o.ppv} point${o.ppv === 1 ? "" : "s"} of the pay-per-view` : ""}
       </p>
       {notes.length > 0 && (
         <ul className="co-notes">
@@ -165,7 +167,13 @@ function OfferCard({ w, o, f }: { w: World; o: ContractOffer; f: Fighter }) {
               </select>
             </label>
           )}
-          <span className="tiny dim">{leverage ? "Clauses cost money at the table: the promotion counts a rematch clause as about 8% of the deal, each point about 6%." : "Clauses are for champions, top-five contenders and the names that sell."}</span>
+          {o.champClause && (
+            <label className="row tight small"><input type="checkbox" checked={noChamp} disabled={!leverage} onChange={(e) => setNoChamp(e.target.checked)} /> No champion's clause: a champion can walk when the deal is done</label>
+          )}
+          {o.promo === "pfl" && (
+            <label className="row tight small"><input type="checkbox" checked={out} disabled={!leverage || !!o.outClause} onChange={(e) => setOut(e.target.checked)} /> UFC out clause: the UFC can sign you at any time</label>
+          )}
+          <span className="tiny dim">{leverage ? `Clauses cost money at the table: the promotion counts a rematch clause as about 8% of the deal${o.promo === "ufc" ? ", each point of the pay-per-view about 6%" : ""}${o.champClause ? ", dropping the champion's clause about 6%" : ""}${o.promo === "pfl" ? ", a UFC out clause about 12%" : ""}.` : "Clauses are for champions, top-five contenders and the names that sell."}</span>
         </div>
       )}
       {log.length > 0 && (
@@ -175,7 +183,7 @@ function OfferCard({ w, o, f }: { w: World; o: ContractOffer; f: Fighter }) {
       )}
       <div className="row" style={{ marginTop: 12 }}>
         <button className="btn primary" onClick={sign}>Sign</button>
-        <button className="btn" onClick={counter} disabled={show === o.show && win === o.win && fights === o.fights && rematch === !!o.rematch && ppv === (o.ppv ?? 0)}>Send counter</button>
+        <button className="btn" onClick={counter} disabled={show === o.show && win === o.win && fights === o.fights && rematch === !!o.rematch && ppv === (o.ppv ?? 0) && !(noChamp && o.champClause) && out === !!o.outClause}>Send counter</button>
         <button className="btn danger" onClick={() => { toast(rejectContract(w, o.id)); changed(); }}>{walks ? "Walk away" : "Reject"}</button>
         <div style={{ flex: 1 }} />
         <span className="tiny dim">{fullName(f)}</span>

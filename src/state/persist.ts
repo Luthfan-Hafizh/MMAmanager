@@ -1,6 +1,8 @@
 // Saves: compressed JSON in IndexedDB, one record per career, plus export and import.
+// The JSON is the world as tables (state/codec.ts); older plain saves still load.
 
 import type { World } from "../model/types";
+import { packNow, packSliced, unpack } from "./codec";
 import { migrate, repair, OLDEST_SAVE, SAVE_VERSION } from "../world/create";
 import { loadRoster } from "./roster";
 import { ymd } from "../core/time";
@@ -77,8 +79,13 @@ const BACKUPS = 3;
 const bakKey = (id: string, slot: number) => `${id}#bak#${slot}`;
 const backedUp = new Map<string, number>();
 
-export async function saveWorld(w: World): Promise<SaveMeta> {
-  const json = JSON.stringify(w);
+/**
+ * Write the career. With `still`, the writing is done in the browser's quiet moments and
+ * gives way (null, nothing written) when `still` says the world has changed meanwhile.
+ */
+export async function saveWorld(w: World, still?: () => boolean): Promise<SaveMeta | null> {
+  const json = still ? await packSliced(w, still) : packNow(w);
+  if (json === null) return null;
   const data = await gzip(json);
   const db = await open();
   const meta = metaOf(w, typeof data === "string" ? data.length : data.byteLength);
@@ -118,7 +125,7 @@ export async function loadBackup(id: string, slot: number): Promise<World | null
   const data = await tx<Uint8Array | string | undefined>(db, STORE, "readonly", (s) => s.get(bakKey(id, slot)) as IDBRequest<Uint8Array | string | undefined>);
   db.close();
   if (!data) return null;
-  return upToDate(JSON.parse(await gunzip(data)) as World);
+  return upToDate(unpack(JSON.parse(await gunzip(data))));
 }
 
 export async function listSaves(): Promise<SaveMeta[]> {
@@ -137,7 +144,7 @@ export async function loadWorld(id: string): Promise<World | null> {
   const data = await tx<Uint8Array | string | undefined>(db, STORE, "readonly", (s) => s.get(id) as IDBRequest<Uint8Array | string | undefined>);
   db.close();
   if (!data) return null;
-  return upToDate(JSON.parse(await gunzip(data)) as World);
+  return upToDate(unpack(JSON.parse(await gunzip(data))));
 }
 
 /** Bring an older save up to date; the roster file fills in what old saves did not keep. */
@@ -165,7 +172,7 @@ export function compatible(m: SaveMeta | World): boolean {
 
 export function exportWorld(w: World): void {
   w.career.lastExport = w.day;
-  const blob = new Blob([JSON.stringify(w)], { type: "application/json" });
+  const blob = new Blob([packNow(w)], { type: "application/json" });
   const a = document.createElement("a");
   a.href = URL.createObjectURL(blob);
   const who = metaOf(w).who.replace(/[^a-z0-9]+/gi, "-").toLowerCase();
@@ -180,7 +187,12 @@ export async function importFile(file: File): Promise<World> {
   let text: string;
   if (file.name.endsWith(".gz")) text = await gunzip(new Uint8Array(await file.arrayBuffer()));
   else text = await file.text();
-  const w = JSON.parse(text) as World;
+  let w: World;
+  try {
+    w = unpack(JSON.parse(text));
+  } catch {
+    throw new Error("That file is not an MMA Manager save.");
+  }
   if (!w || !w.fighters || !w.career) throw new Error("That file is not an MMA Manager save.");
   if (!compatible(w)) throw new Error(`This save is from another version of the game (format ${w.v}).`);
   return upToDate(w);

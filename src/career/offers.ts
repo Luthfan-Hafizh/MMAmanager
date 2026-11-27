@@ -377,8 +377,11 @@ export function makeContractOffer(w: World, rng: Rng, f: Fighter, promo: PromoId
   const cur = f.promo && f.contract && f.promo !== promo ? PROMOTIONS[f.promo].short : null;
   const terms = `${fights} fights at ${money(offer.show)} to show${offer.win ? ` and ${money(offer.win)} to win` : " (a flat purse)"}, rising ${money(offer.escal)} with each win${offer.signBonus ? `, plus a ${money(offer.signBonus)} signing bonus` : ""}`;
   const left = f.contract?.left ?? 0;
+  const outNow = !!opts.approach && !!cur && promo === "ufc" && !!f.contract?.outClause;
   const lead =
-    opts.approach && cur
+    outNow
+      ? `${p.name} wants ${who} now, and the out clause in the ${cur} deal lets the move happen at once: `
+      : opts.approach && cur
       ? `${p.name} wants ${who} when the ${cur} deal is done (${left} fight${left === 1 ? "" : "s"} left). Sign now and the move happens after the last ${cur} fight: `
       : matched
       ? `${p.short} matches the ${PROMOTIONS[opts.match!.promo].short} to keep ${who}: `
@@ -413,7 +416,7 @@ export function contractFacts(w: World, f: Fighter, o: ContractOffer): Fact[] {
   ];
   if (o.signBonus) facts.push({ k: "Signing bonus", v: money(o.signBonus), tone: "good" });
   if (o.approach && f.promo && f.promo !== o.promo && f.contract && f.contract.left > 0) {
-    facts.push({ k: "Starts", v: `After the last ${PROMOTIONS[f.promo].short} fight (${f.contract.left} left)` });
+    facts.push(o.promo === "ufc" && f.contract.outClause ? { k: "Starts", v: "Now: the out clause", tone: "good" } : { k: "Starts", v: `After the last ${PROMOTIONS[f.promo].short} fight (${f.contract.left} left)` });
   }
   if (o.matches) facts.push({ k: "Matches", v: `The ${PROMOTIONS[o.matches].short}'s offer`, tone: "good" });
   if (o.last) facts.push({ k: "Last time", v: `${money(o.last.show)}${o.last.win ? ` + ${money(o.last.win)}` : " flat"} (${o.last.how === "rejected" ? "turned down" : o.last.how === "expired" ? "lapsed" : "withdrawn"})` });
@@ -457,17 +460,21 @@ export function clauseLeverage(w: World, f: Fighter, promo: PromoId): boolean {
   return (r !== null && r <= 5) || f.pop >= 60 || (f.promo !== promo && isChampion(w, f));
 }
 
-export function counterOffer(w: World, rng: Rng, offerId: string, ask: { show: number; win: number; fights: number; rematch?: boolean; ppv?: number }): CounterResult {
+export function counterOffer(w: World, rng: Rng, offerId: string, ask: { show: number; win: number; fights: number; rematch?: boolean; ppv?: number; noChamp?: boolean; out?: boolean }): CounterResult {
   const o = w.career.contractOffers.find((x) => x.id === offerId);
   if (!o || o.status !== "open") return { outcome: "walked", text: "That offer is gone." };
   o.rounds++;
   const f = w.fighters[o.fighter];
-  const wantsClauses = (!!ask.rematch && !o.rematch) || (ask.ppv ?? 0) > (o.ppv ?? 0);
+  // Only the PFL writes a UFC out clause; the champion's clause can only come out of a deal that has one.
+  const out = !!ask.out && o.promo === "pfl" && !o.outClause;
+  const noChamp = !!ask.noChamp && o.champClause;
+  const wantsClauses = (!!ask.rematch && !o.rematch) || (ask.ppv ?? 0) > (o.ppv ?? 0) || out || noChamp;
   if (wantsClauses && f && !clauseLeverage(w, f, o.promo)) {
     return { outcome: "countered", text: `${PROMOTIONS[o.promo].short} won't talk about clauses: those are for champions, top-five contenders and the names that sell. The money is still on the table.` };
   }
-  // A clause is worth money to the promotion: the rematch about 8% of the deal, each point of the pay-per-view about 6%.
-  const clauseCost = 1 + (ask.rematch && !o.rematch ? 0.08 : 0) + Math.max(0, (ask.ppv ?? 0) - (o.ppv ?? 0)) * 0.06;
+  // A clause is worth money to the promotion: the rematch about 8% of the deal, each point of
+  // the pay-per-view about 6%, dropping the champion's clause about 6%, a UFC out clause about 12%.
+  const clauseCost = 1 + (ask.rematch && !o.rematch ? 0.08 : 0) + Math.max(0, (ask.ppv ?? 0) - (o.ppv ?? 0)) * 0.06 + (noChamp ? 0.06 : 0) + (out ? 0.12 : 0);
   const wantTotal = (ask.show + ask.win * 0.6) * clauseCost;
   const limitTotal = o.limit * (o.win ? 1.6 : 1);
   const curTotal = o.show + o.win * 0.6;
@@ -479,6 +486,8 @@ export function counterOffer(w: World, rng: Rng, offerId: string, ask: { show: n
     o.fights = clamp(ask.fights, 1, 8);
     if (ask.rematch) o.rematch = true;
     if (ask.ppv) o.ppv = Math.max(o.ppv ?? 0, ask.ppv);
+    if (noChamp) o.champClause = false;
+    if (out) o.outClause = true;
     return { outcome: "accepted", text: `${PROMOTIONS[o.promo].short} agrees to those terms. Sign when you're ready.` };
   }
   if (o.patience <= 0) {
@@ -500,7 +509,7 @@ export function counterOffer(w: World, rng: Rng, offerId: string, ask: { show: n
   };
 }
 
-type Terms = Pick<ContractOffer, "fights" | "show" | "win" | "escal" | "signBonus" | "champClause" | "termDays" | "rematch" | "ppv">;
+type Terms = Pick<ContractOffer, "fights" | "show" | "win" | "escal" | "signBonus" | "champClause" | "termDays" | "rematch" | "ppv" | "outClause">;
 
 /**
  * The fighter moves to a promotion (or starts a new deal at the same one) on
@@ -539,6 +548,7 @@ function joinPromotion(w: World, f: Fighter, promo: PromoId, t: Terms): PromoId 
     signBonus: t.signBonus,
     rematch: t.rematch,
     ppv: t.ppv,
+    outClause: t.outClause,
   };
   if (t.signBonus) {
     if (w.career.mode === "fighter") ledger(w, { amount: t.signBonus, what: `${PROMOTIONS[promo].short} signing bonus`, cat: "bonus", fighter: f.id });
@@ -560,12 +570,12 @@ export function signContract(w: World, rng: Rng, offerId: string): string {
   const fc = w.career.fc[f.id];
   const from = f.promo;
   // An exclusive deal still has fights to run: the UFC's approach is signed now and starts when that deal is done.
-  if (from && from !== o.promo && f.contract && f.contract.left > 0 && exclusiveDeal(from)) {
+  if (from && from !== o.promo && f.contract && f.contract.left > 0 && exclusiveDeal(from) && !(o.promo === "ufc" && f.contract.outClause)) {
     const left = f.contract.left;
     if (!o.approach) return `The ${PROMOTIONS[from].short} deal still has ${left} fight${left === 1 ? "" : "s"} to run.`;
     o.status = "accepted";
     recordBid(w, o, "signed");
-    if (fc) fc.next = { promo: o.promo, fights: o.fights, show: o.show, win: o.win, escal: o.escal, signBonus: o.signBonus, champClause: o.champClause, termDays: o.termDays, signed: w.day, rematch: o.rematch, ppv: o.ppv };
+    if (fc) fc.next = { promo: o.promo, fights: o.fights, show: o.show, win: o.win, escal: o.escal, signBonus: o.signBonus, champClause: o.champClause, termDays: o.termDays, signed: w.day, rematch: o.rematch, ppv: o.ppv, outClause: o.outClause };
     lapseOthers(w, f, o.id);
     closeMessages(w, o.id, "Signed");
     adjustRapport(w, f, from, -6, `Agreed to join the ${PROMOTIONS[o.promo].short} when the deal is done`);
@@ -687,7 +697,7 @@ export function careerInterest(w: World, rng: Rng): void {
     const openFrom = (promo: PromoId) => w.career.contractOffers.some((x) => x.fighter === f.id && x.promo === promo && x.status === "open");
     // The UFC doesn't wait for free agency: an exclusive deal elsewhere on its last fight, or
     // its last four months, and the UFC makes its approach; the promotion answers with a match.
-    if (deal && f.promo && f.promo !== "ufc" && exclusiveDeal(f.promo) && deal.left > 0 && (deal.left <= 1 || deal.end - w.day <= 120)) {
+    if (deal && f.promo && f.promo !== "ufc" && exclusiveDeal(f.promo) && deal.left > 0 && (deal.outClause || deal.left <= 1 || deal.end - w.day <= 120)) {
       const ufc = ufcInterest(w, f);
       if (ufc && !openFrom("ufc") && rng.chance(ufc.chance)) {
         const rival = makeContractOffer(w, rng, f, "ufc", { approach: true, rivals: 1, note: ufc.note });
@@ -699,6 +709,17 @@ export function careerInterest(w: World, rng: Rng): void {
     if (w.career.contractOffers.some((x) => x.fighter === f.id && x.status === "open")) continue;
     // A deal that is done: the promotion's renewal or a release, and the UFC's offer when it wants the fighter.
     if (deal && f.promo && deal.left <= 0 && tier !== "amateur") {
+      // The champion's clause: while a belt is held, a deal that is done runs on a fight at a
+      // time on the same terms. A new deal is still on the table; walking away isn't.
+      if (deal.champClause && (isChampion(w, f) || isInterim(w, f))) {
+        deal.left = 1;
+        deal.fights += 1;
+        deal.end = Math.max(deal.end, w.day + 210);
+        const short = PROMOTIONS[f.promo].short;
+        notify(w, { kind: "contract", fighter: f.id, from: PROMOTIONS[f.promo].name, subject: "The champion's clause", body: `${fullName(f)}'s ${short} deal is done, but the champion's clause holds: while the belt is held, the deal runs on a fight at a time on the same terms. A new deal can still be agreed, and pays better.` });
+        makeContractOffer(w, rng, f, f.promo, { renewal: true, note: "The champion's clause keeps you here; a new deal would pay better." });
+        continue;
+      }
       const losing = f.streak <= -3 || (f.promo === "ufc" && f.streak <= -2 && f.rec.l > f.rec.w * 0.6);
       if (losing) {
         notify(w, { kind: "contract", fighter: f.id, from: PROMOTIONS[f.promo].name, subject: "Released", body: `${PROMOTIONS[f.promo].short} has decided not to renew ${fullName(f)}'s contract after the recent results. ${fullName(f)} is a free agent.` });

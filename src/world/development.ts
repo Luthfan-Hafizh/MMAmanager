@@ -11,6 +11,7 @@ import { ageAt } from "../core/time";
 import { DIVISIONS, type DivisionId } from "../data/divisions";
 import { ATTRS, ovrOf, type AttrKey } from "../model/attributes";
 import type { Fighter, World } from "../model/types";
+import { drain, type Steps } from "../core/steps";
 
 const WEIGHT_SHIFT: Record<DivisionId, number> = { FLY: -0.8, BW: -0.5, FW: -0.3, LW: 0, WW: 0.3, MW: 0.6, LHW: 0.9, HW: 1.5, WSW: 0.6, WFLY: 0.7, WBW: 0.8 };
 
@@ -113,8 +114,15 @@ export function applyOvrChange(f: Fighter, delta: number, rng: Rng): void {
 
 /** The monthly pass for every active fighter. */
 export function monthlyDevelopment(w: World, rng: Rng): void {
+  drain(monthlyDevelopmentSteps(w, rng));
+}
+
+/** The month's development, a few hundred fighters at a step. */
+export function* monthlyDevelopmentSteps(w: World, rng: Rng): Steps<void> {
+  let n = 0;
   for (const f of Object.values(w.fighters)) {
     if (f.status !== "active") continue;
+    if (++n % 300 === 0) yield;
     const age = ageAt(f.birth, w.day);
     const decline = yearlyDecline(f, age) / 12;
     // The player's fighters grow from their training week, not from this catch-up.

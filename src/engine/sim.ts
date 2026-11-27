@@ -11,7 +11,7 @@ import { Rng } from "../core/rng";
 import { clamp } from "../core/util";
 import type { AttrKey } from "../model/attributes";
 import { ATTRS } from "../model/attributes";
-import type { BoutResult, Fighter, FightLogLine, Method, RoundStat } from "../model/types";
+import type { BoutResult, Drill, Fighter, FightLogLine, Method, RoundStat } from "../model/types";
 import { DIVISIONS, type DivisionId } from "../data/divisions";
 import type { TechId } from "../data/techniques";
 import { SUB_NAMES } from "../data/techniques";
@@ -33,7 +33,21 @@ export interface Condition {
   size?: number;
   /** Where an injury a fighter carries into the fight is: it hurts what that part does. */
   injuryArea?: string;
+  /** Partners in camp who fought like the opponent: that part of his game is no surprise. */
+  drill?: Drill;
 }
+
+/**
+ * What a camp's partners copied: the opponent's own weapons in that part of the fight,
+ * which come as no surprise. Only what he does with them is blunted, so it pays to
+ * drill what he actually relies on.
+ */
+const DRILLED: Record<Drill, ReadonlySet<AttrKey>> = {
+  strike: new Set<AttrKey>(["boxing", "kicks", "power", "counters"]),
+  grapple: new Set<AttrKey>(["takedowns", "clinchControl", "topControl", "subs", "groundStrikes", "scrambles"]),
+};
+/** How much is taken off: a little more on the mat, where less of a fight is spent. */
+const DRILL_BLUNT: Record<Drill, number> = { strike: 0.94, grapple: 0.93 };
 
 /** How a short camp tells: 1 with a day's notice, 0 with three weeks. */
 const snHurt = (days?: number) => 1 - clamp(days ?? 21, 0, 21) / 21;
@@ -456,6 +470,9 @@ export class FightSim {
       if (hit) v *= 1 - s.cond.injury * 0.22;
     }
     if (s.cond.prep) v *= 1 + s.cond.prep * 0.025;
+    // The other corner brought in partners who fight like this one.
+    const seen = this.s[1 - s.i].cond.drill;
+    if (seen && DRILLED[seen].has(k)) v *= DRILL_BLUNT[seen];
     if (s.cond.home && (k === "composure" || k === "heart")) v *= 1.04;
     if (k === "footwork" || k === "tdd" || k === "speed") v *= 0.72 + 0.28 * (s.legs / 100);
     // A poked eye: the shots coming in are harder to see.
@@ -687,6 +704,12 @@ export class FightSim {
     this.quiet = 0;
     this.startRoundStats();
     this.say(`Round ${this.round} begins.`, undefined, true, "round");
+    if (this.round === 1) {
+      for (const s of this.s) {
+        const d = s.cond.drill;
+        if (d) this.say(`${s.name}'s camp brought in partners who ${d === "strike" ? "strike" : "wrestle"} like ${this.other(s).name}.`, s.i, false, "corner");
+      }
+    }
   }
 
   setPlan(i: 0 | 1, plan: FightPlan) {

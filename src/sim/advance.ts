@@ -14,10 +14,10 @@ import type { Bout, MMAEvent, World } from "../model/types";
 import { TECHNIQUES, type TechId } from "../data/techniques";
 import { ensureSchedule, eventsOn } from "../world/calendar";
 import { fullName, touch, withRng } from "../world/core";
-import { monthlyDevelopment } from "../world/development";
+import { monthlyDevelopmentSteps } from "../world/development";
 import { monthlyMarket } from "../world/market";
 import { bookingPass, campInjuries, fillGaps, withdraw } from "../world/matchmaking";
-import { applyResult, finishEvent, fightInputFor, runEvent } from "../world/results";
+import { applyResult, finishEvent, fightInputFor, runEvent, runEventSteps } from "../world/results";
 import { updateP4P, updateRankings } from "../world/rankings";
 import { simulate, type FightOutcome } from "../engine/sim";
 import { campWeek, fightEve } from "../career/camp";
@@ -41,6 +41,7 @@ import { bmfMonthly, stripMonthly } from "../world/belts";
 import { pruneReports } from "../world/report";
 import { INJURY } from "../data/injuries";
 import { FIGHT_STYLES, masteryName } from "../data/fightstyles";
+import { drain, type Steps } from "../core/steps";
 
 export interface Stop {
   kind: "decision" | "fight" | "week" | "message" | "retired";
@@ -125,10 +126,13 @@ function weekly(w: World, rng: Rng): void {
   lifeWeekly(w, rng);
 }
 
-function monthly(w: World, rng: Rng): void {
-  monthlyDevelopment(w, rng);
+function* monthlySteps(w: World, rng: Rng): Steps<void> {
+  yield* monthlyDevelopmentSteps(w, rng);
+  yield;
   monthlyMarket(w, rng);
+  yield;
   for (const id of PROMO_IDS) if (PROMOTIONS[id].rankSize) updateRankings(w, id);
+  yield;
   updateP4P(w);
   monthlyMoney(w);
   careerInterest(w, rng);
@@ -204,8 +208,18 @@ export function quickSim(w: World, b: Bout): FightOutcome {
 }
 
 export function advanceDay(w: World): Stop[] {
+  return drain(advanceDaySteps(w));
+}
+
+/**
+ * A day, in steps: the morning's work, the month's (development, the market, the
+ * rankings), and each event fight by fight. Continue runs it a few milliseconds at a
+ * time; the day is the same either way.
+ */
+export function* advanceDaySteps(w: World): Steps<Stop[]> {
   const stops: Stop[] = [];
-  withRng(w, (rng) => {
+  const rng = new Rng(w.rng);
+  try {
     w.day += 1;
     heal(w);
     expireOffers(w);
@@ -216,7 +230,8 @@ export function advanceDay(w: World): Stop[] {
     fightWeekDaily(w, rng);
     pressDaily(w, rng);
     if (isMonday(w.day)) weekly(w, rng);
-    if (isFirstOfMonth(w.day)) monthly(w, rng);
+    yield;
+    if (isFirstOfMonth(w.day)) yield* monthlySteps(w, rng);
     for (const ev of eventsOn(w, w.day)) {
       if (ev.status === "done") continue;
       // A card that never came together isn't held with nobody on it: it comes off the calendar.
@@ -233,7 +248,7 @@ export function advanceDay(w: World): Stop[] {
         stops.push({ kind: "fight", text: `Fight night: ${ev.name}`, ref: ev.id });
         continue;
       }
-      runEvent(w, rng, ev);
+      yield* runEventSteps(w, rng, ev);
       lifeAfterEvent(w, ev);
     }
     // The day before a player's fight: the weigh-in.
@@ -244,7 +259,9 @@ export function advanceDay(w: World): Stop[] {
       }
     }
     ensureSchedule(w, rng);
-  });
+  } finally {
+    w.rng = rng.s;
+  }
   touch(w);
   return stops;
 }
@@ -256,6 +273,11 @@ export interface AdvanceResult {
 
 /** Continue: up to `max` days, stopping for decisions and fight nights. */
 export function advance(w: World, max = 7, onDay?: (w: World) => void): AdvanceResult {
+  return drain(advanceSteps(w, max, onDay));
+}
+
+/** Continue in steps (see advanceDaySteps). */
+export function* advanceSteps(w: World, max = 7, onDay?: (w: World) => void): Steps<AdvanceResult> {
   let days = 0;
   const before = new Set(w.inbox.slice(0, 40).map((m) => m.id));
   for (; days < max; ) {
@@ -264,9 +286,10 @@ export function advance(w: World, max = 7, onDay?: (w: World) => void): AdvanceR
     const fn = fightNight(w);
     if (fn) return { days, stop: { kind: "fight", text: `Fight night: ${fn.name}`, ref: fn.id } };
     if (w.career.mode === "fighter" && !w.career.fighters.some((id) => w.fighters[id]?.status === "active") && !w.career.retiredAt) return { days, stop: { kind: "retired", text: "No active fighters." } };
-    const stops = advanceDay(w);
+    const stops = yield* advanceDaySteps(w);
     days++;
     onDay?.(w);
+    yield;
     if (stops.length) return { days, stop: stops[0] };
     const fresh = w.inbox.filter((m) => !before.has(m.id) && !m.read && (m.needs || m.kind === "result" || m.kind === "injury" || m.kind === "contract"));
     if (fresh.length) return { days, stop: { kind: fresh[0].needs ? "decision" : "message", text: fresh[0].subject, ref: fresh[0].id } };

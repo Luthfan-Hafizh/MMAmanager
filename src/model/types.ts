@@ -74,6 +74,8 @@ export interface Contract {
   /** Clauses won at the table: an immediate rematch if the belt is lost, points of the pay-per-view. */
   rematch?: boolean;
   ppv?: number;
+  /** A UFC out clause in a PFL deal: the UFC can sign the fighter at any time. */
+  outClause?: boolean;
 }
 
 export interface Injury {
@@ -513,6 +515,7 @@ export interface SignedNext {
   signed: number;
   rematch?: boolean;
   ppv?: number;
+  outClause?: boolean;
 }
 
 export interface ContractOffer {
@@ -535,6 +538,7 @@ export interface ContractOffer {
   /** Clauses agreed at the table. */
   rematch?: boolean;
   ppv?: number;
+  outClause?: boolean;
   patience: number;
   note?: string;
   renewal?: boolean;
@@ -601,9 +605,13 @@ export interface Camp {
   /** Where the camp is: at home, at altitude, or at a top gym (guest) for its coaches. */
   site?: CampSite;
   guest?: string;
+  /** Partners brought in who fight like the opponent: the part of his game they copy. */
+  drill?: Drill;
 }
 
 export type CampSite = "home" | "altitude" | "topgym";
+/** The part of an opponent's game a camp's partners copy (career/camp.ts drillFor). */
+export type Drill = "strike" | "grapple";
 /** A fighter's own staff (career/staff.ts): the coach's quality by role. */
 export type TeamRole = "striking" | "wrestling" | "grappling" | "sc" | "nutrition";
 

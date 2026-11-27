@@ -7,13 +7,13 @@ import { heightText, money, pct } from "../../core/util";
 import { DIVISIONS } from "../../data/divisions";
 import { PROMOTIONS } from "../../data/promotions";
 import { ATTR_INFO, groupScore, ovr, styleOf, type AttrKey } from "../../model/attributes";
-import type { Bout, Camp, Fighter, World, CampSite } from "../../model/types";
+import type { Bout, Camp, Fighter, World, CampSite, Drill } from "../../model/types";
 import {
   BOTTOM_TEXT, DEF_TEXT, PRESETS, SCALE_TEXT, STYLE_DESC, STYLE_NAMES, TAKEDOWN_TEXT, TARGET_DESC, TARGET_TEXT, TOP_TEXT, preset, suggestPlan,
   type BottomMode, type DefMode, type FightPlan, type PlanStyle, type Target, type TopMode,
 } from "../../engine/plan";
 import { winChance } from "../../engine/sim";
-import { CUT_NAMES, NUTRITION_NAMES, SPARRING_NAMES, campCost, campPrep, prepText, startCamp } from "../../career/camp";
+import { CUT_NAMES, NUTRITION_NAMES, SPARRING_NAMES, campCost, campPrep, prepText, startCamp, drillFor, DRILL_NAMES, DRILL_WEEK } from "../../career/camp";
 import { fightInputFor, ringRust } from "../../world/results";
 import { fullName, rankLabel, recordText, withRng } from "../../world/core";
 import { changed, useWorld } from "../../state/store";
@@ -165,7 +165,7 @@ function Scouting({ w, opp, me }: { w: World; opp: Fighter; me: Fighter }) {
 function CampPanel({ w, f, b, camp }: { w: World; f: Fighter; b: Bout; camp: Camp }) {
   const tier = PROMOTIONS[b.promo].tier;
   const set = <K extends keyof Camp>(k: K, v: Camp[K]) => {
-    if (camp.paid && (k === "sparring" || k === "nutrition" || k === "site")) return;
+    if (camp.paid && (k === "sparring" || k === "nutrition" || k === "site" || k === "drill")) return;
     if (k === "site") camp.guest = v === "topgym" ? topGymFor(w, f)?.id : undefined;
     (camp as Camp)[k] = v;
     camp.cost = campCost(camp, tier);
@@ -192,6 +192,7 @@ function CampPanel({ w, f, b, camp }: { w: World; f: Fighter; b: Bout; camp: Cam
           <Seg value={camp.site ?? "home"} onChange={(v) => set("site", v)} options={(["home", "altitude", "topgym"] as CampSite[]).map((k) => ({ v: k, label: k === "topgym" ? `${topGymFor(w, f)?.name ?? "A top gym"}` : SITE_NAMES[k] }))} />
           <p className="tiny dim" style={{ marginTop: 4 }}>{camp.site === "altitude" ? "Weeks at altitude build the gas tank: better prepared on the night." : camp.site === "topgym" ? `The camp at ${w.gyms[camp.guest ?? ""]?.name ?? "a top gym"}: its coaches count where they're better than yours, and the room sharpens you.` : "The usual room, the usual coaches, no travel."}{camp.paid ? " Paid: it's set for this camp." : ""}</p>
         </div>
+        <DrillPick w={w} f={f} b={b} camp={camp} set={(v) => set("drill", v)} />
         <div className="c6">
           <div className="small dim" style={{ marginBottom: 4 }}>The cut</div>
           <Seg value={camp.cut} onChange={(v) => set("cut", v)} options={(Object.keys(CUT_NAMES) as Camp["cut"][]).map((k) => ({ v: k, label: CUT_NAMES[k] }))} />
@@ -329,3 +330,31 @@ function Odds({ w, b, f }: { w: World; b: Bout; f: Fighter }) {
 }
 
 export { FighterLink };
+
+/** Partners who fight like the opponent, copying the part of his game the camp expects to see. */
+function DrillPick({ w, f, b, camp, set }: { w: World; f: Fighter; b: Bout; camp: Camp; set: (v: Drill | undefined) => void }) {
+  const opp = w.fighters[b.a === f.id ? b.b : b.a];
+  if (!opp) return null;
+  const rec = drillFor(f, opp);
+  const his = opp.sex === "F" ? "her" : "his";
+  const His = opp.sex === "F" ? "Her" : "His";
+  const tier = PROMOTIONS[b.promo].tier;
+  const scale = tier === "major" || tier === "league" ? 1 : tier === "regional" || tier === "tryout" ? 0.55 : 0.3;
+  const week = money(Math.round(DRILL_WEEK * scale));
+  return (
+    <div className="c12">
+      <div className="small dim" style={{ marginBottom: 4 }}>Partners who fight like {opp.surname}</div>
+      <Seg
+        value={camp.drill ?? "none"}
+        onChange={(v) => set(v === "none" ? undefined : (v as Drill))}
+        options={[{ v: "none", label: "None" }, { v: "strike", label: `${His} striking` }, { v: "grapple", label: `${His} wrestling and grappling` }]}
+      />
+      <p className="tiny dim" style={{ marginTop: 4 }}>
+        {camp.drill
+          ? `Partners who copy ${opp.surname}'s ${DRILL_NAMES[camp.drill]}: that part of the fight comes as no surprise on the night, and the film work goes faster. ${week} a week.${camp.drill !== rec.k ? ` The coaches expect ${opp.surname}'s ${rec.plan}, and would copy ${his} ${DRILL_NAMES[rec.k]}.` : ""}`
+          : `The coaches expect ${opp.surname}'s ${rec.plan}: partners who copy ${his} ${DRILL_NAMES[rec.k]} cost ${week} a week.`}
+        {camp.paid ? " Paid: it's set for this camp." : ""}
+      </p>
+    </div>
+  );
+}

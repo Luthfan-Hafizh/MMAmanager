@@ -10,13 +10,13 @@ import { DIVISIONS, type DivisionId, type Sex } from "../data/divisions";
 import { makeName } from "../data/names";
 import { PROMOTIONS, PROMO_IDS, promoFor, type PromoId } from "../data/promotions";
 import { ARTS, type BaseArt } from "../data/styles";
-import { ovrOf } from "../model/attributes";
+import { ATTRS, ovrOf } from "../model/attributes";
 import type { Bout, Career, Contract, Fighter, Gym, PromoState, Stance, World } from "../model/types";
 import { defaultTraining } from "../career/training";
 import { ensureSchedule } from "./calendar";
 import { addNews, fullName, nextId, rankOf, touch, withRng, touchRoster } from "./core";
 import { generateFighter, makeRecord, pickCountry } from "./generate";
-import { currentStreak, potentialNoise, prospectRoom, realFighter, realGym, type RosterFile } from "./real";
+import { currentStreak, potentialNoise, prospectRoom, realFighter, realGym, type RosterFile, leagueBalance } from "./real";
 import { entryElo, p4pOf, refitRankings, updateP4P, updateRankings } from "./rankings";
 import { managerPerson } from "../career/advisor";
 import { initBmf, isBeltFight } from "./belts";
@@ -29,7 +29,7 @@ import type { Build } from "../data/body";
 import GYM_FIXES from "../data/gym-fixes.json";
 import FIGHTER_FIXES from "../data/fighter-fixes.json";
 
-export const SAVE_VERSION = 6;
+export const SAVE_VERSION = 7;
 /** The oldest save format this version can bring up to date. */
 export const OLDEST_SAVE = 1;
 
@@ -105,6 +105,19 @@ export function migrate(w: World, roster: RosterFile | null): World {
       }
     }
     w.v = 6;
+  }
+  if (w.v < 7 && roster) {
+    // Format 7: the PFL's real fighters take the UFC's shape (leagueBalance). Built the old
+    // way their fights went to the mat and ended in a knockout a third less often than real
+    // PFL fights do. The player's own fighters and clients are left as they are.
+    const balance = leagueBalance(roster.fighters);
+    const pfl = new Set(roster.fighters.filter((rf) => rf.p !== "ufc").map((rf) => rf.id));
+    const mine = new Set(w.career.fighters);
+    for (const f of Object.values(w.fighters)) {
+      if (!f.real || !pfl.has(f.id) || f.ctrl || mine.has(f.id)) continue;
+      for (const k of ATTRS) f.attrs[k] = Math.round(clamp(f.attrs[k] + (balance[k] ?? 0), 1, 20) * 10) / 10;
+    }
+    w.v = 7;
   }
   return w;
 }
@@ -523,6 +536,7 @@ export function createWorld(roster: RosterFile, o: NewGameOptions): World {
     rankOf: (id: string) => (id.startsWith("ufc-") ? ufcRank.get(id) ?? null : pflRank.get(id) ?? null),
     p4p: (id: string) => p4p.get(id) ?? null,
     day,
+    balance: leagueBalance(roster.fighters),
   };
   for (const rf of roster.fighters) {
     const f = realFighter(rf, ctx, seed);

@@ -10,7 +10,7 @@ import { countryOf } from "../data/countries";
 import { DIVISIONS, typicalWalk, type DivisionId } from "../data/divisions";
 import type { PromoId } from "../data/promotions";
 import type { BaseArt } from "../data/styles";
-import { ATTRS, ovrOf } from "../model/attributes";
+import { ATTRS, ovrOf, type AttrKey } from "../model/attributes";
 import type { AgingType, Attrs, Fighter, Gym, Stance } from "../model/types";
 import { blankRecord, blankTotals, makeTechniques } from "./generate";
 import { KNOWN_TITLES, startingLegacy } from "./legacy";
@@ -181,10 +181,12 @@ export interface RealContext {
   rankOf: (id: string) => number | null; // 0 champion
   p4p: (id: string) => number | null;
   day: number;
+  /** How the PFL's ratings lean against the UFC's, by attribute (leagueBalance). */
+  balance?: Partial<Record<AttrKey, number>>;
 }
 
-export function realFighter(rf: RealFighter, ctx: RealContext, seed: number): Fighter {
-  const rng = new Rng(hashString(rf.id) ^ seed);
+/** The attributes the snapshot's ratings, tendencies, record and statistics point to, before the level is set. */
+function rawAttrs(rf: RealFighter, n: () => number): Attrs {
   const [S, G, W, U, Cd, D] = rf.rt.map(A);
   const t = rf.t;
   const s = rf.s;
@@ -204,7 +206,6 @@ export function realFighter(rf: RealFighter, ctx: RealContext, seed: number): Fi
   const wins = Math.max(1, koW + subW + decW);
   const fights = rf.r[0] + rf.r[1] + rf.r[2];
   const exp = clamp((fights - 14) / 12, -1, 1.5);
-  const n = () => rng.normal(0, 0.55);
   const a = {} as Attrs;
   const skill = (S + G + W + U) / 4;
   a.boxing = S - 1.6 + (t[T.pocket] - 0.5) * 2.2 + clamp((acc - 47) / 7, -1.4, 1.4) + n();
@@ -236,6 +237,65 @@ export function realFighter(rf: RealFighter, ctx: RealContext, seed: number): Fi
   a.discipline = skill - 0.6 + (rf.ps[0] - 50) / 12 + n();
   a.heart = D + 0.4 + (rf.ps[4] - 50) / 20 + n();
   a.workRate = skill - 0.2 + (t[T.pace] - 0.6) * 6 + clamp((slpm - 3.8) / 1.2, -1.5, 2.2) + n();
+  return a;
+}
+
+/**
+ * The PFL's fighters come without the official statistics the UFC's have, and the
+ * source rates their striking, submissions and cardio well below the UFC's but their
+ * durability and wrestling close to it. Built as they were, PFL fights went to the mat
+ * and ended in knockouts about a third less often than real PFL fights do (about 20%
+ * of matched fights, against 26-36% a season). This is the gap, attribute by attribute,
+ * between the shape of the average UFC fighter and the average PFL fighter, each
+ * against its own mean; a PFL fighter is moved by it before the level is set, so the
+ * league is the UFC's shape a level lower and every fighter keeps their own leanings.
+ */
+export function leagueBalance(fighters: RealFighter[]): Partial<Record<AttrKey, number>> {
+  const zero = () => 0;
+  const profile = (list: RealFighter[]) => {
+    const mean = Object.fromEntries(ATTRS.map((k) => [k, 0])) as Record<AttrKey, number>;
+    for (const rf of list) {
+      const a = rawAttrs(rf, zero);
+      for (const k of ATTRS) mean[k] += a[k] / list.length;
+    }
+    const all = ATTRS.reduce((x, k) => x + mean[k], 0) / ATTRS.length;
+    return { mean, all };
+  };
+  const ufc = fighters.filter((f) => f.p === "ufc");
+  const pfl = fighters.filter((f) => f.p !== "ufc");
+  if (!ufc.length || !pfl.length) return {};
+  const u = profile(ufc);
+  const p = profile(pfl);
+  const out: Partial<Record<AttrKey, number>> = {};
+  for (const k of ATTRS) out[k] = Math.round((u.mean[k] - u.all - (p.mean[k] - p.all)) * 100) / 100;
+  return out;
+}
+
+export function realFighter(rf: RealFighter, ctx: RealContext, seed: number): Fighter {
+  const rng = new Rng(hashString(rf.id) ^ seed);
+  const [S, G, W, U, Cd, D] = rf.rt.map(A);
+  const t = rf.t;
+  const s = rf.s;
+  const slpm = s?.[0] ?? 3.5;
+  const sapm = s?.[1] ?? 3.5;
+  const acc = s?.[2] ?? 47;
+  const def = s?.[3] ?? 54;
+  const td = s?.[4] ?? 1.5;
+  const tdDef = s?.[5] ?? 66;
+  const sub = s?.[6] ?? 0.5;
+  const kd = s?.[7] ?? 0.5;
+  const legShare = s?.[10] ?? 15;
+  const bodyShare = s?.[9] ?? 21;
+  const clinchShare = s?.[12] ?? 11;
+  const groundShare = s?.[13] ?? 13;
+  const [koW, subW, decW, koL, subL] = rf.m;
+  const wins = Math.max(1, koW + subW + decW);
+  const fights = rf.r[0] + rf.r[1] + rf.r[2];
+  const exp = clamp((fights - 14) / 12, -1, 1.5);
+  const build = rf.b;
+  // The PFL's fighters take the UFC's shape before the level is set (leagueBalance).
+  const a = rawAttrs(rf, () => rng.normal(0, 0.55));
+  if (rf.p !== "ufc" && ctx.balance) for (const k of ATTRS) a[k] += ctx.balance[k] ?? 0;
   for (const k of ATTRS) a[k] = clamp(a[k], 1, 20);
 
   // Quality on the day of the snapshot, from where the fighter stands.

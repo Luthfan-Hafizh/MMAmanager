@@ -802,7 +802,8 @@ pages(tw, "Retired fighter turned manager");
 
 // Contracts that remember, the UFC's approach and the ranked debut: a promotion turned
 // down comes back at the same money (a $1.9M PFL champion no longer hears $162k), a
-// champion walking into free agency leaves the belt behind, the UFC talks to a fighter on
+// champion whose deal has no champion's clause walks into free agency and leaves the belt
+// behind (with the clause, the deal runs on), the UFC talks to a fighter on
 // the last fight of a PFL deal while the PFL matches, a deal signed early starts after
 // that fight, and a long PFL reign earns a ranked opponent first time out.
 {
@@ -821,7 +822,8 @@ pages(tw, "Retired fighter turned manager");
   };
   {
     const { w, f } = pflChamp(84);
-    f.contract = { ...f.contract!, show: 1900000, win: 0, left: 0 };
+    // A deal signed without the champion's clause (it was negotiated out at the table).
+    f.contract = { ...f.contract!, show: 1900000, win: 0, left: 0, champClause: false };
     withRng(w, (rng) => careerInterest(w, rng));
     const first = openOf(w, f.id).find((o) => o.promo === "pfl");
     if (!first) fail("a PFL champion whose deal is done got no renewal");
@@ -844,6 +846,21 @@ pages(tw, "Retired fighter turned manager");
       else if (!back.last) fail("the PFL's second offer doesn't remember the first");
       else console.log(`Turned down: the PFL's ${usd(allIn(first))} a fight came back as ${usd(allIn(back))} (${Math.round(ratio * 100)}%), and the belt was vacated on the way out`);
     }
+  }
+  {
+    // With the champion's clause, a deal that is done runs on a fight at a time: turning the
+    // new deal down keeps the champion, and the belt, where they are.
+    const { w, f } = pflChamp(86);
+    f.contract = { ...f.contract!, left: 0, champClause: true };
+    const fights = f.contract.fights;
+    withRng(w, (rng) => careerInterest(w, rng));
+    const renewal = openOf(w, f.id).find((o) => o.promo === "pfl");
+    if (renewal) rejectContract(w, renewal.id);
+    if (f.contract?.left !== 1 || f.contract.fights !== fights + 1) fail(`the champion's clause didn't hold the deal (${f.contract?.left} left of ${f.contract?.fights})`);
+    else if (f.promo !== "pfl" || w.promos.pfl.champs[f.div] !== f.id) fail("the champion's clause let a champion walk away");
+    else if (!renewal) fail("a champion held by the clause got no new deal to consider");
+    else if (!w.inbox.some((m) => m.subject === "The champion's clause" && m.fighter === f.id)) fail("the player wasn't told the champion's clause holds");
+    else console.log(`The champion's clause: the PFL deal ran on (${f.contract.left} left of ${f.contract.fights}), the new deal was turned down and ${f.surname} kept the belt`);
   }
   {
     const { w, f } = pflChamp(85);
@@ -1041,7 +1058,8 @@ pages(tw, "Retired fighter turned manager");
     const r = [...w.promos.ufc.reigns].reverse().find((x) => x.fighter === f.id && x.lost === undefined);
     if (r) r.defenses = 12;
     f.booked = null;
-    f.contract = { ...f.contract!, left: 0 };
+    // A UFC deal without the champion's clause: when it's done, the champion can walk.
+    f.contract = { ...f.contract!, left: 0, champClause: false };
     withRng(w, (rng) => careerInterest(w, rng));
     for (const o of w.career.contractOffers.filter((x) => x.status === "open")) rejectContract(w, o.id);
     const pfl = withRng(w, (rng) => makeContractOffer(w, rng, f, "pfl", {}));

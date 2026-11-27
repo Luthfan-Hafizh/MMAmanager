@@ -7,8 +7,8 @@ import type { Rng } from "../core/rng";
 import { clamp } from "../core/util";
 import { DIVISIONS } from "../data/divisions";
 import { PROMOTIONS } from "../data/promotions";
-import type { Bout, Camp, Fighter, World } from "../model/types";
-import { suggestPlan } from "../engine/plan";
+import type { Bout, Camp, Drill, Fighter, World } from "../model/types";
+import { STYLE_NAMES, suggestPlan, TAKEDOWN_TEXT } from "../engine/plan";
 import { fullName } from "../world/core";
 import { notify } from "./inbox";
 import { ledger } from "./money";
@@ -19,12 +19,30 @@ export const SPARRING_NAMES = ["Gym partners", "Brought-in partners", "Elite par
 export const NUTRITION_NAMES = ["Do it yourself", "Nutritionist", "Full cut team"];
 export const CUT_NAMES: Record<Camp["cut"], string> = { early: "Diet down early", standard: "Standard water cut", late: "Big late cut" };
 
-export function campCost(c: Pick<Camp, "sparring" | "nutrition" | "weeks" | "site">, tier: string): number {
+export function campCost(c: Pick<Camp, "sparring" | "nutrition" | "weeks" | "site" | "drill">, tier: string): number {
   const scale = tier === "major" || tier === "league" ? 1 : tier === "regional" || tier === "tryout" ? 0.55 : 0.3;
   const spar = [0, 900, 2600][c.sparring] * c.weeks * scale;
   const nut = [0, 1500, 4500][c.nutrition] * (scale < 0.5 ? 0.5 : 1);
   const away = siteCostPerWeek(c.site) * c.weeks * Math.max(0.6, scale);
-  return Math.round((spar + nut + away) / 50) * 50;
+  const drill = c.drill ? DRILL_WEEK * c.weeks * scale : 0;
+  return Math.round((spar + nut + away + drill) / 50) * 50;
+}
+
+/** Flying in partners who fight like the opponent, a week at the top level. */
+export const DRILL_WEEK = 2000;
+
+export const DRILL_NAMES: Record<Drill, string> = { strike: "striking", grapple: "wrestling and grappling" };
+
+/**
+ * What the camp's partners should copy: the opponent's grappling when his likely game
+ * plan is to take the fight down often, his striking otherwise. Measured over paired
+ * fights at the top level: against strikers and mixed fighters, copying the striking
+ * adds about 3-4 points of win chance (the grappling 1-2); against wrestlers and
+ * submission hunters, copying the grappling adds about 6 (the striking 1.5-4.5).
+ */
+export function drillFor(f: Fighter, opp: Fighter): { k: Drill; plan: string } {
+  const p = suggestPlan(opp.attrs, f.attrs, opp.reach - f.reach);
+  return { k: p.takedowns >= 3 ? "grapple" : "strike", plan: `${STYLE_NAMES[p.style]} game plan, takedowns ${TAKEDOWN_TEXT[p.takedowns].toLowerCase()}` };
 }
 
 export function startCamp(w: World, f: Fighter, b: Bout): Camp {
@@ -67,10 +85,13 @@ export function campWeek(w: World, f: Fighter, filmSessions: number, sparSession
     fc!.camp = null;
     return;
   }
-  camp.study = clamp(camp.study + filmSessions * 0.09 + sparSessions * 0.03 * camp.sparring, 0, 1);
+  // Partners who fight like him teach as much as the tape does.
+  camp.study = clamp(camp.study + filmSessions * 0.09 + sparSessions * (0.03 * camp.sparring + (camp.drill ? 0.03 : 0)), 0, 1);
   if (!camp.paid && camp.cost > 0) {
     camp.paid = true;
-    if (w.career.mode === "fighter") ledger(w, { amount: -camp.cost, what: `Fight camp: ${SPARRING_NAMES[camp.sparring].toLowerCase()}, ${NUTRITION_NAMES[camp.nutrition].toLowerCase()}`, cat: "camp", fighter: f.id });
+    const opp = w.fighters[b.a === f.id ? b.b : b.a];
+    const drill = camp.drill && opp ? `, partners for ${opp.surname}'s ${DRILL_NAMES[camp.drill]}` : "";
+    if (w.career.mode === "fighter") ledger(w, { amount: -camp.cost, what: `Fight camp: ${SPARRING_NAMES[camp.sparring].toLowerCase()}, ${NUTRITION_NAMES[camp.nutrition].toLowerCase()}${drill}`, cat: "camp", fighter: f.id });
     else ledger(w, { amount: -Math.round(camp.cost * 0.35), what: `Share of ${fullName(f)}'s camp`, cat: "camp", fighter: f.id });
   }
 }

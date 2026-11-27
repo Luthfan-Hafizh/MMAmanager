@@ -12,6 +12,9 @@ import { ovrOf } from "../src/model/attributes";
 import { ageAt, fmtDate } from "../src/core/time";
 import type { World } from "../src/model/types";
 import { isBeltFight } from "../src/world/belts";
+import { simulate } from "../src/engine/sim";
+import { Rng } from "../src/core/rng";
+import { packNow, unpack } from "../src/state/codec";
 
 const quick = process.argv.includes("--quick");
 const years = quick ? 1 : Number(process.argv.find((a: string) => /^\d+$/.test(a)) ?? 3);
@@ -36,6 +39,33 @@ if (mode === "manager") {
 console.log(`World created in ${Date.now() - t0} ms: ${Object.keys(w.fighters).length} fighters, ${Object.keys(w.events).length} events scheduled, ${(JSON.stringify(w).length / 1e6).toFixed(2)} MB`);
 
 const errors: string[] = [];
+
+// The PFL's real fighters, matched as the matchmaker matches them, end fights the way
+// real PFL seasons do (26-36% by knockout): built from the source as it stands they
+// used to manage about 20%, with the fights going to the mat (leagueBalance).
+{
+  const rng = new Rng("pfl-balance");
+  let ko = 0;
+  let sub = 0;
+  let n = 0;
+  for (const d of PROMOTIONS.pfl.divisions) {
+    const list = Object.values(w.fighters).filter((f) => f.promo === "pfl" && f.div === d && f.status === "active" && f.real).sort((a, b) => ovrOf(b.attrs) - ovrOf(a.attrs));
+    if (list.length < 6) continue;
+    for (let k = 0; k < 80; k++) {
+      const i = rng.int(0, list.length - 1);
+      let j = Math.max(0, Math.min(list.length - 1, i + rng.pick([-3, -2, -1, 1, 2, 3])));
+      if (j === i) j = i === 0 ? 1 : i - 1;
+      const out = simulate({ a: list[i], b: list[j], rounds: 3, roundSec: 300, div: d, seed: rng.int(1, 2 ** 31), tier: 4 });
+      n++;
+      if (out.method === "KO" || out.method === "TKO") ko++;
+      else if (out.method === "SUB") sub++;
+    }
+  }
+  console.log(`PFL roster fights, matched: KO/TKO ${((ko / n) * 100).toFixed(1)}%, SUB ${((sub / n) * 100).toFixed(1)}% over ${n}`);
+  if (ko / n < 0.24 || ko / n > 0.37) errors.push(`PFL roster fights end by knockout ${((ko / n) * 100).toFixed(1)}% of the time (real seasons 26-36%)`);
+  if (sub / n > 0.3) errors.push(`PFL roster fights end by submission ${((sub / n) * 100).toFixed(1)}% of the time`);
+}
+
 const t1 = Date.now();
 const startDay = w.day;
 let guard = 0;
@@ -143,6 +173,17 @@ for (const id of w.career.fighters) {
 }
 const news = w.news.slice(0, 6).map((n) => `    ${fmtDate(n.day)}: ${n.text}`);
 console.log(news.join("\n"));
+// Saves are written as tables (src/state/codec.ts): read back, it is the same world.
+{
+  const canon = (v: unknown): unknown =>
+    Array.isArray(v) ? v.map(canon) : v && typeof v === "object" ? Object.fromEntries(Object.keys(v).sort().map((k) => [k, canon((v as Record<string, unknown>)[k])])) : v;
+  const plain = JSON.stringify(w);
+  const packed = packNow(w);
+  const back = unpack(JSON.parse(packed));
+  if (JSON.stringify(canon(back)) !== JSON.stringify(canon(JSON.parse(plain)))) errors.push("a save written as tables doesn't read back as the same world");
+  console.log(`Save as tables: ${(packed.length / 1e6).toFixed(2)} MB against ${(plain.length / 1e6).toFixed(2)} MB plain (${Math.round((1 - packed.length / plain.length) * 100)}% smaller)`);
+}
+
 if (errors.length) {
   console.log(`${errors.length} problems:`);
   for (const e of errors.slice(0, 20)) console.log("  " + e);

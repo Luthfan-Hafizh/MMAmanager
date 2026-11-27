@@ -294,12 +294,43 @@ export function beltBooked(w: World, promo: PromoId, d: DivisionId, kind: Bout["
 }
 
 /** Monthly: champions out too long are stripped; the player is warned first. */
+/**
+ * A belt left empty while an interim champion holds the other (a champion stripped on
+ * the scale before a unification the interim champion then didn't win, a player who
+ * refused two defences): the interim champion is promoted, as on any strip.
+ */
+export function promoteInterim(w: World, promo: PromoId, d: DivisionId): boolean {
+  const ps = w.promos[promo];
+  if (ps.champs[d] || !ps.interim[d]) return false;
+  const ic = w.fighters[ps.interim[d]!];
+  ps.interim[d] = null;
+  const ir = ic ? [...ps.reigns].reverse().find((x) => x.fighter === ic.id && x.div === d && x.interim && x.lost === undefined) : undefined;
+  if (!ic || ic.status !== "active" || ic.promo !== promo) {
+    if (ir) {
+      ir.lost = w.day;
+      ir.ended = "vacated";
+    }
+    return false;
+  }
+  if (ir) {
+    ir.lost = w.day;
+    ir.ended = "unified";
+  }
+  ps.champs[d] = ic.id;
+  ps.reigns.push({ fighter: ic.id, promo, div: d, won: w.day, defenses: 0, how: "promoted" });
+  const p = PROMOTIONS[promo];
+  if (p.tier === "major" || p.tier === "league") ic.reigns++;
+  if (promo === "ufc" || promo === "pfl") addNews(w, { kind: "title", promo, fighters: [ic.id], big: true, text: `${fullName(ic)} is promoted to undisputed ${p.short} ${DIVISIONS[d].name.toLowerCase()} champion.` });
+  return true;
+}
+
 export function stripMonthly(w: World): void {
   for (const promo of PROMO_IDS) {
     const p = PROMOTIONS[promo];
     if (!p.rankSize) continue;
     const ps = w.promos[promo];
     for (const d of p.divisions) {
+      promoteInterim(w, promo, d);
       const id = ps.champs[d];
       if (!id) continue;
       const f = w.fighters[id];

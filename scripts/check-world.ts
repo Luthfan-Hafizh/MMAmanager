@@ -72,6 +72,7 @@ for (const id of PROMO_IDS) {
     if (!f || f.status !== "active") errors.push(`${id} ${d} champion ${c} not active`);
     else if (f.promo !== id) errors.push(`${id} ${d} champion ${f.first} ${f.surname} is in ${f.promo}`);
   }
+  for (const [d, ic] of Object.entries(ps.interim)) if (ic && !ps.champs[d as keyof typeof ps.champs]) errors.push(`${id} ${d} has an interim champion and no champion`);
   for (const [d, list] of Object.entries(ps.ranks)) {
     if (new Set(list).size !== list!.length) errors.push(`${id} ${d} ranking has duplicates`);
     if (ps.champs[d as keyof typeof ps.champs] && list!.includes(ps.champs[d as keyof typeof ps.champs]!)) errors.push(`${id} ${d} champion is also ranked`);

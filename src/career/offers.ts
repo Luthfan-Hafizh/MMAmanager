@@ -12,7 +12,7 @@ import { ovr, ovrOf } from "../model/attributes";
 import type { BidEnd, ContractOffer, Fact, FightOffer, Fighter, World } from "../model/types";
 import { addNews, fullName, nextId, rankOf, touch, isChampion, isInterim, withRng } from "../world/core";
 import { dropInterim, vacate } from "../world/titles";
-import { refreshDivision } from "../world/belts";
+import { promoteInterim, refreshDivision } from "../world/belts";
 import { callOff, cancelBout, withdraw } from "../world/matchmaking";
 import { signTo } from "../world/results";
 import { managerPerson } from "./advisor";
@@ -190,6 +190,7 @@ export function declineFight(w: World, offerId: string, auto = false, reason?: D
         r.ended = "stripped";
       }
       if (fc) fc.goals = fc.goals.filter((g) => !g.startsWith("refused:"));
+      promoteInterim(w, o.promo, f.div);
       refreshDivision(w, o.promo, f.div);
       notify(w, { kind: "info", fighter: f.id, from: PROMOTIONS[o.promo].short, subject: "Stripped of the title", body: `${fullName(f)} turned down a second title defence. The belt has been vacated.` });
       addNews(w, { kind: "title", promo: o.promo, fighters: [f.id], big: true, text: `${fullName(f)} has been stripped of the ${PROMOTIONS[o.promo].short} title after refusing to defend it.` });

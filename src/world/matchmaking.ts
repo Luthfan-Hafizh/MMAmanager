@@ -26,7 +26,7 @@ import { money } from "../core/util";
 import { debutBand, waitingForTitle, type DebutBand } from "../career/standing";
 import { bookTryouts, tryoutHold } from "../career/tryout";
 
-const DEFENCE_GAP: Record<string, number> = { major: 150, league: 125, regional: 105, local: 95, amateur: 80, tryout: 0 };
+const DEFENCE_GAP: Record<string, number> = { major: 140, league: 125, regional: 105, local: 95, amateur: 80, tryout: 0 };
 
 /** Rest a fighter wants between fights, a personal figure around the promotion's usual gap. */
 function restNeeded(f: Fighter, gap: number): number {
@@ -418,7 +418,7 @@ export function buildCard(w: World, rng: Rng, ev: MMAEvent): void {
   }
   // Champions fight only for their belts, so the shows below the UFC put two title
   // fights on most cards (Cage Warriors and KSW often three); the UFC two on a numbered card.
-  const maxTitles = ev.kind === "numbered" ? 2 : ev.kind === "fightnight" ? (rng.chance(0.12) ? 1 : 0) : p.tier === "amateur" ? 1 : rng.chance(0.2) ? 1 : rng.chance(0.75) ? 2 : 3;
+  const maxTitles = ev.kind === "numbered" ? 2 : ev.kind === "fightnight" ? (rng.chance(0.2) ? 1 : 0) : p.tier === "amateur" ? 1 : rng.chance(0.2) ? 1 : rng.chance(0.75) ? 2 : 3;
   titleFights(w, rng, ev, maxTitles);
   fillCard(w, rng, ev, size);
   orderCard(w, ev);

@@ -1202,11 +1202,11 @@ export class FightSim {
     const iA = this.initiative(A);
     const iB = this.initiative(B);
     const pace = (iA + iB) / 2;
-    const idle = clamp(0.23 - 0.3 * (pace - 0.9), 0.05, 0.45);
+    const idle = clamp(0.19 - 0.3 * (pace - 0.9), 0.04, 0.42);
     if (this.rng.chance(idle)) {
       this.quiet += 1;
       if (this.logOn && this.crng.chance(0.6)) this.idleText();
-      return this.rng.range(2.5, 6.5) / Math.max(0.6, pace);
+      return this.rng.range(2.2, 5.6) / Math.max(0.6, pace);
     }
     this.quiet = 0;
     const att = this.rng.chance(iA / (iA + iB)) ? A : B;
@@ -1217,13 +1217,13 @@ export class FightSim {
     const st = (this.ce(att, "boxing") + this.ce(att, "kicks")) / 2;
     const tdSkill = this.ce(att, "takedowns");
     const wStrike = 1.0 * (0.7 + st);
-    let wTd = 0.24 * att.d.tdRate * (0.3 + tdSkill) * (0.55 + Math.max(0, this.e(att, "takedowns") - this.e(def, "tdd")) * 1.5);
+    let wTd = 0.18 * att.d.tdRate * (0.3 + tdSkill) * (0.55 + Math.max(0, this.e(att, "takedowns") - this.e(def, "tdd")) * 1.5);
     if (this.fence === def.i) wTd *= 1.35;
     if (def.stun > 0) wTd *= 0.6;
     if (this.range === 0) wTd *= 0.8;
     wTd *= (1 + 0.3 * att.tr.shot) * (1 - 0.35 * att.tr.sprawl);
     if (this.fence === def.i) wTd *= 1 + 0.4 * att.tr.fence;
-    let wClinch = att.d.clinchRate * 0.19 * (0.4 + this.ce(att, "clinchControl"));
+    let wClinch = att.d.clinchRate * 0.3 * (0.4 + this.ce(att, "clinchControl"));
     wClinch *= Math.max(0.3, 1 + 0.8 * att.tr.clinch - 0.3 * att.tr.flash + (att.d.jab ? -0.4 : 0));
     if (this.fence === def.i) wClinch *= 1.6;
     if (this.range === 2) wClinch *= 1.5;
@@ -1306,7 +1306,7 @@ export class FightSim {
 
   private combo(att: Side, def: Side): number {
     let n = 1;
-    const cont = clamp(0.33 + 0.22 * this.ce(att, "workRate") + 0.07 * att.d.tempo - 0.06 * att.d.risk + 0.07 * att.tr.volume + (def.stun > 0 ? 0.25 : 0), 0.12, 0.76);
+    const cont = clamp(0.39 + 0.22 * this.ce(att, "workRate") + 0.07 * att.d.tempo - 0.06 * att.d.risk + 0.07 * att.tr.volume + (def.stun > 0 ? 0.25 : 0), 0.12, 0.76);
     while (n < 5 && this.rng.chance(cont)) n++;
     let prevLanded = false;
     let dt = 1.5 + n * 0.6;
@@ -1348,7 +1348,7 @@ export class FightSim {
       this.tellCombo(att, def, lead, back);
       for (const l of held) this.log.push(l);
     }
-    return this.over ? dt : dt + this.rng.range(0.5, 3);
+    return this.over ? dt : dt + this.rng.range(0.4, 2.3);
   }
 
   /** A kick the defender can catch: the body kick, the switch kick, the teep, less often the head kick. */
@@ -1594,7 +1594,7 @@ export class FightSim {
       const fresh = this.round === 1 ? 1.22 : this.round === 2 ? 1.0 : 0.92;
       const impact = fresh * ko * force * this.punch * (1 + 0.7 * Math.pow(1 - def.head / 100, 1.3)) * (def.stun > 0 ? 1.45 : 1) * (counter ? 1.2 : 1);
       const x = impact / def.chinRes;
-      const pKD = clamp(0.0086 * Math.pow(x, 3.4) * (this.sloppy * this.sloppy), 0, 0.6);
+      const pKD = clamp(0.0115 * Math.pow(x, 3.4) * (this.sloppy * this.sloppy), 0, 0.6);
       if (this.rng.chance(pKD)) {
         this.knockdown(att, def, name, x, where);
         return;
@@ -1647,14 +1647,14 @@ export class FightSim {
     this.rs(att).kd++;
     att.imp[this.round - 1] += 6.5;
     // Out cold?
-    const pOut = clamp(0.14 + 0.2 * (x - 1) - def.n.chin * 0.08 + (def.kd - 1) * 0.12, 0.06, 0.7);
+    const pOut = clamp(0.08 + 0.16 * (x - 1) - def.n.chin * 0.08 + (def.kd - 1) * 0.12, 0.05, 0.65);
     if (this.rng.chance(pOut)) {
       const what = this.koName(name);
       this.finish(att, "KO", what);
       this.say(this.pickText([`${def.name} is out cold! What ${/^[aeiou]/i.test(name) ? "an" : "a"} ${name}!`, `KNOCKOUT! The ${name} put ${def.name} down and out!`, `Lights out! ${att.name} lands the ${name} and ${def.name} is finished.`]), att.i, true, "finish");
       return;
     }
-    def.stun = 6 + this.rng.next() * 7;
+    def.stun = 5 + this.rng.next() * 6;
     def.head = clamp(def.head - 6, 0, 100);
     this.say(this.pickText([`${def.name} goes down from the ${name}!`, `KNOCKDOWN! ${att.name}'s ${name} drops ${def.name}!`, `Down goes ${def.name}! The ${name} landed clean.`]), att.i, true, "kd");
     // Follow him down?
@@ -1726,12 +1726,12 @@ export class FightSim {
     if (fromClinch) {
       off = 0.45 * this.e(att, "clinchControl") + 0.3 * this.e(att, "takedowns") + 0.25 * this.e(att, "strength");
       dfn = 0.5 * this.e(def, "tdd") + 0.3 * this.e(def, "clinchControl") + 0.2 * this.e(def, "strength");
-      base = 0.37;
+      base = 0.34;
       tech = Math.max(techOf(att.f, "bodyLock"), techOf(att.f, "trip"), techOf(att.f, "judoThrow"), techOf(att.f, "cageWrestling"));
     } else {
       off = 0.6 * this.e(att, "takedowns") + 0.22 * this.e(att, "speed") + 0.18 * this.e(att, "strength");
       dfn = 0.6 * this.e(def, "tdd") + 0.2 * this.e(def, "strength") + 0.2 * this.e(def, "footwork");
-      base = 0.3;
+      base = 0.27;
       tech = Math.max(techOf(att.f, "doubleLeg"), techOf(att.f, "singleLeg"));
     }
     dfn += def.d.defTdd * 0.05 + techOf(def.f, "sprawl") * 0.015 + def.tr.sprawl * 0.04;
@@ -1824,7 +1824,7 @@ export class FightSim {
     // Wants out?
     const wantsOut = actor.d.clinchRate < 0.45 || (actor === o && actor.d.clinchRate < 0.8);
     const wStrike = (0.85 + this.ce(actor, "clinchStrikes") * 1.0 + techOf(actor.f, "plumKnees") * 0.15) * (1 + 0.6 * actor.tr.clinch);
-    const wTd = actor.d.tdRate * (0.25 + this.ce(actor, "clinchControl")) * (actor === c ? 1.25 : 0.4) * (this.fence === foe.i ? 1.3 : 1)
+    const wTd = 0.85 * actor.d.tdRate * (0.25 + this.ce(actor, "clinchControl")) * (actor === c ? 1.25 : 0.4) * (this.fence === foe.i ? 1.3 : 1)
       * (1 + (this.fence === foe.i ? 0.6 : 0.25) * actor.tr.fence + 0.4 * actor.tr.throw) * (1 - 0.35 * actor.tr.sprawl);
     const wBreak = (wantsOut ? 1.4 : 0.5) * (actor === o ? 1.5 : 0.8);
     const wHold = actor === c ? 0.45 * (0.5 + actor.d.cage) : 0.15;

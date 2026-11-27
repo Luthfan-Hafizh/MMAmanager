@@ -8,7 +8,7 @@ import { DIVISIONS } from "../data/divisions";
 import { PROMOTIONS } from "../data/promotions";
 import { ovr, ovrOf } from "../model/attributes";
 import type { Bout, BoutResult, Fighter, MMAEvent, Reign, World } from "../model/types";
-import { simulate, methodPhrase, type Condition, type FightInput, type FightOutcome } from "../engine/sim";
+import { simulate, methodPhrase, type Condition, type FightInput, type FightOutcome, isFinish } from "../engine/sim";
 import { addNews, fullName, isControlled, rankOf, ringRust, touch } from "./core";
 import { fightStyle } from "./fightstyle";
 import { packRounds } from "./report";
@@ -272,7 +272,7 @@ export function applyResult(w: World, rng: Rng, b: Bout, o: FightOutcome): void 
     } else if (m === "SUB") {
       rw.subW++;
       rl.subL++;
-    } else {
+    } else if (m === "DEC") {
       rw.decW++;
       rl.decL++;
     }
@@ -315,7 +315,7 @@ export function applyResult(w: World, rng: Rng, b: Bout, o: FightOutcome): void 
   const tierPop = { amateur: 0.4, local: 0.7, regional: 1, tryout: 1.4, league: 1.5, major: 2 }[PROMOTIONS[b.promo].tier];
   const title = b.kind === "title" || b.kind === "vacant" || b.kind === "interim";
   if (winner && loser) {
-    const finish = m !== "DEC";
+    const finish = isFinish(m);
     // Winning on short notice makes a name; losing on it costs little.
     const snWin = b.shortNotice && b.sub === winner.id ? 1.5 : 1;
     const snLoss = b.shortNotice && b.sub === loser.id ? 0.4 : 1;
@@ -569,7 +569,7 @@ export function finishEvent(w: World, rng: Rng, ev: MMAEvent): void {
     const fotn = done.slice().sort((x, y) => exc(y) - exc(x))[0];
     fotn.res!.bonus = ["fotn"];
     const finishes = done
-      .filter((b) => b.res!.winner && b.res!.method !== "DEC" && b !== fotn)
+      .filter((b) => b.res!.winner && isFinish(b.res!.method) && b !== fotn)
       .map((b) => ({ b, s: (b.res!.method === "KO" ? 3 : b.res!.method === "SUB" ? 2.6 : 2) + (4 - b.res!.round) * 0.6 + b.res!.perf[b.res!.winner === "a" ? 0 : 1] * 0.3 + rng.next() }))
       .sort((x, y) => y.s - x.s)
       .slice(0, 2);
@@ -624,7 +624,7 @@ function dwcsContracts(w: World, rng: Rng, ev: MMAEvent): void {
     const f = w.fighters[b.res.winner === "a" ? b.a : b.b];
     const perf = b.res.perf[b.res.winner === "a" ? 0 : 1];
     // Most winners who impress get the call, as in recent seasons: about 30 contracts from 50 fights.
-    const p = b.res.method !== "DEC" ? 0.9 : perf >= 7.2 ? 0.7 : 0.35;
+    const p = isFinish(b.res.method) ? 0.9 : perf >= 7.2 ? 0.7 : 0.35;
     if (!rng.chance(p)) {
       if (f.ctrl) {
         notify(w, {

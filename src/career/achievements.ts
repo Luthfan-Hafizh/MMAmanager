@@ -1,5 +1,6 @@
 // Career milestones for the player's fighters.
 
+import { isFinish } from "../engine/sim";
 import { DIVISIONS } from "../data/divisions";
 import { PROMOTIONS } from "../data/promotions";
 import type { Bout, Fighter, World } from "../model/types";
@@ -38,7 +39,7 @@ export function checkAchievements(w: World, f: Fighter, b: Bout): void {
   const won = b.res.winner === side;
   const pro = PROMOTIONS[b.promo].tier !== "amateur";
   if (pro && won) grant(w, f, "first-win");
-  if (pro && won && b.res.method !== "DEC") grant(w, f, "first-finish");
+  if (pro && won && isFinish(b.res.method)) grant(w, f, "first-finish");
   if (pro && won && (b.res.method === "KO" || b.res.method === "TKO")) grant(w, f, "first-ko");
   if (pro && won && b.res.method === "SUB") grant(w, f, "first-sub");
   if (pro && f.streak >= 5) grant(w, f, "five-streak");

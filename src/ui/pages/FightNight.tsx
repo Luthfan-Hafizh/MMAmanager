@@ -89,7 +89,7 @@ export function FightNight() {
       keepLive(w, b);
     } else out = quickSim(w, b);
     commit(b, out);
-    toast(`${out.winner ? fullName(w.fighters[out.winner === "a" ? b.a : b.b]) + " wins" : "Draw"}: ${methodText(out.method, out.detail)}`, "info");
+    toast(`${out.winner ? fullName(w.fighters[out.winner === "a" ? b.a : b.b]) + " wins" : out.method === "NC" ? "No contest" : "Draw"}: ${methodText(out.method, out.detail)}`, "info");
   };
   const done = ev.bouts.map((id) => w.bouts[id]).filter((b) => b.status === "done");
   return (
@@ -136,7 +136,7 @@ export function FightNight() {
           {done.slice().reverse().map((b) => (
             <div className="list-row" key={b.id}>
               <div style={{ flex: 1, minWidth: 0 }}>
-                <FighterLink w={w} id={b.res?.winner === "b" ? b.b : b.a} /> <span className="dim small">def.</span> <FighterLink w={w} id={b.res?.winner === "b" ? b.a : b.b} />
+                <FighterLink w={w} id={b.res?.winner === "b" ? b.b : b.a} /> <span className="dim small">{b.res?.winner ? "def." : b.res?.method === "NC" ? "no contest with" : "drew with"}</span> <FighterLink w={w} id={b.res?.winner === "b" ? b.a : b.b} />
                 <div className="tiny dim">{b.res ? methodText(b.res.method, b.res.detail) : ""}{b.res && b.res.method !== "DEC" ? `, R${b.res.round} ${clock(b.res.time)}` : ""} · {cardSection(ev, b.order)}</div>
               </div>
             </div>
@@ -164,7 +164,7 @@ function InTheBooks({ w, ev }: { w: World; ev: MMAEvent }) {
             const stop = r.method !== "DEC" && r.method !== "DRAW";
             return (
               <Panel key={b.id} title={stakeLabel(b) && stakeLabel(b) !== "Title eliminator" ? stakeLabel(b)! : "Your fight"} className="gold">
-                <div className="big" style={{ fontSize: 30 }}>{win ? `${fullName(win)} wins` : "Draw"}</div>
+                <div className="big" style={{ fontSize: 30 }}>{win ? `${fullName(win)} wins` : r.method === "NC" ? "No contest" : "Draw"}</div>
                 <p className="muted" style={{ marginTop: 6 }}>
                   {methodText(r.method, r.detail)}
                   {stop ? `, round ${r.round} at ${clock(r.time)}` : ""}
@@ -632,7 +632,7 @@ function LiveFight({ w, b, onEnd, onDone }: { w: World; b: Bout; onEnd: (o: Figh
       {out && (
         <Panel title="Result" className="gold">
           <div className="big" style={{ fontSize: 30 }}>
-            {out.winner ? `${fullName(out.winner === "a" ? w.fighters[b.a] : w.fighters[b.b])} wins` : "Draw"}
+            {out.winner ? `${fullName(out.winner === "a" ? w.fighters[b.a] : w.fighters[b.b])} wins` : out.method === "NC" ? "No contest" : "Draw"}
           </div>
           <p className="muted" style={{ marginTop: 6 }}>
             {methodText(out.method, out.detail)}
@@ -658,7 +658,7 @@ function LiveFight({ w, b, onEnd, onDone }: { w: World; b: Bout; onEnd: (o: Figh
 }
 
 type FeedFilter = "all" | "key" | "corner";
-const KEY_KINDS = new Set(["kd", "rock", "finish", "read", "sub", "td", "pass", "sweep", "cut", "state", "call"]);
+const KEY_KINDS = new Set(["kd", "rock", "finish", "read", "sub", "td", "pass", "sweep", "cut", "state", "call", "foul"]);
 
 /** The play by play, in order with the newest line at the bottom, timed on the scorebug's clock (time left in the round). */
 function PlayByPlay({ log, live, roundSec }: { log: FightLogLine[]; live: boolean; roundSec: number }) {
@@ -780,6 +780,7 @@ function FighterMeters({ sim, i }: { sim: FightSim; i: 0 | 1 }) {
         <span>Body {Math.round(s.body)}</span>
         <span>Legs {Math.round(s.legs)}</span>
         {kd > 0 && <span>KD {kd}</span>}
+        {s.ded.reduce((a, b) => a + b, 0) > 0 && <span className="pts-off" title="Points taken away by the referee">-{s.ded.reduce((a, b) => a + b, 0)} pt</span>}
         {s.cut > 0 && <span>Cut {s.cut}</span>}
       </div>
     </div>

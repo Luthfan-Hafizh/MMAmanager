@@ -40,9 +40,14 @@ interface Acc {
   favWins: number;
   favN: number;
   t0: number;
+  nc: number;
+  dq: number;
+  tech: number;
+  fouled: number;
+  pts: number;
 }
 
-const blank = (): Acc => ({ n: 0, ko: 0, sub: 0, dec: 0, draw: 0, r1: 0, fin: 0, split: 0, secs: 0, sigL: 0, sigA: 0, tdL: 0, tdA: 0, subA: 0, kd: 0, head: 0, body: 0, leg: 0, dist: 0, clinch: 0, ground: 0, ctrl: 0, favWins: 0, favN: 0, t0: 0 });
+const blank = (): Acc => ({ n: 0, ko: 0, sub: 0, dec: 0, draw: 0, r1: 0, fin: 0, split: 0, secs: 0, sigL: 0, sigA: 0, tdL: 0, tdA: 0, subA: 0, kd: 0, head: 0, body: 0, leg: 0, dist: 0, clinch: 0, ground: 0, ctrl: 0, favWins: 0, favN: 0, t0: 0, nc: 0, dq: 0, tech: 0, fouled: 0, pts: 0 });
 
 const rng = new Rng(20261005);
 const all = blank();
@@ -82,8 +87,13 @@ for (const div of DIVISION_IDS) {
     if (out.method === "KO" || out.method === "TKO") acc.ko++;
     else if (out.method === "SUB") acc.sub++;
     else if (out.method === "DEC") acc.dec++;
+    else if (out.method === "NC") acc.nc++;
+    else if (out.method === "DQ") acc.dq++;
     else acc.draw++;
-    if (out.method !== "DEC" && out.method !== "DRAW") {
+    if (out.detail.startsWith("Technical")) acc.tech++;
+    if (out.sides[0].fouls + out.sides[1].fouls > 0) acc.fouled++;
+    if ([...out.sides[0].ded, ...out.sides[1].ded].some((x) => x > 0)) acc.pts++;
+    if (out.method === "KO" || out.method === "TKO" || out.method === "SUB") {
       acc.fin++;
       if (out.round === 1) acc.r1++;
     }
@@ -144,6 +154,8 @@ console.log(
   `Targets (UFC): KO ~30%, SUB ~19%, DEC ~50%, draws <1%, R1 ~45-50% of finishes, split+majority ~15-20% of decisions,`,
 );
 console.log(`  SLpM ~3.8-4.2, accuracy ~46-48%, TD/15 ~1.5, TD accuracy ~38-42%, Sub/15 ~0.5, KD ~0.5/fight, H/B/L 64/21/15, D/C/G 76/11/13`);
+const fp = (v: number) => `${((v / all.n) * 100).toFixed(1)}%`;
+console.log(`Fouls: ${fp(all.fouled)} of fights see one, a point taken in ${fp(all.pts)}; no contests ${fp(all.nc)}, disqualifications ${fp(all.dq)}, technical decisions ${fp(all.tech)} (UFC: roughly 10-15%, 2%, 0.5%, 0.2%, 0.2%)`);
 console.log(`Time ${((Date.now() - t0) / all.n).toFixed(2)} ms a fight`);
 if (quick && failures > 0) {
   console.log(`${failures} division(s) more than 7 points off the UFC's finish rates`);

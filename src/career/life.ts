@@ -7,6 +7,7 @@
 // earns something real: popularity, morale, money, sharpness, heat, or the
 // next fight. About one every five or six weeks, none in fight week.
 
+import { isFinish } from "../engine/sim";
 import type { Rng } from "../core/rng";
 import { clamp, money } from "../core/util";
 import { fmtDate } from "../core/time";
@@ -345,12 +346,12 @@ const LIFE: LifeDef[] = [
     pub: true,
     weight: (w, c) => {
       const b = c.last;
-      const recent = b && w.day - b.day <= 14 && wonLast(c) && b.res!.method !== "DEC";
+      const recent = b && w.day - b.day <= 14 && wonLast(c) && isFinish(b.res!.method);
       return recent ? 3 : c.f.pop >= 30 ? 0.4 : 0;
     },
     make: (w, rng, c) => {
       const b = c.last;
-      const how = b?.res && wonLast(c) && b.res.method !== "DEC" ? (b.res.method === "SUB" ? "submission" : "knockout") : "training clip";
+      const how = b?.res && wonLast(c) && isFinish(b.res.method) ? (b.res.method === "SUB" ? "submission" : "knockout") : "training clip";
       const views = compact(Math.round(followers(c.f.pop) * (6 + rng.next() * 20)));
       return {
         subject: `Your ${how} is everywhere`,

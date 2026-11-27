@@ -175,7 +175,7 @@ export function rankThen(b: Bout, side: "a" | "b"): string | null {
   return `#${r}`;
 }
 
-function Corner({ w, b, id, side, result, bonus }: { w: World; b: Bout; id: string; side: "a" | "b"; result: "W" | "L" | "D" | null; bonus?: boolean }) {
+function Corner({ w, b, id, side, result, bonus }: { w: World; b: Bout; id: string; side: "a" | "b"; result: "W" | "L" | "D" | "NC" | null; bonus?: boolean }) {
   const f = w.fighters[id];
   if (!f) return <div />;
   // A finished fight shows the ranks going into it, an upcoming one the ranks now.
@@ -198,8 +198,9 @@ function Corner({ w, b, id, side, result, bonus }: { w: World; b: Bout; id: stri
 function BoutRow({ w, b }: { w: World; b: Bout }) {
   const [open, setOpen] = useState(false);
   const done = b.status === "done" && b.res;
-  const ra = done ? (b.res!.winner === "a" ? "W" : b.res!.winner === "b" ? "L" : "D") : null;
-  const rb = done ? (b.res!.winner === "b" ? "W" : b.res!.winner === "a" ? "L" : "D") : null;
+  const nd = b.res?.method === "NC" ? "NC" : "D";
+  const ra = done ? (b.res!.winner === "a" ? "W" : b.res!.winner === "b" ? "L" : nd) : null;
+  const rb = done ? (b.res!.winner === "b" ? "W" : b.res!.winner === "a" ? "L" : nd) : null;
   const mine = w.fighters[b.a]?.ctrl || w.fighters[b.b]?.ctrl;
   const title = isBeltFight(b);
   const bonus = b.res?.bonus ?? [];

@@ -51,7 +51,7 @@ export function afterFightCareer(w: World, rng: Rng, b: Bout, o: FightOutcome, c
     const r = rankOf(w, f);
     if (f.contract && f.contract.left === 0 && PROMOTIONS[b.promo].tier !== "amateur") lines.push("That was the last fight on the contract. Talks on the next deal start now.");
     const facts: Fact[] = [
-      { k: "Result", v: won ? "Win" : lost ? "Loss" : "Draw", tone: won ? "good" : lost ? "bad" : undefined },
+      { k: "Result", v: won ? "Win" : lost ? "Loss" : b.res?.method === "NC" ? "No contest" : "Draw", tone: won ? "good" : lost ? "bad" : undefined },
       { k: "How", v: `${how.charAt(0).toUpperCase()}${how.slice(1)}, ${when}` },
       { k: "Record now", v: `${f.rec.w}-${f.rec.l}${f.rec.d ? `-${f.rec.d}` : ""}` },
       { k: "Ranking", v: r === 0 ? "Champion" : r ? `#${r}` : "Unranked" },

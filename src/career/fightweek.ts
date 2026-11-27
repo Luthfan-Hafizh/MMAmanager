@@ -2,6 +2,7 @@
 // the money that follows, and how both fighters arrive on the night. After a
 // win, the microphone: call someone out, or ask for the title shot.
 
+import { isFinish } from "../engine/sim";
 import type { Rng } from "../core/rng";
 import { clamp, money } from "../core/util";
 import { DIVISIONS } from "../data/divisions";
@@ -171,7 +172,7 @@ export function offerMicrophone(w: World, f: Fighter, b: Bout): void {
   const actions: { id: string; label: string; primary?: boolean }[] = targets.map((t) => ({ id: `callout:${t.id}`, label: `Call out ${t.surname}` }));
   if (canAskTitle) actions.unshift({ id: "titleshot", label: "Ask for the title shot", primary: true });
   const holder = w.promos.ufc?.bmf?.holder;
-  const finish = b.res && b.res.method !== "DEC";
+  const finish = b.res && isFinish(b.res.method);
   if (bmfEligible(w, f) && holder !== f.id && (finish || f.pop >= 55)) actions.push({ id: "bmfcall", label: holder ? `Call for the BMF title (${w.fighters[holder]?.surname ?? "the holder"})` : "Call for the vacant BMF title" });
   actions.push({ id: "callout:none", label: "Thank the fans" });
   notify(w, {

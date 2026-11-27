@@ -3,6 +3,7 @@
 // the pound-for-pound list. The Hall of Fame inducts a class every July, at
 // International Fight Week.
 
+import { isFinish } from "../engine/sim";
 import { ymd, dayOf, nextDow } from "../core/time";
 import { clamp } from "../core/util";
 import { PROMOTIONS } from "../data/promotions";
@@ -40,7 +41,7 @@ export function legacyAfterFight(w: World, b: Bout, winner: Fighter | null, lose
   const tier = PROMOTIONS[b.promo].tier;
   const tw = TIER_W[tier];
   let pts = 0.6 * tw;
-  if (b.res && b.res.method !== "DEC") pts += 0.4 * tw;
+  if (b.res && isFinish(b.res.method)) pts += 0.4 * tw;
   if ((tier === "major" || tier === "league") && rankLoser !== null) pts += rankLoser === 0 ? 5 : rankLoser <= 5 ? 3 : 2;
   if (loser.reigns > 0 && (tier === "major" || tier === "league")) pts += 3;
   if (titleWon) pts += TITLE_PTS[tier][0];
@@ -103,7 +104,7 @@ export function records(w: World): RecordRow[] {
     if (b.promo !== "ufc" || b.status !== "done" || !b.res?.winner) continue;
     const id = b.res.winner === "a" ? b.a : b.b;
     ufcWins.set(id, (ufcWins.get(id) ?? 0) + 1);
-    if (b.res.method !== "DEC") ufcFinishes.set(id, (ufcFinishes.get(id) ?? 0) + 1);
+    if (isFinish(b.res.method)) ufcFinishes.set(id, (ufcFinishes.get(id) ?? 0) + 1);
   }
   const top = (m: Map<string, number>, label: string, unit: string): RecordRow => ({
     label,

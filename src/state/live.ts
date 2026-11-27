@@ -10,7 +10,8 @@ import type { Bout, World } from "../model/types";
 import { boutRng } from "../sim/advance";
 import { fightInputFor } from "../world/results";
 
-const VERSION = 1;
+// Bumped when the engine changes: an old tape would play back as a different fight.
+const VERSION = 2;
 
 type Setup = Omit<FightInput, "a" | "b">;
 

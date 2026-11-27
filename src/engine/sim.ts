@@ -109,6 +109,11 @@ export interface Side {
   night: number;
   /** Average attribute level, so choices follow a fighter's own strengths at any level. */
   lvl: number;
+  /** Fouls committed this fight, and points taken away by round. */
+  fouls: number;
+  ded: number[];
+  /** Seconds left seeing badly after an eye poke. */
+  poked: number;
 }
 
 /** Where a fighter guards on average: measured over thousands of fights, so a normal fight is neutral. */
@@ -223,6 +228,18 @@ export interface LiveAdvice {
   until: number;
   /** What the fighter does with it if nobody chooses. */
   instinct: number;
+}
+
+/** A foul: what it's called, the line, the damage, and how likely a point, a stoppage and a ruling of intent are. */
+interface Foul {
+  what: string;
+  line: string;
+  hurt: number;
+  flagrant: number;
+  out: number;
+  intent: number;
+  poke?: boolean;
+  low?: boolean;
 }
 
 /** A call and what was done with it. */
@@ -387,6 +404,9 @@ export class FightSim {
       rs: [], imp: [], gimp: [], agg: [], ctl: [], dmgDealt: [], unanswered: 0, lastLanded: 0, wobbled: 0,
       night: 1 + this.rng.normal(0, 0.08 * (1.45 - f.hid.consistency / 20)),
       lvl: Math.max(0.15, ATTRS.reduce((a, k) => a + n[k], 0) / ATTRS.length),
+      fouls: 0,
+      ded: [],
+      poked: 0,
     };
   }
 
@@ -398,6 +418,7 @@ export class FightSim {
       s.agg.push(0);
       s.ctl.push(0);
       s.dmgDealt.push(0);
+      s.ded.push(0);
     }
   }
 
@@ -437,6 +458,8 @@ export class FightSim {
     if (s.cond.prep) v *= 1 + s.cond.prep * 0.025;
     if (s.cond.home && (k === "composure" || k === "heart")) v *= 1.04;
     if (k === "footwork" || k === "tdd" || k === "speed") v *= 0.72 + 0.28 * (s.legs / 100);
+    // A poked eye: the shots coming in are harder to see.
+    if (s.poked > 0 && (k === "strikeDef" || k === "counters")) v *= 0.85;
     if (k === "cardio") v *= 1 - s.cond.cut * 0.25;
     if (k === "strikeDef" || k === "subDef" || k === "tdd") v *= this.defMul;
     if (k === "subDef") v *= this.subDefMul;
@@ -487,6 +510,7 @@ export class FightSim {
       if (s.stun > 0) {
         s.stun = Math.max(0, s.stun - dt * (0.7 + 0.6 * s.n.recovery));
       }
+      if (s.poked > 0) s.poked = Math.max(0, s.poked - dt);
     }
   }
 
@@ -515,6 +539,8 @@ export class FightSim {
     if (dt > left) dt = left;
     this.t += dt;
     this.recover(dt);
+    this.maybeFoul();
+    if (this.over) return dt;
     if (this.logOn) this.cues();
     this.aiReactAll();
     if (this.pos === "ground") this.s[this.top].ctl[this.round - 1] += dt;
@@ -2221,10 +2247,16 @@ export class FightSim {
       const loser = this.rng.chance(p108) ? (we > 4 * le + 16 && kd >= 2 && this.rng.chance(0.3) ? 7 : 8) : 9;
       row.push(w === A ? [10, loser] : [loser, 10]);
     }
+    // A point taken away comes off every card.
+    for (const j of row) {
+      j[0] -= A.ded[r] ?? 0;
+      j[1] -= B.ded[r] ?? 0;
+    }
     this.cards[r] = row;
   }
 
-  private decide() {
+  /** The scorecards: after the last round, or a technical decision when an accidental foul ends the fight late on. */
+  private decide(technical = false) {
     const totals: [number, number][] = [0, 1, 2].map((j) => {
       let a = 0;
       let b = 0;
@@ -2238,18 +2270,118 @@ export class FightSim {
     const bWins = totals.filter(([a, b]) => b > a).length;
     const draws = 3 - aWins - bWins;
     this.over = true;
-    this.endRound = this.rounds;
-    this.endTime = this.roundSec;
+    this.endRound = technical ? this.round : this.rounds;
+    this.endTime = technical ? this.t : this.roundSec;
+    const tech = technical ? "Technical " : "";
     if (aWins >= 2 || bWins >= 2) {
       this.winner = aWins >= 2 ? 0 : 1;
       this.method = "DEC";
       const verdict = aWins === 3 || bWins === 3 ? "Unanimous" : draws === 1 ? "Majority" : "Split";
-      this.detail = verdict;
+      this.detail = technical ? `${tech}${verdict.toLowerCase()}` : verdict;
     } else {
       this.winner = null;
       this.method = "DRAW";
-      this.detail = draws === 3 ? "Unanimous draw" : draws === 2 ? "Majority draw" : "Split draw";
+      const d = draws === 3 ? "Unanimous draw" : draws === 2 ? "Majority draw" : "Split draw";
+      this.detail = technical ? `${tech}${d.toLowerCase()}` : d;
     }
+  }
+
+  /** How likely a fighter is to foul: the aggressive, the undisciplined and the tired. */
+  private foulRisk(s: Side): number {
+    return clamp(0.55 + 0.7 * s.n.aggression - 0.55 * s.n.discipline + 0.35 * (1 - s.sta / 100), 0.15, 1.6);
+  }
+
+  /**
+   * A foul in this exchange, about one fight in eight: an eye poke or a low blow on the
+   * feet, a knee to the groin or a grab of the fence in the clinch, shots to the back of
+   * the head or an illegal knee on the mat. The referee warns first and takes a point for
+   * a repeat or a flagrant foul (three points and you're out). A fighter who can't go on
+   * after an accidental foul ends the fight: a no contest before the halfway mark, the
+   * scorecards after it; a deliberate foul is a disqualification.
+   */
+  private maybeFoul() {
+    if (this.over || this.between) return;
+    const rate = this.pos === "ground" ? 0.001 : this.pos === "clinch" ? 0.0011 : 0.0014;
+    if (!this.rng.chance(rate)) return;
+    const [A, B] = this.s;
+    const ra = this.foulRisk(A);
+    const rb = this.foulRisk(B);
+    const att = this.pos === "ground" ? this.s[this.top] : this.rng.chance(ra / (ra + rb)) ? A : B;
+    const def = this.other(att);
+    const kinds: [Foul, number][] =
+      this.pos === "dist"
+        ? [
+            [{ what: "Eye poke", line: `${att.name}'s fingers go into ${def.name}'s eye, and the referee calls time.`, hurt: 2, flagrant: 0.1, out: 0.035, intent: 0.05, poke: true }, 0.6],
+            [{ what: "Low blow", line: `A kick from ${att.name} lands low. ${def.name} goes down holding the groin, and the referee calls time.`, hurt: 0, flagrant: 0.1, out: 0.02, intent: 0.03, low: true }, 0.4],
+          ]
+        : this.pos === "clinch"
+          ? [
+              [{ what: "Knee to the groin", line: `A knee in the clinch from ${att.name} lands low, and time is called.`, hurt: 0, flagrant: 0.1, out: 0.02, intent: 0.03, low: true }, 0.6],
+              [{ what: "Grabbing the fence", line: `${att.name} grabs the fence to stay up. The referee steps in.`, hurt: 0, flagrant: 0.15, out: 0, intent: 0 }, 0.4],
+            ]
+          : [
+              [{ what: "Strikes to the back of the head", line: `${att.name} is landing on the back of ${def.name}'s head. The referee stops the action.`, hurt: 3, flagrant: 0.1, out: 0.01, intent: 0.2 }, 0.55],
+              [{ what: "Illegal knee", line: `${att.name} drives a knee into the head of a grounded ${def.name}! That's illegal.`, hurt: 14, flagrant: 0.55, out: 0.22, intent: 0.6 }, 0.45],
+            ];
+    let x = this.rng.next() * kinds.reduce((a, [, wt]) => a + wt, 0);
+    let foul = kinds[0][0];
+    for (const [k, wt] of kinds) {
+      x -= wt;
+      if (x <= 0) {
+        foul = k;
+        break;
+      }
+    }
+    att.fouls++;
+    this.say(foul.line, att.i, true, "foul");
+    if (foul.hurt) def.head = clamp(def.head - foul.hurt, 0, 100);
+    if (foul.hurt >= 10) def.stun = Math.max(def.stun, 4 + this.rng.next() * 4);
+    if (foul.poke) def.poked = 25 + this.rng.next() * 40;
+    if (foul.out && this.rng.chance(foul.out)) {
+      this.foulStop(att, def, foul);
+      return;
+    }
+    if (foul.poke || foul.low) this.say(`${def.name} takes the time to recover${foul.low ? ", up to the five minutes allowed" : ""}, and they go again.`, def.i, false, "foul");
+    // The referee: a warning first, a point for a repeat or a flagrant foul, out after three points.
+    const point = this.rng.chance(foul.flagrant) || (att.fouls >= 2 && this.rng.chance(0.8)) || att.fouls >= 3;
+    if (!point) {
+      this.say(`The referee warns ${att.name}${att.fouls >= 2 ? ": the next one costs a point" : ""}.`, def.i, false, "foul");
+      return;
+    }
+    att.ded[this.round - 1] = (att.ded[this.round - 1] ?? 0) + 1;
+    const total = att.ded.reduce((a, b) => a + b, 0);
+    this.say(`The referee takes a point from ${att.name}${total > 1 ? `, the ${total === 2 ? "second" : "third"} of the fight` : ""}.`, def.i, true, "foul");
+    if (total >= 3) {
+      this.finish(def, "DQ", "Repeated fouls");
+      this.say(`${att.name} is disqualified for repeated fouls. ${def.name} wins.`, def.i, true, "finish");
+    }
+  }
+
+  /** A fighter can't go on after a foul: a disqualification if it was deliberate; if not, a no contest early, the scorecards late. */
+  private foulStop(att: Side, def: Side, foul: Foul) {
+    if (this.rng.chance(foul.intent)) {
+      this.finish(def, "DQ", foul.what);
+      this.say(`${def.name} can't continue, and the referee rules it deliberate: ${att.name} is disqualified.`, def.i, true, "finish");
+      return;
+    }
+    // Before two rounds of three (three of five) are done it's a no contest; after that, the cards.
+    const half = this.rounds >= 5 ? 3 : 2;
+    const what = foul.what.toLowerCase();
+    if (this.round - 1 < half) {
+      this.recordCondition();
+      this.over = true;
+      this.winner = null;
+      this.method = "NC";
+      this.detail = `Accidental ${what}`;
+      this.endRound = this.round;
+      this.endTime = this.t;
+      this.say(`${def.name} can't continue after the accidental ${what}. The fight is a no contest.`, undefined, true, "finish");
+      return;
+    }
+    this.recordCondition();
+    this.scoreRound(this.round - 1);
+    this.decide(true);
+    this.say(`${def.name} can't continue after the accidental ${what}. It goes to the scorecards: a technical decision.`, undefined, true, "finish");
   }
 
   outcome(): FightOutcome {
@@ -2293,7 +2425,7 @@ export class FightSim {
       (tA.sigL + tB.sigL) / (this.endRound * 5 + 4) + kdTot * 2.5 + (tA.subA + tB.subA) * 0.8 +
       (this.method === "DEC" ? (1 - Math.abs(share - 0.5) * 2) * 4 : 3) + A.wobbled + B.wobbled;
     let verdict: BoutResult["verdict"];
-    if (this.method === "DEC") verdict = this.detail.toLowerCase() as BoutResult["verdict"];
+    if (this.method === "DEC") verdict = this.detail.toLowerCase().replace("technical ", "") as BoutResult["verdict"];
     else if (this.method === "DRAW") verdict = "draw";
     return {
       winner: this.winner === null ? null : this.winner === 0 ? "a" : "b",
@@ -2335,8 +2467,14 @@ export function methodText(m: Method, detail: string): string {
   if (m === "DRAW") return detail;
   if (m === "SUB") return `Submission (${detail.toLowerCase()})`;
   if (m === "KO" || m === "TKO") return `${m} (${detail.toLowerCase()})`;
-  if (m === "NC") return "No contest";
+  if (m === "NC") return detail ? `No contest (${detail.toLowerCase()})` : "No contest";
+  if (m === "DQ") return `Disqualification (${detail.toLowerCase()})`;
   return m;
+}
+
+/** A finish: a knockout or a submission (not a decision, a draw, a no contest or a disqualification). */
+export function isFinish(m: Method | undefined): boolean {
+  return m === "KO" || m === "TKO" || m === "SUB";
 }
 
 /** The method in a sentence: "knockout (head kick)", "submission (armbar)", "split decision". */
@@ -2347,7 +2485,8 @@ export function methodPhrase(m: Method, detail: string): string {
   if (m === "SUB") return `submission (${d})`;
   if (m === "DEC") return `${d} decision`;
   if (m === "DRAW") return d;
-  if (m === "NC") return "no contest";
+  if (m === "NC") return d ? `no contest (${d})` : "no contest";
+  if (m === "DQ") return `disqualification (${d})`;
   return m;
 }
 

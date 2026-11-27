@@ -14,7 +14,7 @@ import { ATTRS, ovrOf } from "../model/attributes";
 import type { Bout, Career, Contract, Fighter, Gym, PromoState, Stance, World } from "../model/types";
 import { defaultTraining } from "../career/training";
 import { ensureSchedule } from "./calendar";
-import { addNews, fullName, nextId, rankOf, touch, withRng, touchRoster } from "./core";
+import { addNews, fullName, nextId, rankOf, touch, withRng, touchRoster, namesInUse } from "./core";
 import { generateFighter, makeRecord, pickCountry } from "./generate";
 import { currentStreak, potentialNoise, prospectRoom, realFighter, realGym, type RosterFile, leagueBalance } from "./real";
 import { entryElo, p4pOf, refitRankings, updateP4P, updateRankings } from "./rankings";
@@ -193,6 +193,21 @@ export function repair(w: World): World {
     const [y, m, d] = fx.born.split("-").map(Number);
     const born = dayOf(y, m - 1, d);
     if (Math.abs(f.birth - born) > 400) f.birth = born;
+  }
+  // A generated fighter sharing a real fighter's name (a second "Dricus Du Plessis") gets their own.
+  {
+    const real = new Set<string>();
+    for (const f of Object.values(w.fighters)) if (f.real) real.add(`${f.first} ${f.surname}`);
+    const mine = new Set(w.career.fighters);
+    for (const f of Object.values(w.fighters)) {
+      if (f.real || f.ctrl || mine.has(f.id) || f.status !== "active" || !real.has(`${f.first} ${f.surname}`)) continue;
+      const rng = new Rng(hashString(`${f.id}:name`) ^ w.seed);
+      for (let k = 0; k < 8 && real.has(`${f.first} ${f.surname}`); k++) {
+        const n = makeName(rng, countryOf(f.country).culture, f.sex);
+        f.first = n.first;
+        f.surname = n.last;
+      }
+    }
   }
   // "Ariane" was in the Brazilian men's names.
   for (const f of Object.values(w.fighters)) if (!f.real && f.sex === "M" && f.first === "Ariane") f.first = "Adriano";
@@ -416,7 +431,7 @@ function populate(w: World, rng: Rng, promo: PromoId): void {
       const ageMean = p.tier === "amateur" ? 21 : p.tier === "local" ? 25.5 : 27.5;
       const age = Math.round(clamp(rng.normal(ageMean, p.tier === "amateur" ? 2.2 : 3.6), p.tier === "amateur" ? 17 : 19, 38));
       const o = clamp(rng.normal(lvl[0], lvl[1]), 35, 80);
-      const f = generateFighter(rng, { id: nextId(w, "f"), region: p.region as RegionId, div: d, ovr: o, age, day: w.day, amateur: p.tier === "amateur" });
+      const f = generateFighter(rng, { id: nextId(w, "f"), region: p.region as RegionId, div: d, ovr: o, age, day: w.day, amateur: p.tier === "amateur", taken: namesInUse(w) });
       f.gym = pickGym(w, rng, f.country, o).id;
       if (p.tier === "amateur") f.am = makeRecord(rng, o, age, 0, true);
       else {
@@ -457,7 +472,7 @@ function freeAgentPool(w: World, rng: Rng): void {
       const div: DivisionId = men ? rng.pick(["FLY", "BW", "FW", "LW", "WW", "MW", "LHW", "HW"]) : rng.pick(["WSW", "WFLY", "WBW"]);
       const o = clamp(rng.normal(55, 6), 40, 72);
       const age = Math.round(clamp(rng.normal(27, 4), 19, 38));
-      const f = generateFighter(rng, { id: nextId(w, "f"), region, div, ovr: o, age, day: w.day });
+      const f = generateFighter(rng, { id: nextId(w, "f"), region, div, ovr: o, age, day: w.day, taken: namesInUse(w) });
       f.gym = pickGym(w, rng, f.country, o).id;
       f.rec = makeRecord(rng, o, age, 1, false);
       f.elo = 1150 + (o - 54) * 9;
@@ -599,7 +614,7 @@ export function createWorld(roster: RosterFile, o: NewGameOptions): World {
       const region = rng.pick(["na", "we", "ee", "sa", "af", "wa"] as RegionId[]);
       const o2 = clamp(rng.normal(66, 4.5), 55, 78);
       const age = Math.round(clamp(rng.normal(29, 3.5), 22, 38));
-      const f = generateFighter(rng, { id: nextId(w, "f"), region, div: d, ovr: o2, age, day });
+      const f = generateFighter(rng, { id: nextId(w, "f"), region, div: d, ovr: o2, age, day, taken: namesInUse(w) });
       f.gym = pickGym(w, rng, f.country, o2).id;
       f.rec = makeRecord(rng, o2, age, 3, false);
       f.promo = "pfl";

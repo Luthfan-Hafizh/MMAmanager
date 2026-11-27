@@ -15,7 +15,7 @@ import { TECHNIQUES, type TechId } from "../data/techniques";
 import { ensureSchedule, eventsOn } from "../world/calendar";
 import { fullName, touch, withRng } from "../world/core";
 import { monthlyDevelopmentSteps } from "../world/development";
-import { monthlyMarket } from "../world/market";
+import { comebacks, monthlyMarket } from "../world/market";
 import { bookingPass, campInjuries, fillGaps, withdraw } from "../world/matchmaking";
 import { applyResult, finishEvent, fightInputFor, runEvent, runEventSteps } from "../world/results";
 import { updateP4P, updateRankings } from "../world/rankings";
@@ -130,6 +130,7 @@ function* monthlySteps(w: World, rng: Rng): Steps<void> {
   yield* monthlyDevelopmentSteps(w, rng);
   yield;
   monthlyMarket(w, rng);
+  comebacks(w, rng);
   yield;
   for (const id of PROMO_IDS) if (PROMOTIONS[id].rankSize) updateRankings(w, id);
   yield;

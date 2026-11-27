@@ -173,6 +173,22 @@ for (const id of w.career.fighters) {
 }
 const news = w.news.slice(0, 6).map((n) => `    ${fmtDate(n.day)}: ${n.text}`);
 console.log(news.join("\n"));
+// The world mustn't drift: chins wearing faster than power, styles mastered ever deeper, or
+// knockouts creeping up year on year (34% to 40% over ten years before the aging and the
+// style learning were rebalanced).
+{
+  const ufcNow = Object.values(w.fighters).filter((f) => f.status === "active" && f.promo === "ufc");
+  const avg = (xs: number[]) => xs.reduce((a, x) => a + x, 0) / Math.max(1, xs.length);
+  const pc = avg(ufcNow.map((f) => f.attrs.power - f.attrs.chin));
+  const mastery = avg(ufcNow.map((f) => f.style?.sm ?? 0));
+  const ufcBouts = Object.values(w.bouts).filter((b) => b.promo === "ufc" && b.status === "done" && b.day >= startDay && b.res);
+  const ko = ufcBouts.filter((b) => b.res!.method === "KO" || b.res!.method === "TKO").length / Math.max(1, ufcBouts.length);
+  console.log(`Drift: UFC power-chin ${pc.toFixed(2)} (start -0.24), striking mastery ${mastery.toFixed(1)} (start 52), UFC KO/TKO ${(ko * 100).toFixed(1)}% over ${ufcBouts.length} fights`);
+  if (pc > 0.35) errors.push(`UFC fighters' power has run ahead of their chins (${pc.toFixed(2)})`);
+  if (mastery > 60) errors.push(`style mastery has drifted up to ${mastery.toFixed(1)}`);
+  if (ko > 0.39 || ko < 0.27) errors.push(`UFC knockouts at ${(ko * 100).toFixed(1)}% over the run`);
+}
+
 // Saves are written as tables (src/state/codec.ts): read back, it is the same world.
 {
   const canon = (v: unknown): unknown =>

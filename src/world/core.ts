@@ -294,3 +294,18 @@ export function ringRust(days: number): number {
 export function daysSinceFight(w: World, f: Fighter): number {
   return f.lastFight === null ? 9999 : w.day - f.lastFight;
 }
+
+/**
+ * The full names of the world's active fighters, for a new fighter to steer clear of:
+ * two "David Martinez" on one card, or a second "Dricus Du Plessis", confuse everyone.
+ * Built once a day and added to as fighters are made.
+ */
+const nameSets = new WeakMap<World, { day: number; set: Set<string> }>();
+export function namesInUse(w: World): Set<string> {
+  const had = nameSets.get(w);
+  if (had && had.day === w.day) return had.set;
+  const set = new Set<string>();
+  for (const f of Object.values(w.fighters)) if (f.status === "active") set.add(`${f.first} ${f.surname}`);
+  nameSets.set(w, { day: w.day, set });
+  return set;
+}

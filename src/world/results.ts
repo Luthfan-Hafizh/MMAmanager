@@ -362,8 +362,8 @@ export function applyResult(w: World, rng: Rng, b: Bout, o: FightOutcome): void 
     // A fight deepens a style: the striking always, the grappling when there was some.
     const st = fightStyle(f);
     const grappled = mine.tdA + mine.subA + theirs.tdL > 0 || mine.ctrl > 30;
-    st.sm = Math.min(99, Math.round((st.sm + 0.8 * (1 - st.sm / 130)) * 10) / 10);
-    if (grappled) st.gm = Math.min(99, Math.round((st.gm + 0.8 * (1 - st.gm / 130)) * 10) / 10);
+    st.sm = Math.min(95, Math.round((st.sm + 0.4 * (1 - st.sm / 110)) * 10) / 10);
+    if (grappled) st.gm = Math.min(95, Math.round((st.gm + 0.4 * (1 - st.gm / 110)) * 10) / 10);
   }
 
   // Damage, wear, suspensions and injuries. The chin before, for the player's report.
@@ -382,12 +382,12 @@ export function applyResult(w: World, rng: Rng, b: Bout, o: FightOutcome): void 
       const detail = o.detail.toLowerCase();
       if (m === "KO") {
         f.dmg += 14;
-        f.attrs.chin = clamp(f.attrs.chin - rng.range(0.25, 0.6), 1, 20);
+        f.attrs.chin = clamp(f.attrs.chin - rng.range(0.1, 0.25), 1, 20);
         susp = rng.int(SUSPENSION.KO[0], SUSPENSION.KO[1]);
       } else if (detail.includes("doctor")) susp = 45;
       else if (detail.includes("corner") || detail.includes("leg")) susp = 30;
       else {
-        f.attrs.chin = clamp(f.attrs.chin - rng.range(0.08, 0.25), 1, 20);
+        f.attrs.chin = clamp(f.attrs.chin - rng.range(0.03, 0.1), 1, 20);
         susp = rng.int(SUSPENSION.TKO[0], SUSPENSION.TKO[1]);
         f.dmg += 6;
       }

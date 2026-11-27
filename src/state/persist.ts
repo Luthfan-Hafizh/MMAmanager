@@ -6,6 +6,7 @@ import { packNow, packSliced, unpack } from "./codec";
 import { migrate, repair, OLDEST_SAVE, SAVE_VERSION } from "../world/create";
 import { loadRoster } from "./roster";
 import { ymd } from "../core/time";
+import { dropWorldTapes } from "./live";
 
 export interface SaveMeta {
   id: string;
@@ -155,6 +156,7 @@ async function upToDate(w: World): Promise<World> {
 }
 
 export async function deleteSave(id: string): Promise<void> {
+  dropWorldTapes(id);
   const db = await open();
   await tx(db, STORE, "readwrite", (s) => s.delete(id));
   await tx(db, META, "readwrite", (s) => s.delete(id));

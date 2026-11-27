@@ -84,10 +84,16 @@ export function monthlyGrowth(f: Fighter, age: number, gymRep: number): number {
   return room * growthRate(monthsToPeak(f, age), age) * coach * pro * devPace(f);
 }
 
+/**
+ * How the years take each attribute. The body goes first; attack and defence fade at
+ * about the same pace, and the chin no faster than the power: weighted any other way,
+ * the world's fighters drift year by year into worse defenders than attackers and
+ * knockouts creep up (UFC 34% to 40% over ten simulated years).
+ */
 const DECLINE_W: Partial<Record<AttrKey, number>> = {
-  speed: 1.7, cardio: 1.4, recovery: 1.5, chin: 0.9, strength: 0.55, toughness: 0.8,
-  footwork: 1.0, power: 0.55, workRate: 1.0, scrambles: 0.9, takedowns: 0.75, tdd: 0.8,
-  boxing: 0.45, kicks: 0.6, clinchStrikes: 0.35, groundStrikes: 0.35, counters: 0.25, strikeDef: 0.75,
+  speed: 1.7, cardio: 1.4, recovery: 1.5, chin: 0.7, strength: 0.55, toughness: 0.8,
+  footwork: 0.75, power: 0.85, workRate: 1.0, scrambles: 0.9, takedowns: 0.75, tdd: 0.8,
+  boxing: 0.6, kicks: 0.6, clinchStrikes: 0.35, groundStrikes: 0.35, counters: 0.45, strikeDef: 0.55,
   clinchControl: 0.35, topControl: 0.3, bottomGame: 0.35, subs: 0.2, subDef: 0.3,
   fightIQ: -0.25, composure: -0.1, aggression: 0.3, discipline: -0.1, heart: 0.2,
 };
@@ -143,8 +149,11 @@ export function* monthlyDevelopmentSteps(w: World, rng: Rng): Steps<void> {
       // They grow into their styles with the years in the gym, as far as their fight IQ takes them.
       const st = f.style;
       if (st) {
-        const learn = age < 30 ? 0.5 : age < 34 ? 0.3 : 0.12;
-        const cap = 45 + f.attrs.fightIQ * 2.6;
+        // Slowly: at the old pace (twice this, to 45 + 2.6 x fight IQ) the world's
+        // fighters grew from the real roster's mastery of about 52 to 67 in eight
+        // years, and the styles' extra power and accuracy pushed knockouts up with it.
+        const learn = age < 30 ? 0.25 : age < 34 ? 0.15 : 0.06;
+        const cap = 40 + f.attrs.fightIQ * 2.2;
         if (st.sm < cap) st.sm = Math.min(cap, Math.round((st.sm + learn) * 10) / 10);
         if (st.gm < cap) st.gm = Math.min(cap, Math.round((st.gm + learn * 0.8) * 10) / 10);
       }

@@ -37,6 +37,8 @@ export interface GenOptions {
   art?: BaseArt;
   pot?: number;
   amateur?: boolean;
+  /** Names already in use (world/core.ts namesInUse): a name on it is drawn again. */
+  taken?: Set<string>;
   gym?: string;
 }
 
@@ -71,7 +73,9 @@ export function generateFighter(rng: Rng, o: GenOptions): Fighter {
   const def = DIVISIONS[o.div];
   const sex = def.sex;
   const culture = cultureFor(rng, country);
-  const { first, last } = makeName(rng, culture, sex);
+  let { first, last } = makeName(rng, culture, sex);
+  for (let k = 0; k < 8 && o.taken?.has(`${first} ${last}`); k++) ({ first, last } = makeName(rng, culture, sex));
+  o.taken?.add(`${first} ${last}`);
   const art = o.art ?? pickArt(rng, country);
   const artDef = ARTS[art];
 

@@ -151,6 +151,12 @@ export function forgetLiveFights(): void {
   running.clear();
 }
 
+/** A career deleted: its paused fights go with it. */
+export function dropWorldTapes(wid: string): void {
+  for (const [k, r] of running) if (r.wid === wid) running.delete(k);
+  writeAll(wid, {});
+}
+
 // Closing the tab or the phone putting it away: write what has moved on.
 if (typeof window !== "undefined" && typeof window.addEventListener === "function") {
   const flush = () => {

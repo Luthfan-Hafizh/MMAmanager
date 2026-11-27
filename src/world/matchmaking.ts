@@ -55,7 +55,7 @@ function teammates(a: Fighter, b: Fighter): boolean {
   return !!a.gym && a.gym === b.gym;
 }
 
-function metRecently(w: World, a: Fighter, b: Fighter, days: number): boolean {
+export function metRecently(w: World, a: Fighter, b: Fighter, days: number): boolean {
   for (let k = a.bouts.length - 1; k >= 0; k--) {
     const bt = w.bouts[a.bouts[k]];
     if (!bt) continue;
@@ -88,6 +88,8 @@ export function bookedAt(f: Fighter, tier: string): number {
 
 export function pairCost(w: World, a: Fighter, b: Fighter, promo: PromoId, rng?: Rng): number {
   if (teammates(a, b)) return 999;
+  // Not again so soon, storyline or not: a rematch waits out the suspensions and a camp.
+  if (metRecently(w, a, b, 120)) return 999;
   const tier = PROMOTIONS[promo].tier;
   const na = stageFights(w, a, promo);
   const nb = stageFights(w, b, promo);
@@ -502,8 +504,8 @@ function buildDwcs(w: World, rng: Rng, ev: MMAEvent): void {
   for (const [, list] of byDiv) {
     while (list.length >= 2 && ev.bouts.length < 5 && n < 8) {
       const a = list.shift()!;
-      const j = list.findIndex((x) => !teammates(a, x) && !x.booked);
-      if (j < 0) continue; // only teammates left for this one: the others in the division can still meet
+      const j = list.findIndex((x) => !teammates(a, x) && !x.booked && !metRecently(w, a, x, 120));
+      if (j < 0) continue; // only teammates (or a recent opponent) left for this one: the others can still meet
       const b = list.splice(j, 1)[0];
       if (a.booked || b.booked) continue;
       makeBout(w, ev, a, b, "tryout");

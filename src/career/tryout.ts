@@ -12,7 +12,7 @@ import { PROMOTIONS } from "../data/promotions";
 import { ovrOf } from "../model/attributes";
 import type { Fighter, Message, MMAEvent, World } from "../model/types";
 import { availableFrom, fullName, isChampion, touch } from "../world/core";
-import { offerFight } from "../world/matchmaking";
+import { metRecently, offerFight } from "../world/matchmaking";
 import { tryoutProspect } from "../world/market";
 import { closeMessages, notify } from "./inbox";
 import { acceptFight } from "./offers";
@@ -191,7 +191,7 @@ export function bookTryouts(w: World, rng: Rng, ev: MMAEvent, byDiv: Map<Divisio
         continue;
       }
       const list = byDiv.get(f.div) ?? [];
-      const j = list.findIndex((x) => !x.booked && !mates(f, x));
+      const j = list.findIndex((x) => !x.booked && !mates(f, x) && !metRecently(w, f, x, 120));
       const opp = j >= 0 ? list.splice(j, 1)[0] : tryoutProspect(w, rng, f.div);
       const offer = offerFight(w, rng, ev, f, opp, "tryout");
       if (offer) {
@@ -205,7 +205,7 @@ export function bookTryouts(w: World, rng: Rng, ev: MMAEvent, byDiv: Map<Divisio
     if (f.booked || w.career.fightOffers.some((o) => o.fighter === f.id && o.status === "open")) continue;
     if (f.lastFight !== null && ev.day - f.lastFight < 49) continue;
     if (!tryoutReady(w, f, ev) || !rng.chance(0.2)) continue;
-    const opp = (byDiv.get(f.div) ?? []).find((x) => !x.booked && !mates(f, x));
+    const opp = (byDiv.get(f.div) ?? []).find((x) => !x.booked && !mates(f, x) && !metRecently(w, f, x, 120));
     if (!opp) continue;
     fc.tryout = { season, day: w.day, ev: ev.id };
     offerFight(w, rng, ev, f, opp, "tryout");

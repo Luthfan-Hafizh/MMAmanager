@@ -10,11 +10,11 @@ import { DIVISIONS, DIVISION_IDS, type DivisionId } from "../data/divisions";
 import { PROMOTIONS, PROMO_IDS, TIER_RANK, promoFor, rosterTarget, type PromoId } from "../data/promotions";
 import { ovrOf } from "../model/attributes";
 import type { Fighter, FightRecord, World } from "../model/types";
-import { addNews, freeAgents, fullName, isChampion, nextId, rankOf, rosterOf, stageFights, touch, touchRoster } from "./core";
+import { addNews, freeAgents, fullName, isChampion, nextId, rankOf, rosterOf, stageFights, touch, touchRoster, namesInUse, isInterim } from "./core";
 import { contractFor, levelOf, pickGym } from "./create";
 import { blankRecord, generateFighter, makeRecord } from "./generate";
 import { entryElo, unrank } from "./rankings";
-import { clockShift } from "./development";
+import { applyOvrChange, clockShift, yearlyDecline } from "./development";
 import { signTo } from "./results";
 import { vacate } from "./titles";
 
@@ -45,6 +45,57 @@ function retire(w: World, f: Fighter, why: string): void {
   f.promo = null;
   touchRoster(w, f);
   f.contract = null;
+  touch(w);
+}
+
+/**
+ * Now and then a retired fighter comes back: a few a year across the world, most often
+ * the ones who still had something (a former champion, a big name, one who left young).
+ * The years away aged them all the same, and the layoff tells in the first fight back.
+ */
+export function comebacks(w: World, rng: Rng): void {
+  const mine = new Set([...w.career.fighters, w.career.retiredFighter ?? ""]);
+  for (const f of Object.values(w.fighters)) {
+    if (f.status !== "retired" || f.ctrl || mine.has(f.id) || f.retired === undefined) continue;
+    const away = w.day - f.retired;
+    if (away < 240 || away > 4 * 365) continue;
+    const age = ageAt(f.birth, w.day);
+    if (age > 39) continue;
+    const star = f.reigns > 0 || f.pop >= 55;
+    if (!star && f.pop < 35 && ovrOf(f.attrs) < 70) continue;
+    if (!rng.chance((star ? 0.012 : 0.004) * (age < 34 ? 1.5 : 1))) continue;
+    comeBack(w, rng, f, away, star);
+  }
+}
+
+function comeBack(w: World, rng: Rng, f: Fighter, away: number, star: boolean): void {
+  const age = ageAt(f.birth, w.day);
+  const loss = yearlyDecline(f, age) * (away / 365);
+  if (loss > 0) applyOvrChange(f, -loss, rng);
+  f.status = "active";
+  f.retired = undefined;
+  f.injury = null;
+  f.fatigue = 0;
+  f.sharp = 40;
+  // A star goes back to the big stage that knew them; anyone else starts as a free agent.
+  let last: PromoId | null = null;
+  for (let k = f.bouts.length - 1; k >= 0 && !last; k--) {
+    const b = w.bouts[f.bouts[k]];
+    if (b?.status === "done") last = b.promo;
+  }
+  const back = star && (last === "ufc" || last === "pfl") ? last : null;
+  if (back) signTo(w, f, back, rng, { fights: 3 });
+  else {
+    f.promo = null;
+    touchRoster(w, f);
+  }
+  addNews(w, {
+    kind: "signing",
+    promo: back ?? undefined,
+    fighters: [f.id],
+    big: f.reigns > 0,
+    text: `${fullName(f)} comes out of retirement at ${Math.floor(age)}${back ? ` and is back with the ${PROMOTIONS[back].short}` : ", a free agent looking for a fight"}, ${Math.round(away / 30)} months after walking away.`,
+  });
   touch(w);
 }
 
@@ -97,6 +148,15 @@ export function monthlyMarket(w: World, rng: Rng): void {
         if (champ) release(w, f, "", `${fullName(f)} walks out on the ${PROMOTIONS[f.promo].short} as champion: no new deal was agreed, and the title is vacated.`);
         else release(w, f, "contract not renewed");
       }
+      continue;
+    }
+    // A year and a half fit and unbooked: the promotion lets the fighter go, to fight
+    // elsewhere. Champions, the UFC's and the PFL's ranked fighters and its big names
+    // are kept on (a star can sit out for years and stay under contract).
+    const idle = w.day - (f.lastFight ?? f.joined ?? w.day);
+    const kept = isChampion(w, f) || isInterim(w, f) || ((f.promo === "ufc" || f.promo === "pfl") && (rankOf(w, f) !== null || f.pop >= 50));
+    if (!f.booked && !kept && idle > 540 && !(f.injury && f.injury.until > w.day) && f.susp <= w.day) {
+      release(w, f, "a year and a half without a fight");
       continue;
     }
     // Losing runs.
@@ -175,7 +235,7 @@ function fromElsewhere(w: World, rng: Rng, promo: PromoId, d: DivisionId): Fight
 /** A fighter from a show the game doesn't run, signed to a regional promotion. */
 function newcomer(w: World, rng: Rng, promo: PromoId, d: DivisionId, o: number, age: number, prospect: boolean): Fighter {
   const p = PROMOTIONS[promo];
-  const f = generateFighter(rng, { id: nextId(w, "f"), region: p.region as RegionId, div: d, ovr: o, age, day: w.day });
+  const f = generateFighter(rng, { id: nextId(w, "f"), region: p.region as RegionId, div: d, ovr: o, age, day: w.day, taken: namesInUse(w) });
   f.gym = pickGym(w, rng, f.country, o).id;
   f.rec = prospect ? prospectRecord(rng) : makeRecord(rng, o, age, 2, false);
   f.am = makeRecord(rng, o, Math.min(age, 22), 0, true);
@@ -352,7 +412,7 @@ function prospects(w: World, rng: Rng): void {
           const amateur = promo.tier === "amateur";
           const age = amateur ? rng.int(17, 22) : rng.int(19, 26);
           const o = clamp(rng.normal(amateur ? 45 : 52, 4.5), 33, 66);
-          const f = generateFighter(rng, { id: nextId(w, "f"), region, div: d, ovr: o, age, day: w.day, amateur });
+          const f = generateFighter(rng, { id: nextId(w, "f"), region, div: d, ovr: o, age, day: w.day, amateur, taken: namesInUse(w) });
           f.gym = pickGym(w, rng, f.country, o).id;
           if (!amateur) f.am = makeRecord(rng, o, Math.min(age, 22), 0, true);
           f.promo = promo.id;

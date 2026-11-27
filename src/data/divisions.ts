@@ -23,9 +23,9 @@ export interface DivisionDef {
 }
 
 export const DIVISIONS: Record<DivisionId, DivisionDef> = {
-  FLY: { id: "FLY", name: "Flyweight", short: "FLY", limit: 125, sex: "M", height: 66, reach: 67.4, ko: 0.22, sub: 0.21, punch: 0.79, ufc: 46, order: 0 },
-  BW: { id: "BW", name: "Bantamweight", short: "BW", limit: 135, sex: "M", height: 67.6, reach: 69.2, ko: 0.26, sub: 0.19, punch: 0.86, ufc: 80, order: 1 },
-  FW: { id: "FW", name: "Featherweight", short: "FW", limit: 145, sex: "M", height: 68.6, reach: 70.6, ko: 0.29, sub: 0.19, punch: 0.9, ufc: 90, order: 2 },
+  FLY: { id: "FLY", name: "Flyweight", short: "FLY", limit: 125, sex: "M", height: 66, reach: 67.4, ko: 0.22, sub: 0.21, punch: 0.74, ufc: 46, order: 0 },
+  BW: { id: "BW", name: "Bantamweight", short: "BW", limit: 135, sex: "M", height: 67.6, reach: 69.2, ko: 0.26, sub: 0.19, punch: 0.83, ufc: 80, order: 1 },
+  FW: { id: "FW", name: "Featherweight", short: "FW", limit: 145, sex: "M", height: 68.6, reach: 70.6, ko: 0.29, sub: 0.19, punch: 0.88, ufc: 90, order: 2 },
   LW: { id: "LW", name: "Lightweight", short: "LW", limit: 155, sex: "M", height: 69.8, reach: 71.6, ko: 0.31, sub: 0.21, punch: 0.94, ufc: 95, order: 3 },
   WW: { id: "WW", name: "Welterweight", short: "WW", limit: 170, sex: "M", height: 72, reach: 74.2, ko: 0.35, sub: 0.19, punch: 0.97, ufc: 80, order: 4 },
   MW: { id: "MW", name: "Middleweight", short: "MW", limit: 185, sex: "M", height: 73.2, reach: 75.7, ko: 0.4, sub: 0.19, punch: 1.02, ufc: 72, order: 5 },

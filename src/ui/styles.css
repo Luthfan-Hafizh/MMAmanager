@@ -1418,3 +1418,9 @@ tr.click:focus-visible, .list-row[tabindex]:focus-visible { outline: 2px solid v
 /* The pound-for-pound #1 fits a phone */
 .p4p-name { font-size: clamp(26px, 7vw, 34px) !important; text-wrap: balance; }
 .rk-champ .cn { text-wrap: balance; }
+
+/* Year-end awards and honours */
+.award .award-who { font-stretch: 62%; font-weight: 900; font-size: 26px; line-height: 1; text-transform: uppercase; margin: 8px 0 6px; }
+.award.me { box-shadow: inset 3px 0 0 var(--red), var(--shadow); }
+.honours { list-style: none; margin: 0; padding: 0; display: grid; gap: 10px; }
+.honours b { font-stretch: 75%; font-weight: 800; }

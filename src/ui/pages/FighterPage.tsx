@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { AWARD_NAME, awardsOf } from "../../world/awards";
 import { ageYears, fmtDate, clock } from "../../core/time";
 import { cmOf, heightText } from "../../core/util";
 import { countryOf } from "../../data/countries";
@@ -156,6 +157,18 @@ function Overview({ w, f }: { w: World; f: Fighter }) {
             <dt>Walks around</dt><dd>{Math.round(f.walk)} lb · fights at {DIVISIONS[f.div].limit} lb</dd>
           </dl>
         </Panel>
+        {awardsOf(w, f.id).length > 0 && (
+          <Panel title="Honours">
+            <ul className="honours">
+              {awardsOf(w, f.id).map((a) => (
+                <li key={`${a.year}-${a.promo}-${a.kind}`}>
+                  <b>{AWARD_NAME[a.kind]} {a.year}</b> <span className="dim">· {PROMOTIONS[a.promo].short}</span>
+                  <div className="tiny dim">{a.why}</div>
+                </li>
+              ))}
+            </ul>
+          </Panel>
+        )}
         {caller && <CallOutPanel w={w} f={caller} target={f} />}
         <Panel title="Record">
           <div className="recbox" style={{ borderColor: "var(--line)", background: "var(--sheet-2)" }}>

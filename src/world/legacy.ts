@@ -6,7 +6,7 @@
 import { isFinish } from "../engine/sim";
 import { ymd, dayOf, nextDow } from "../core/time";
 import { clamp } from "../core/util";
-import { PROMOTIONS } from "../data/promotions";
+import { PROMOTIONS, type PromoId } from "../data/promotions";
 import type { Bout, Fighter, World } from "../model/types";
 import { addNews, fullName, rankOf } from "./core";
 
@@ -96,30 +96,96 @@ export interface RecordRow {
 }
 
 /** All-time numbers in this world (since October 2026) and career numbers for the active. */
-export function records(w: World): RecordRow[] {
+/** Records since the world began at one promotion, or over whole careers ("all"). */
+export function records(w: World, promo: PromoId | "all" = "ufc"): RecordRow[] {
   const all = Object.values(w.fighters);
-  const ufcWins = new Map<string, number>();
-  const ufcFinishes = new Map<string, number>();
-  for (const b of Object.values(w.bouts)) {
-    if (b.promo !== "ufc" || b.status !== "done" || !b.res?.winner) continue;
-    const id = b.res.winner === "a" ? b.a : b.b;
-    ufcWins.set(id, (ufcWins.get(id) ?? 0) + 1);
-    if (isFinish(b.res.method)) ufcFinishes.set(id, (ufcFinishes.get(id) ?? 0) + 1);
-  }
-  const top = (m: Map<string, number>, label: string, unit: string): RecordRow => ({
+  const top = (m: Map<string, number>, label: string, unit: string, n = 10): RecordRow => ({
     label,
-    rows: [...m.entries()].sort((a, b) => b[1] - a[1]).slice(0, 10).map(([id, v]) => ({ f: w.fighters[id], v, text: `${v} ${unit}` })),
+    rows: [...m.entries()].filter(([id, v]) => v > 0 && w.fighters[id]).sort((a, b) => b[1] - a[1]).slice(0, n).map(([id, v]) => ({ f: w.fighters[id], v, text: `${v} ${unit}` })),
   });
+  if (promo === "all") {
+    const by = (k: (f: Fighter) => number) => new Map(all.map((f) => [f.id, k(f)] as [string, number]));
+    const streaks = all.filter((f) => (f.bestStreak ?? 0) > 0).sort((a, b) => (b.bestStreak ?? 0) - (a.bestStreak ?? 0)).slice(0, 10);
+    return [
+      top(by((f) => f.rec.w), "Most professional wins", "wins"),
+      top(by((f) => f.rec.koW + f.rec.subW), "Most finishes", "finishes"),
+      top(by((f) => f.rec.koW), "Most knockouts", "KO/TKO"),
+      top(by((f) => f.rec.subW), "Most submissions", "submissions"),
+      { label: "Longest win streaks", rows: streaks.map((f) => ({ f, v: f.bestStreak ?? 0, text: `${f.bestStreak} in a row` })) },
+      top(by((f) => f.reigns), "Most title reigns (UFC and PFL)", "reigns"),
+    ];
+  }
+  const inc = (m: Map<string, number>, id: string, n = 1) => m.set(id, (m.get(id) ?? 0) + n);
+  const wins = new Map<string, number>();
+  const fin = new Map<string, number>();
+  const kos = new Map<string, number>();
+  const subs = new Map<string, number>();
+  const titles = new Map<string, number>();
+  const bonuses = new Map<string, number>();
+  const fights = new Map<string, number>();
+  const fastest: { id: string; secs: number; b: Bout }[] = [];
+  const mine = new Map<string, Bout[]>();
+  for (const b of Object.values(w.bouts)) {
+    if (b.promo !== promo || b.status !== "done" || !b.res) continue;
+    for (const id of [b.a, b.b]) {
+      inc(fights, id);
+      (mine.get(id) ?? mine.set(id, []).get(id)!).push(b);
+    }
+    for (const x of b.res.bonus ?? []) {
+      if (x === "fotn") {
+        inc(bonuses, b.a);
+        inc(bonuses, b.b);
+      } else if (x === "potn-a") inc(bonuses, b.a);
+      else if (x === "potn-b") inc(bonuses, b.b);
+    }
+    const id = b.res.winner === "a" ? b.a : b.res.winner === "b" ? b.b : null;
+    if (!id || b.res.method === "NC") continue;
+    inc(wins, id);
+    if (isFinish(b.res.method)) {
+      inc(fin, id);
+      fastest.push({ id, secs: (b.res.round - 1) * b.roundSec + b.res.time, b });
+    }
+    if (b.res.method === "KO" || b.res.method === "TKO") inc(kos, id);
+    if (b.res.method === "SUB") inc(subs, id);
+    if (b.kind === "title" || b.kind === "vacant" || b.kind === "interim") inc(titles, id);
+  }
+  // The longest run of wins on this stage.
+  const streak = new Map<string, number>();
+  for (const [id, list] of mine) {
+    let run = 0;
+    let best = 0;
+    for (const b of list.sort((x, y) => x.day - y.day)) {
+      const won = (b.res!.winner === "a" ? b.a : b.res!.winner === "b" ? b.b : null) === id;
+      if (b.res!.method === "NC") continue;
+      run = won ? run + 1 : 0;
+      best = Math.max(best, run);
+    }
+    if (best > 1) streak.set(id, best);
+  }
   const defences = new Map<string, number>();
-  for (const r of w.promos.ufc.reigns) if (r.won >= w.start && !r.interim) defences.set(r.fighter, Math.max(defences.get(r.fighter) ?? 0, r.defenses));
-  const streaks = all.filter((f) => (f.bestStreak ?? 0) > 0).sort((a, b) => (b.bestStreak ?? 0) - (a.bestStreak ?? 0)).slice(0, 10);
-  const wins = all.filter((f) => f.rec.w > 0).sort((a, b) => b.rec.w - a.rec.w).slice(0, 10);
+  for (const r of w.promos[promo]?.reigns ?? []) if (r.won >= w.start && !r.interim) defences.set(r.fighter, Math.max(defences.get(r.fighter) ?? 0, r.defenses));
+  const clockOf = (t: number) => `${Math.floor(t / 60)}:${String(Math.round(t % 60)).padStart(2, "0")}`;
   return [
-    top(ufcWins, "Most UFC wins since 2026", "wins"),
-    top(ufcFinishes, "Most UFC finishes since 2026", "finishes"),
-    { label: "Most defences in one UFC reign (since 2026)", rows: [...defences.entries()].filter(([, v]) => v > 0).sort((a, b) => b[1] - a[1]).slice(0, 10).map(([id, v]) => ({ f: w.fighters[id], v, text: `${v} defences` })) },
-    { label: "Longest win streaks", rows: streaks.map((f) => ({ f, v: f.bestStreak ?? 0, text: `${f.bestStreak} in a row` })) },
-    { label: "Most professional wins (whole career)", rows: wins.map((f) => ({ f, v: f.rec.w, text: `${f.rec.w} wins` })) },
+    top(wins, "Most wins", "wins"),
+    top(fin, "Most finishes", "finishes"),
+    top(kos, "Most knockouts", "KO/TKO"),
+    top(subs, "Most submissions", "submissions"),
+    top(titles, "Most title-fight wins", "title-fight wins"),
+    { label: "Most defences in one reign", rows: [...defences.entries()].filter(([id, v]) => v > 0 && w.fighters[id]).sort((a, b) => b[1] - a[1]).slice(0, 10).map(([id, v]) => ({ f: w.fighters[id], v, text: `${v} defence${v === 1 ? "" : "s"}` })) },
+    top(streak, "Longest win streak", "in a row"),
+    top(bonuses, "Most bonuses", "bonuses"),
+    {
+      label: "Fastest finishes",
+      rows: fastest
+        .filter((x) => w.fighters[x.id])
+        .sort((a, b) => a.secs - b.secs)
+        .slice(0, 10)
+        .map((x) => {
+          const opp = w.fighters[x.b.a === x.id ? x.b.b : x.b.a];
+          return { f: w.fighters[x.id], v: x.secs, text: `${clockOf(x.secs)} · ${x.b.res!.method === "SUB" ? "SUB" : "KO"} v ${opp?.surname ?? ""}` };
+        }),
+    },
+    top(fights, "Most fights", "fights"),
   ];
 }
 

@@ -84,6 +84,7 @@ export function PromotionPage({ id }: { id: string }) {
           </dl>
           <div className="row" style={{ marginTop: 10 }}>
             {p.rankSize > 0 && <Link to={`/rankings/${p.id}`} className="btn sm">Rankings</Link>}
+            {p.rankSize > 0 && <Link to={`/legacy/records/${p.id}`} className="btn sm">Records</Link>}
             <Link to={`/events/${p.id}`} className="btn sm">Events</Link>
           </div>
         </Panel>

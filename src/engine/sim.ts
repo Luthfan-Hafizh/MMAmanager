@@ -534,7 +534,11 @@ export class FightSim {
     else if (this.pos === "dist") dt = this.distance();
     else if (this.pos === "clinch") dt = this.clinch();
     else dt = this.ground();
-    if (this.over) return dt;
+    if (this.over) {
+      // The finishing exchange takes its time too: a knockout in the first exchange isn't at 0:00.
+      if (this.endTime === this.t) this.endTime = Math.min(this.roundSec, this.t + Math.max(1, dt));
+      return dt;
+    }
     const left = this.roundSec - this.t;
     if (dt > left) dt = left;
     this.t += dt;
@@ -1594,7 +1598,7 @@ export class FightSim {
       const fresh = this.round === 1 ? 1.22 : this.round === 2 ? 1.0 : 0.92;
       const impact = fresh * ko * force * this.punch * (1 + 0.7 * Math.pow(1 - def.head / 100, 1.3)) * (def.stun > 0 ? 1.45 : 1) * (counter ? 1.2 : 1);
       const x = impact / def.chinRes;
-      const pKD = clamp(0.0115 * Math.pow(x, 3.4) * (this.sloppy * this.sloppy), 0, 0.6);
+      const pKD = clamp(0.0108 * Math.pow(x, 3.4) * (this.sloppy * this.sloppy), 0, 0.6);
       if (this.rng.chance(pKD)) {
         this.knockdown(att, def, name, x, where);
         return;
@@ -1647,7 +1651,7 @@ export class FightSim {
     this.rs(att).kd++;
     att.imp[this.round - 1] += 6.5;
     // Out cold?
-    const pOut = clamp(0.08 + 0.16 * (x - 1) - def.n.chin * 0.08 + (def.kd - 1) * 0.12, 0.05, 0.65);
+    const pOut = clamp(0.07 + 0.16 * (x - 1) - def.n.chin * 0.08 + (def.kd - 1) * 0.12, 0.05, 0.65);
     if (this.rng.chance(pOut)) {
       const what = this.koName(name);
       this.finish(att, "KO", what);

@@ -26,6 +26,8 @@ import { Settings } from "../src/ui/pages/Settings";
 import { Agency, Scouting } from "../src/ui/pages/Agency";
 import { FightNight } from "../src/ui/pages/FightNight";
 import { Legacy } from "../src/ui/pages/Legacy";
+import { AWARD_NAME, yearEndAwards } from "../src/world/awards";
+import { records } from "../src/world/legacy";
 import { Titles } from "../src/ui/pages/Titles";
 import { BoutPreview } from "../src/ui/pages/Events";
 import { FightReport, reportOf } from "../src/ui/report";
@@ -1249,6 +1251,33 @@ pages(tw, "Retired fighter turned manager");
   else if (freshDiv && !page.includes(">Debut<")) fail("a new signing in an open place isn't marked as a debut on the rankings page");
   else if (!women.includes("Top 5")) fail("a regional women's division doesn't say it ranks a top five");
   else console.log(`Rankings: ${divs} divisions all as full as their rosters allow (sizes ${sizes}); ${fresh} new signings in open places, all below the fighters who have fought there; a short list from an old save refilled on load (${refilled})`);
+}
+
+// Year-end awards and records: a year's awards are made once (the UFC's six where the
+// year had them, a Fighter of the Year elsewhere), shown on the Legacy page and the
+// winner's page, and the records page lists every ranked promotion with real times.
+{
+  const fail = (what: string) => { failures++; console.log(`  FAIL ${what}`); };
+  const w = fw;
+  setWorld(w);
+  w.awards = [];
+  yearEndAwards(w, 2027);
+  const first = w.awards.length;
+  yearEndAwards(w, 2027);
+  const ufc = w.awards.filter((a) => a.promo === "ufc");
+  const foy = ufc.find((a) => a.kind === "fighter");
+  const tab = renderToString(<Legacy tab="awards" />).replace(/<!-- -->/g, "");
+  const rec = renderToString(<Legacy tab="records" promo="ufc" />).replace(/<!-- -->/g, "");
+  const all = renderToString(<Legacy tab="records" promo="all" />).replace(/<!-- -->/g, "");
+  const page = foy ? renderToString(<FighterPage id={foy.fighters[0]} />).replace(/<!-- -->/g, "") : "";
+  const fastest = records(w, "ufc").find((r) => r.label === "Fastest finishes");
+  if (!first || w.awards.length !== first) fail(`the ${first} awards for 2027 were ${first ? "made twice" : "never made"}`);
+  else if (!foy || !ufc.some((a) => a.kind === "fight")) fail(`the UFC's 2027 awards miss the Fighter or the Fight of the Year (${ufc.map((a) => a.kind).join(", ")})`);
+  else if (!tab.includes("Fighter of the Year") || !tab.includes("2027 awards")) fail("the Legacy page's awards tab doesn't show the 2027 awards");
+  else if (!page.includes("Honours")) fail("the Fighter of the Year's page has no honours");
+  else if (!rec.includes("Fastest finishes") || !rec.includes("Most title-fight wins") || !all.includes("Whole careers")) fail("the records page misses a list or the whole-career view");
+  else if (fastest?.rows.some((x) => x.v <= 0)) fail("a finish is timed at 0:00");
+  else console.log(`Awards: ${first} for 2027 (UFC: ${ufc.map((a) => AWARD_NAME[a.kind]).join(", ")}; Fighter of the Year ${w.fighters[foy.fighters[0]].surname}, ${foy.why}), made once, on the Legacy page and the winner's page; records at ${PROMO_IDS.filter((x) => PROMOTIONS[x].rankSize).length} promotions, fastest finish ${fastest?.rows[0]?.text ?? "none"}`);
 }
 
 const mw = createWorld(roster, { name: "UI", seed: 79, mode: "manager", difficulty: "normal", agency: "Check Management" });

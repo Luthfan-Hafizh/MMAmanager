@@ -124,7 +124,7 @@ function pageFor(parts: string[]): PageDef {
     case "titles":
       return { title: "Title history", el: <Titles promo={p1} div={p2} />, custom: true };
     case "legacy":
-      return { title: "Legacy", el: <Legacy />, custom: true };
+      return { title: "Legacy", el: <Legacy tab={p1} promo={p2} />, custom: true };
     case "agency":
       return { title: w.career.agency?.name ?? "Agency", eyebrow: "Your management company", el: <Agency /> };
     case "scouting":

@@ -730,6 +730,17 @@ export interface Career {
   media?: MediaSession[];
 }
 
+/** A year-end award (world/awards.ts). */
+export type AwardKind = "fighter" | "fight" | "ko" | "sub" | "upset" | "newcomer";
+export interface Award {
+  year: number;
+  promo: PromoId;
+  kind: AwardKind;
+  fighters: string[];
+  bout?: string;
+  why: string;
+}
+
 export interface World {
   v: number;
   id: string;
@@ -749,8 +760,9 @@ export interface World {
   career: Career;
   ids: Record<string, number>;
   p4p: string[];
-  awards: { year: number; fighter: string; ko?: string; sub?: string; fight?: string; upset?: string }[];
   hof: { fighter: string; year: number }[];
+  /** Year-end awards, every January for the year gone (world/awards.ts). */
+  awards: Award[];
   /** Fighters whose state changed since the indexes were built. */
   stamp: number;
   /** Bumped when rosters change (touchRoster): the roster index follows it. */

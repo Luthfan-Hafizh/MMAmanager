@@ -26,5 +26,13 @@
   "ufc-nasrat-haqparast": {
     "gym": "gym-real-18",
     "from": "gym-real-247"
+  },
+  "ufc-kamaru-usman": {
+    "gym": "gym-real-67",
+    "from": "gym-real-58"
+  },
+  "ufc-vicente-luque": {
+    "gym": "gym-real-67",
+    "from": "gym-real-58"
   }
 }

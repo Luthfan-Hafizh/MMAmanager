@@ -5,6 +5,10 @@
 import { readFileSync, writeFileSync } from "node:fs";
 
 const src = JSON.parse(readFileSync("data-src/roster-2026-10.json", "utf8"));
+// Gyms the source lists twice (City Kickboxing, and "The Fight Centre & City Kickboxing"
+// for one fighter who names both) are merged, and names and places cleaned: src/data/gym-fixes.json.
+const GYM_FIX = JSON.parse(readFileSync("src/data/gym-fixes.json", "utf8"));
+const gymOf = (id) => (id && GYM_FIX.merge[id]) || id;
 const DIV = {
   flyweight: "FLY", bantamweight: "BW", featherweight: "FW", lightweight: "LW", welterweight: "WW", middleweight: "MW",
   "light-heavyweight": "LHW", heavyweight: "HW", "womens-strawweight": "WSW", "womens-flyweight": "WFLY",
@@ -68,7 +72,7 @@ function compact(f, promo) {
     dv: [f.development?.peakAge ?? 29, round(f.development?.growth ?? 1), round(f.development?.decline ?? 1)],
     pot: f.potential ?? null,
     pop: f.popularity ?? 20,
-    g: f.gymId || undefined,
+    g: gymOf(f.gymId) || undefined,
     td: f.titleDefenses ?? 0,
     tr: f.titleReigns ?? 0,
     s: st
@@ -83,7 +87,7 @@ for (const f of src.fighters) if (!replaced.has(f.id) && DIV[f.divisionId]) figh
 for (const f of src.pfl.fighters) if (DIV[f.divisionId]) fighters.push(compact(f, "pfl"));
 
 const ROLE = { "head-coach": 0, "striking-coach": 1, "grappling-coach": 2, "wrestling-coach": 3, "strength-conditioning": 4 };
-const gyms = src.gyms.map((g) => {
+const gyms = src.gyms.filter((g) => !GYM_FIX.merge[g.id]).map((g) => {
   const q = [50, 50, 50, 50, 50];
   let hc = "";
   for (const s of g.staff ?? []) {
@@ -92,7 +96,19 @@ const gyms = src.gyms.map((g) => {
     q[k] = s.quality;
     if (k === 0) hc = s.name;
   }
-  return { id: g.id, n: g.name, c: g.countryCode || "US", city: g.city || undefined, rep: g.reputation, fac: g.facilities, q, hc };
+  // A merged gym keeps the best reputation and facilities any of its listings had.
+  const group = src.gyms.filter((x) => x.id === g.id || GYM_FIX.merge[x.id] === g.id);
+  const fx = GYM_FIX.fix[g.id] ?? {};
+  return {
+    id: g.id,
+    n: fx.n ?? g.name,
+    c: fx.c ?? (g.countryCode || "US"),
+    city: fx.city ?? (g.city || undefined),
+    rep: Math.max(...group.map((x) => x.reputation)),
+    fac: Math.max(...group.map((x) => x.facilities)),
+    q,
+    hc,
+  };
 });
 
 const ranks = {};

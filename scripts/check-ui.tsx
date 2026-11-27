@@ -36,7 +36,8 @@ import { careerInterest, declineFight, expireOffers, hireManager, makeContractOf
 import { perFight, waitingForTitle } from "../src/career/standing";
 import { release } from "../src/world/market";
 import { tryoutInvites } from "../src/career/tryout";
-import { moveDivision } from "../src/career/moves";
+import { moveDivision, trainingPartners } from "../src/career/moves";
+import { gymMembers, touch } from "../src/world/core";
 import { rankIn } from "../src/world/core";
 import { buildCard } from "../src/world/matchmaking";
 import type { ContractOffer, MMAEvent } from "../src/model/types";
@@ -1050,6 +1051,45 @@ pages(tw, "Retired fighter turned manager");
     else if (!told) fail("the player wasn't told the PFL title fight comes first");
     else if (!offer.includes("title")) fail(`the player's UFC champion was first offered ${offer || "nothing"} in the PFL`);
     else console.log(`The player's UFC champion turned the UFC down, signed with the PFL and was first offered ${offer}${waited ? ` (after ${waited} card${waited === 1 ? "" : "s"} waiting for the champion)` : ""}`);
+  }
+}
+
+// Gyms: one City Kickboxing (the fighter the data listed at "The Fight Centre & City
+// Kickboxing" trains there), no two gyms with the same name, New England in America,
+// an old save's duplicates merged on load, and the Training page's gym panel naming
+// the training partners.
+{
+  const fail = (what: string) => { failures++; console.log(`  FAIL ${what}`); };
+  const w = createWorld(roster, { name: "UI", seed: 92, mode: "fighter", difficulty: "normal", created: { first: "Gym", surname: "Check", sex: "M", country: "NZ", div: "LW", age: 24, height: 70, reach: 72, stance: "orthodox", art: "kickboxing", talent: "prospect", start: "debut" } });
+  const names = Object.values(w.gyms).map((g) => g.name.toLowerCase());
+  const cityKb = Object.values(w.gyms).filter((g) => g.name.toLowerCase().includes("city kickboxing"));
+  const ben = Object.values(w.fighters).find((f) => f.first === "Ben" && f.surname === "Johnston");
+  const ne = Object.values(w.gyms).find((g) => g.name === "New England Cartel");
+  if (new Set(names).size !== names.length) fail(`${names.length - new Set(names).size} gym names are used twice in a new world`);
+  else if (cityKb.length !== 1 || (ben && ben.gym !== cityKb[0].id)) fail(`City Kickboxing is listed ${cityKb.length} times (${cityKb.map((g) => g.name).join(", ")})`);
+  else if (!ne || ne.country !== "US") fail("New England Cartel isn't in the United States");
+  else {
+    // A save from before: the duplicate listing and a made-up gym's twin come back, and loading merges them.
+    const me = w.fighters[w.career.fighters[0]];
+    const kb = cityKb[0];
+    w.gyms["gym-real-308"] = { ...kb, id: "gym-real-308", name: "The Fight Centre & City Kickboxing" };
+    const moved = Object.values(w.fighters).find((f) => f.gym === kb.id && f.id !== me.id)!;
+    moved.gym = "gym-real-308";
+    const made = Object.values(w.gyms).find((g) => !g.real)!;
+    w.gyms["gym-twin"] = { ...made, id: "gym-twin" };
+    repair(w);
+    const after = Object.values(w.gyms).map((g) => g.name.toLowerCase());
+    if (w.gyms["gym-real-308"] || moved.gym !== kb.id) fail("loading an old save didn't merge the second City Kickboxing listing");
+    else if (new Set(after).size !== after.length) fail("loading an old save left two gyms with the same name");
+    else {
+      me.gym = kb.id;
+      touch(w);
+      setWorld(w);
+      const page = renderToString(<Training />).replace(/<!-- -->/g, "");
+      const mates = trainingPartners(w, me).map((x) => x.surname);
+      if (!page.includes("Training partners") || !mates.length || !page.includes(mates[0])) fail("the gym panel doesn't name the training partners");
+      else console.log(`Gyms: ${Object.values(w.gyms).filter((g) => g.real).length} real gyms, no name twice; City Kickboxing once (${gymMembers(w, kb.id).length} fighters, training partners ${mates.slice(0, 3).join(", ")}); an old save's second listing and a made-up twin were merged and renamed on load`);
+    }
   }
 }
 

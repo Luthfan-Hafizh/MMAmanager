@@ -3,7 +3,9 @@ import { money } from "../../core/util";
 import { countryOf, REGIONS, type RegionId } from "../../data/countries";
 import { DIVISIONS, neighbourDivisions } from "../../data/divisions";
 import type { Fighter, World } from "../../model/types";
-import { canMove, gymFee, gymOptions, gymQuality, joinGym, moveDivision, walkRange } from "../../career/moves";
+import { canMove, gymFee, gymOptions, gymQuality, joinGym, moveDivision, trainingPartners, walkRange } from "../../career/moves";
+import { PROMOTIONS } from "../../data/promotions";
+import { rankLabel } from "../../world/core";
 import { changed, toast } from "../../state/store";
 import { Link } from "../router";
 import { Flag, Modal, Panel, Seg } from "../components";
@@ -12,6 +14,7 @@ export function GymPanel({ w, f }: { w: World; f: Fighter }) {
   const [open, setOpen] = useState(false);
   const g = w.gyms[f.gym];
   const fc = w.career.fc[f.id];
+  const partners = g ? trainingPartners(w, f) : [];
   return (
     <Panel title="Gym" acts={<button className="btn sm" onClick={() => setOpen(true)}>Find a new gym</button>}>
       {g ? (
@@ -27,6 +30,22 @@ export function GymPanel({ w, f }: { w: World; f: Fighter }) {
             <div className="tile"><div className="k">Purse cut</div><div className="v">{g.fee}%</div></div>
           </div>
           {fc?.adapt ? <p className="small warn" style={{ marginTop: 10 }}>Settling in: {fc.adapt} more week{fc.adapt === 1 ? "" : "s"} at reduced training speed.</p> : null}
+          {partners.length > 0 && (
+            <div className="gym-mates">
+              <span className="label">Training partners</span>
+              <ul>
+                {partners.map((x) => {
+                  const r = rankLabel(w, x);
+                  return (
+                    <li key={x.id}>
+                      <Link to={`/fighter/${x.id}`}>{x.first} {x.surname}</Link>
+                      <span className="dim">{r ? <b className={r === "C" ? "gold-t" : ""}> {r === "C" ? "Champion" : r}</b> : null} · {DIVISIONS[x.div].short}{x.promo ? ` · ${PROMOTIONS[x.promo].short}` : ""}</span>
+                    </li>
+                  );
+                })}
+              </ul>
+            </div>
+          )}
         </>
       ) : (
         <p className="muted">No gym.</p>
@@ -57,8 +76,13 @@ function GymBrowser({ w, f, onClose }: { w: World; f: Fighter; onClose: () => vo
             {shown.map((o) => (
               <tr key={o.g.id}>
                 <td>
-                  <b>{o.g.name}</b>
-                  <div className="tiny dim row tight"><Flag code={o.g.country} /> {o.g.city} · {o.members} fighters{o.best ? <> · best: <Link to={`/fighter/${o.best.id}`}>{o.best.surname}</Link></> : null}</div>
+                  <b>{o.g.name}</b> <span className="gym-known" title={`The best coaching here: ${o.known.what.toLowerCase()}, ${o.known.v}`}>{o.known.what} {o.known.v}</span>
+                  <div className="tiny dim row tight">
+                    <Flag code={o.g.country} /> {o.g.city} · {o.members} fighter{o.members === 1 ? "" : "s"}
+                    {o.champs ? <b className="gym-champs"> · {o.champs} champion{o.champs === 1 ? "" : "s"}</b> : null}
+                    {o.ranked ? <> · {o.ranked} ranked</> : null}
+                    {o.best ? <> · best: <Link to={`/fighter/${o.best.id}`}>{o.best.surname}</Link></> : null}
+                  </div>
                 </td>
                 <td className="c"><b className="num" style={{ fontSize: 18 }}>{o.quality}</b></td>
                 <td className="c">{gymFee(o.g)}%</td>

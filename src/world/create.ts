@@ -26,6 +26,7 @@ import { grantStyleTech, pickStyles, switchStyle } from "./fightstyle";
 import { dayOfIso, realSignals } from "./real";
 import { styleFit, type GrappleStyle, type StrikeStyle } from "../data/fightstyles";
 import type { Build } from "../data/body";
+import GYM_FIXES from "../data/gym-fixes.json";
 
 export const SAVE_VERSION = 6;
 /** The oldest save format this version can bring up to date. */
@@ -107,8 +108,67 @@ export function migrate(w: World, roster: RosterFile | null): World {
   return w;
 }
 
+/**
+ * Gyms the roster used to list twice (City Kickboxing, and "The Fight Centre &
+ * City Kickboxing" for one fighter who named both) are merged into one, the real
+ * gyms get their cleaned names and places, and a made-up gym that shares a name
+ * with another is renamed. For saves made before the roster was cleaned.
+ */
+export function tidyGyms(w: World): void {
+  const merge = GYM_FIXES.merge as Record<string, string>;
+  let moved = false;
+  for (const f of Object.values(w.fighters)) {
+    const to = merge[f.gym];
+    if (to && w.gyms[to]) {
+      f.gym = to;
+      moved = true;
+    }
+  }
+  for (const [from, to] of Object.entries(merge)) {
+    const a = w.gyms[from];
+    const b = w.gyms[to];
+    if (!a || !b) continue;
+    b.rep = Math.max(a.rep, b.rep);
+    b.facilities = Math.max(a.facilities, b.facilities);
+    delete w.gyms[from];
+    moved = true;
+  }
+  for (const [id, fx] of Object.entries(GYM_FIXES.fix as Record<string, { n?: string; c?: string; city?: string }>)) {
+    const g = w.gyms[id];
+    if (!g) continue;
+    if (fx.n) g.name = fx.n;
+    if (fx.c) g.country = fx.c;
+    if (fx.city) g.city = fx.city;
+    else if (fx.c) g.city = countryOf(fx.c).cities[0];
+  }
+  // Made-up gyms that share a name (two "Kazan Muay Thai" in Kazan, a second "Manchester Top Team").
+  const taken = new Set<string>();
+  for (const g of Object.values(w.gyms).sort((a, b) => Number(!!b.real) - Number(!!a.real))) {
+    if (taken.has(g.name.toLowerCase()) && !g.real) g.name = freeGymName(taken, g.name, g.city, hashString(g.id));
+    taken.add(g.name.toLowerCase());
+  }
+  if (moved) touch(w);
+}
+
+/**
+ * A made-up gym's name that no gym has yet: the next of the usual patterns for the
+ * same city and surname, and only failing those a number.
+ */
+function freeGymName(taken: Set<string>, name: string, city: string, seed: number): string {
+  // The surname in a "Team Silva" kind of name, when there is one.
+  const m = name.match(/^Team (.+)$|^(.+) Combat Academy$|^(.+) Jiu-Jitsu$|^Iron (.+) Gym$/);
+  const last = m ? (m[1] ?? m[2] ?? m[3] ?? m[4]) : null;
+  const options = GYM_PATTERNS.filter((p) => last || !p.includes("{name}"));
+  for (let k = 0; k < options.length; k++) {
+    const n = options[(seed + k) % options.length].replace("{city}", city).replace("{name}", last ?? "");
+    if (!taken.has(n.toLowerCase())) return n;
+  }
+  for (let k = 2; ; k++) if (!taken.has(`${name} ${k}`.toLowerCase())) return `${name} ${k}`;
+}
+
 /** Fixes for every save on load, whatever its version. */
 export function repair(w: World): World {
+  tidyGyms(w);
   // Some signings used to leave the amateur flag on a fighter who had turned pro.
   for (const f of Object.values(w.fighters)) {
     if (f.amateur && ((f.promo && PROMOTIONS[f.promo].tier !== "amateur") || f.rec.w + f.rec.l + f.rec.d + f.rec.nc > 0)) f.amateur = false;
@@ -220,11 +280,15 @@ function makeGym(w: World, rng: Rng, country: string, rep: number): Gym {
   const c = countryOf(country);
   const city = rng.pick(c.cities);
   const { last } = makeName(rng, c.culture, "M");
-  const name = rng.pick(GYM_PATTERNS).replace("{city}", city).replace("{name}", last);
+  const id = nextId(w, "gym");
+  let name = rng.pick(GYM_PATTERNS).replace("{city}", city).replace("{name}", last);
+  // No two gyms share a name, real or made up (the patterns repeat in a big city).
+  const taken = new Set(Object.values(w.gyms).map((x) => x.name.toLowerCase()));
+  if (taken.has(name.toLowerCase())) name = freeGymName(taken, name, city, hashString(id));
   const q = () => Math.round(clamp(rep + rng.normal(0, 8), 20, 90));
   const head = makeName(rng, c.culture, "M");
   const g: Gym = {
-    id: nextId(w, "gym"),
+    id,
     name,
     country,
     city,

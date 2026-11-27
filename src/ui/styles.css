@@ -791,6 +791,12 @@ div.field { display: flex; flex-direction: column; gap: 6px; }
 .modal:focus { outline: none; }
 @keyframes modal-fade { from { opacity: 0; } }
 @keyframes modal-in { from { opacity: 0; transform: translateY(10px) scale(0.985); } }
+/* Gyms: what the coaching is best at, the champions in the room, and the training partners. */
+.gym-known { display: inline-block; margin-left: 6px; padding: 1px 6px; border: 1px solid var(--line-2); border-radius: 2px; font-stretch: 75%; font-weight: 800; font-size: 10.5px; letter-spacing: 0.06em; text-transform: uppercase; color: var(--ink-2); vertical-align: 2px; }
+.gym-champs { color: var(--gold); font-weight: 700; }
+.gym-mates { margin-top: 14px; padding-top: 12px; border-top: 1px solid var(--line); }
+.gym-mates ul { list-style: none; margin: 6px 0 0; padding: 0; display: grid; gap: 5px; font-size: 13.5px; }
+.gym-mates li { display: flex; flex-wrap: wrap; align-items: baseline; gap: 0 4px; }
 /* Scouting: the pitch, with the chance as the headline and the reasons for and against. */
 .pitch-head { display: flex; align-items: center; justify-content: space-between; gap: 12px 18px; flex-wrap: wrap; }
 .pitch-who { display: grid; gap: 5px; min-width: 0; }

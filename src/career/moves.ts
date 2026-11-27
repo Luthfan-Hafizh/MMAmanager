@@ -30,9 +30,30 @@ export interface GymOption {
   quality: number;
   members: number;
   best: Fighter | null;
+  /** Belt holders training there, and fighters ranked in the UFC or the PFL. */
+  champs: number;
+  ranked: number;
+  /** What the coaching is best at, and how good. */
+  known: { what: string; v: number };
   chance: number;
   cost: number;
   why: string;
+}
+
+/** The gym's best coaching, for picking a room: "Striking 83". */
+export function gymStrength(g: Gym): { what: string; v: number } {
+  const c = g.coaches;
+  const list: [string, number][] = [["Striking", c.striking], ["Wrestling", c.wrestling], ["Grappling", c.grappling], ["Strength", c.sc]];
+  const [what, v] = list.sort((a, b) => b[1] - a[1])[0];
+  return { what, v };
+}
+
+/** Who a fighter trains with: the best of the room, the belt holders and the ranked first. */
+export function trainingPartners(w: World, f: Fighter, n = 5): Fighter[] {
+  return gymMembers(w, f.gym)
+    .filter((x) => x.id !== f.id && x.status === "active")
+    .sort((a, b) => Number(isChampion(w, b)) - Number(isChampion(w, a)) || ovrOf(b.attrs) - ovrOf(a.attrs))
+    .slice(0, n);
 }
 
 export function moveCost(f: Fighter, g: Gym): number {
@@ -50,12 +71,14 @@ export function gymOptions(w: World, f: Fighter): GymOption[] {
     .map((g) => {
       const members = gymMembers(w, g.id).filter((x) => x.status === "active");
       const best = members.slice().sort((a, b) => ovrOf(b.attrs) - ovrOf(a.attrs))[0] ?? null;
+      const champs = members.filter((x) => isChampion(w, x)).length;
+      const ranked = members.filter((x) => (x.promo === "ufc" || x.promo === "pfl") && (rankOf(w, x) ?? 0) > 0).length;
       // Elite rooms are choosy; everyone else takes paying members.
       const bar = (g.rep - 55) * 0.9;
       const pull = (o - 50) + tier * 4 + f.pop * 0.3;
       const chance = g.rep < 60 ? 0.97 : clamp(0.5 + (pull - bar) / 25, 0.03, 0.97);
       const why = g.rep >= 75 ? (chance > 0.6 ? "Interested: your level fits the room" : "An elite room: they want proven fighters") : "Open to new members";
-      return { g, quality: gymQuality(g), members: members.length, best, chance, cost: moveCost(f, g), why };
+      return { g, quality: gymQuality(g), members: members.length, best, champs, ranked, known: gymStrength(g), chance, cost: moveCost(f, g), why };
     })
     .sort((a, b) => b.quality - a.quality);
 }

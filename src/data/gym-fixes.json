@@ -1,5 +1,5 @@
 {
-  "_": "The real gyms the source lists more than once (City Kickboxing, and 'The Fight Centre & City Kickboxing' for one fighter who names both), merged into one; and names, cities and countries cleaned of the address pasted into them. Read by scripts/build-data.mjs when the roster is built, and by world/create.ts repair() so saves made before keep the same gyms. British gyms the source codes as 'GB' are put in their home nation (England, Wales) with the real city; Team Topuria is Topuria's own gym in Madrid. Self-named placeholders the UFC's profiles carry for some fighters are put right from their Wikipedia and ESPN teams: Bronx's Gold Team is Chute Boxe Diego Lima in São Paulo (Charles Oliveira, and Ian Machado Garry since 2023), Team Jones is Jackson's MMA Acoma, Team Ortega is Gracie University, Team Naurdiev is Top Team Salzburg; 'hc', 'rep', 'fac' and 'q' (head, striking, grappling, wrestling and strength coaches) set the head coach and the levels. The head coaches are the ones the gym, Wikipedia or the MMA press name; a gym whose head coach isn't on record keeps the source's name.",
+  "_": "The real gyms the source lists more than once (City Kickboxing, and 'The Fight Centre & City Kickboxing' for one fighter who names both), merged into one; and names, cities and countries cleaned of the address pasted into them. Read by scripts/build-data.mjs when the roster is built, and by world/create.ts repair() so saves made before keep the same gyms. British gyms the source codes as 'GB' are put in their home nation (England, Wales) with the real city; Team Topuria is Topuria's own gym in Madrid. Self-named placeholders the UFC's profiles carry for some fighters are put right from their Wikipedia and ESPN teams: Bronx's Gold Team is Chute Boxe Diego Lima in São Paulo (Charles Oliveira, and Ian Machado Garry since 2023), Team Jones is Jackson's MMA Acoma, Team Ortega is Gracie University, Team Naurdiev is Top Team Salzburg; ONX Labs is Trevor Wittman's gym in Denver (the source put it in Tajikistan, after the one fighter it lists there); 'hc', 'rep', 'fac' and 'q' (head, striking, grappling, wrestling and strength coaches) set the head coach and the levels. The head coaches are the ones the gym, Wikipedia or the MMA press name; a gym whose head coach isn't on record keeps the source's name.",
   "merge": {
     "gym-real-308": "gym-real-70",
     "gym-real-278": "gym-real-2",
@@ -98,6 +98,7 @@
     "gym-real-102": { "n": "Paragon BJJ" },
     "gym-real-103": { "n": "Academia Ribas Family" },
     "gym-real-104": { "city": "Guadalajara", "hc": "Francisco Grasso" },
+    "gym-real-106": { "city": "Aurora" },
     "gym-real-108": { "hc": "Santino DeFranco" },
     "gym-real-113": { "n": "MMA Masters", "hc": "Daniel Valverde" },
     "gym-real-114": { "n": "Sik-Jitsu", "hc": "Rick Little" },
@@ -121,6 +122,7 @@
     "gym-real-212": { "n": "MMA Performance Center" },
     "gym-real-215": { "n": "MMA BCN Team" },
     "gym-real-220": { "hc": "Sayif Saud" },
+    "gym-real-223": { "c": "US", "city": "Denver", "hc": "Trevor Wittman", "rep": 76, "fac": 70, "q": [84, 86, 66, 66, 72] },
     "gym-real-225": { "n": "Powell's Martial Arts Concepts" },
     "gym-real-226": { "n": "KC Fight Base", "city": "Liverpool", "c": "GB-ENG" },
     "gym-real-229": { "n": "Dominance MMA" },

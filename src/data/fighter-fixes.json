@@ -1,5 +1,5 @@
 {
-  "_": "Real fighters the source snapshot gets wrong, by id. 'born' (YYYY-MM-DD) sets the birth date: the age and the birthday follow. 'gym' moves the fighter to the gym they really train at, from the placeholder 'from' the source gave (a save made before moves them only if they're still there). Read by scripts/build-data.mjs and world/create.ts repair() for saves made before.",
+  "_": "Real fighters the source snapshot gets wrong, by id. 'born' (YYYY-MM-DD) sets the birth date: the age and the birthday follow. 'gym' moves the fighter to the gym they really train at; a save made before moves them only if they're still at a 'from' gym (one id or a list), or wherever the world put them when 'from' is left out (the source gave them no gym). Read by scripts/build-data.mjs and world/create.ts repair() for saves made before.",
   "pfl-shaqueme-rock": {
     "born": "1993-11-05"
   },
@@ -28,11 +28,25 @@
     "from": "gym-real-247"
   },
   "ufc-kamaru-usman": {
-    "gym": "gym-real-67",
-    "from": "gym-real-58"
+    "gym": "gym-real-223",
+    "from": [
+      "gym-real-58",
+      "gym-real-67"
+    ]
   },
   "ufc-vicente-luque": {
     "gym": "gym-real-67",
     "from": "gym-real-58"
+  },
+  "ufc-justin-gaethje": {
+    "gym": "gym-real-223",
+    "from": "gym-real-38"
+  },
+  "ufc-cory-sandhagen": {
+    "gym": "gym-real-223"
+  },
+  "ufc-rose-namajunas": {
+    "gym": "gym-real-223",
+    "from": "gym-real-105"
   }
 }

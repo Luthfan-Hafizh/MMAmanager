@@ -192,12 +192,13 @@ export function repair(w: World): World {
   tidyGyms(w);
   // Finished bouts used to keep "awaiting: false".
   for (const b of Object.values(w.bouts)) if (b.awaiting === false) delete b.awaiting;
-  // Real fighters the source placed in a gym named after themselves where they don't train
-  // (Ian Machado Garry has been at Chute Boxe Diego Lima since 2023): moved, if still there.
-  for (const [id, fx] of Object.entries(FIGHTER_FIXES as Record<string, { gym?: string; from?: string }>)) {
+  // Real fighters the source placed in a gym where they don't train (Ian Machado Garry has been at
+  // Chute Boxe Diego Lima since 2023): moved, if still at the gym they were given ("from", one or a
+  // list; none when the source gave them no gym and the world picked one).
+  for (const [id, fx] of Object.entries(FIGHTER_FIXES as Record<string, { gym?: string; from?: string | string[] }>)) {
     const f = w.fighters[id];
     if (!f || !fx.gym || !w.gyms[fx.gym] || f.gym === fx.gym || f.ctrl || w.career.fighters.includes(id)) continue;
-    if (fx.from && f.gym !== fx.from) continue;
+    if (fx.from && !(Array.isArray(fx.from) ? fx.from : [fx.from]).includes(f.gym)) continue;
     f.gym = fx.gym;
     touchRoster(w, f);
   }

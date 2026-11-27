@@ -41,6 +41,7 @@ const Titles = lazy(() => import("./pages/Titles").then((m) => ({ default: m.Tit
 const Media = lazy(() => import("./pages/Media").then((m) => ({ default: m.Media })));
 const PressRoom = lazy(() => import("./pages/Media").then((m) => ({ default: m.PressRoom })));
 const Help = lazy(() => import("./pages/Help").then((m) => ({ default: m.Help })));
+const Compare = lazy(() => import("./pages/Compare").then((m) => ({ default: m.Compare })));
 
 /** While a page's code arrives (a moment, the first time it's opened). */
 function Loading() {
@@ -124,6 +125,8 @@ function pageFor(parts: string[]): PageDef {
       return { title: "Settings", eyebrow: "The game", el: <Settings /> };
     case "titles":
       return { title: "Title history", el: <Titles promo={p1} div={p2} />, custom: true };
+    case "compare":
+      return { title: "Compare", el: <Compare a={p1 && p1 !== "-" ? p1 : undefined} b={p2 && p2 !== "-" ? p2 : undefined} />, custom: true };
     case "help":
       return { title: "How to play", el: <Help />, custom: true };
     case "legacy":

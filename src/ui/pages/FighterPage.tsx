@@ -170,7 +170,7 @@ function Overview({ w, f }: { w: World; f: Fighter }) {
           </Panel>
         )}
         {caller && <CallOutPanel w={w} f={caller} target={f} />}
-        <Panel title="Record">
+        <Panel title="Record" acts={<Link to={`/compare/${w.career.fighters[0] && w.career.fighters[0] !== f.id && w.fighters[w.career.fighters[0]] ? `${w.career.fighters[0]}/${f.id}` : `${f.id}/-`}`} className="btn sm">Compare</Link>}>
           <div className="recbox" style={{ borderColor: "var(--line)", background: "var(--sheet-2)" }}>
             <div style={{ borderColor: "var(--line)" }}><div className="label">W-L-D</div><div className="num" style={{ fontSize: 26 }}>{recordText(f)}</div></div>
             <div style={{ borderColor: "var(--line)" }}><div className="label">(T)KO</div><div className="num" style={{ fontSize: 26 }}>{r.koW}-{r.koL}</div></div>

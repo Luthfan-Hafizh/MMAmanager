@@ -10,7 +10,7 @@ import { DIVISIONS, DIVISION_IDS, type DivisionId } from "../data/divisions";
 import { PROMOTIONS, PROMO_IDS, TIER_RANK, promoFor, rosterTarget, type PromoId } from "../data/promotions";
 import { ovrOf } from "../model/attributes";
 import type { Fighter, FightRecord, World } from "../model/types";
-import { addNews, freeAgents, fullName, isChampion, nextId, rankOf, rosterOf, stageFights, touch } from "./core";
+import { addNews, freeAgents, fullName, isChampion, nextId, rankOf, rosterOf, stageFights, touch, touchRoster } from "./core";
 import { contractFor, levelOf, pickGym } from "./create";
 import { blankRecord, generateFighter, makeRecord } from "./generate";
 import { entryElo, unrank } from "./rankings";
@@ -26,6 +26,7 @@ export function release(w: World, f: Fighter, why: string, text?: string): void 
   if (f.booked) return; // let the booked fight happen first
   unrank(w, f, p);
   f.promo = null;
+  touchRoster(w, f);
   f.contract = null;
   if (text) addNews(w, { kind: "release", promo: p, fighters: [f.id], big: true, text });
   else if (p === "ufc" && (f.pop > 35 || f.reigns > 0)) addNews(w, { kind: "release", promo: p, fighters: [f.id], text: `${fullName(f)} has been released by the UFC (${why}).` });
@@ -42,6 +43,7 @@ function retire(w: World, f: Fighter, why: string): void {
   if (f.reigns > 0 && f.rec.w >= 18) w.hof.push({ fighter: f.id, year: ymd(w.day).y });
   if (f.promo) unrank(w, f, f.promo);
   f.promo = null;
+  touchRoster(w, f);
   f.contract = null;
   touch(w);
 }
@@ -185,6 +187,7 @@ function newcomer(w: World, rng: Rng, promo: PromoId, d: DivisionId, o: number, 
   f.pop = Math.round(clamp((o - 40) * 0.6 + rng.normal(0, 5), 1, 40));
   f.joined = w.day;
   w.fighters[f.id] = f;
+  touchRoster(w, f);
   touch(w);
   return f;
 }
@@ -359,6 +362,7 @@ function prospects(w: World, rng: Rng): void {
           f.joined = w.day;
           f.pop = 1;
           w.fighters[f.id] = f;
+          touchRoster(w, f);
         }
       }
     }

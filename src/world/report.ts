@@ -143,6 +143,8 @@ export function keepsReport(w: World, b: Bout): boolean {
 /** Monthly: round-by-round numbers for small shows are let go after six months. */
 export function pruneReports(w: World): void {
   for (const b of Object.values(w.bouts)) {
+    // A year on, the weigh-in of a fight not the player's is only weight in the save.
+    if (b.weighIn && b.day < w.day - 365 && !w.fighters[b.a]?.ctrl && !w.fighters[b.b]?.ctrl && !b.weighIn.missA && !b.weighIn.missB) delete b.weighIn;
     if (!b.res?.rx || b.day > w.day - 182) continue;
     if (!keepsReport(w, b)) delete b.res.rx;
   }

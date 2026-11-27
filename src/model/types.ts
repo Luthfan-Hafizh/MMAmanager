@@ -753,6 +753,8 @@ export interface World {
   hof: { fighter: string; year: number }[];
   /** Fighters whose state changed since the indexes were built. */
   stamp: number;
+  /** Bumped when rosters change (touchRoster): the roster index follows it. */
+  rstamp?: number;
   /** Events not yet held, soonest first. */
   upcoming: string[];
 }

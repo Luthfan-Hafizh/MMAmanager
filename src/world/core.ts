@@ -51,6 +51,8 @@ interface Index {
   roster: Map<string, Fighter[]>; // `${promo}:${div}`
   free: Fighter[];
   byGym: Map<string, Fighter[]>;
+  /** Where each active fighter sits in the lists above, so one move patches the index in place. */
+  at: Map<string, { k: string | null; g: string | null }>;
 }
 
 const cache = new WeakMap<World, Index>();
@@ -59,30 +61,63 @@ export function touch(w: World): void {
   w.stamp = (w.stamp ?? 0) + 1;
 }
 
-function build(w: World): Index {
-  const roster = new Map<string, Fighter[]>();
-  const free: Fighter[] = [];
-  const byGym = new Map<string, Fighter[]>();
-  for (const f of Object.values(w.fighters)) {
-    if (f.status !== "active") continue;
-    if (f.promo) {
-      const k = `${f.promo}:${f.div}`;
-      let l = roster.get(k);
-      if (!l) roster.set(k, (l = []));
-      l.push(f);
-    } else free.push(f);
-    if (f.gym) {
-      let g = byGym.get(f.gym);
-      if (!g) byGym.set(f.gym, (g = []));
-      g.push(f);
-    }
+function place(ix: Index, f: Fighter): void {
+  if (f.status !== "active") return;
+  const k = f.promo ? `${f.promo}:${f.div}` : null;
+  if (k) {
+    let l = ix.roster.get(k);
+    if (!l) ix.roster.set(k, (l = []));
+    l.push(f);
+  } else ix.free.push(f);
+  const g = f.gym || null;
+  if (g) {
+    let l = ix.byGym.get(g);
+    if (!l) ix.byGym.set(g, (l = []));
+    l.push(f);
   }
-  return { stamp: w.stamp, roster, free, byGym };
+  ix.at.set(f.id, { k, g });
+}
+
+function unplace(ix: Index, f: Fighter): void {
+  const at = ix.at.get(f.id);
+  if (!at) return;
+  const drop = (l: Fighter[] | undefined) => {
+    if (!l) return;
+    const i = l.indexOf(f);
+    if (i >= 0) l.splice(i, 1);
+  };
+  drop(at.k ? ix.roster.get(at.k) : ix.free);
+  if (at.g) drop(ix.byGym.get(at.g));
+  ix.at.delete(f.id);
+}
+
+function build(w: World): Index {
+  const ix: Index = { stamp: w.rstamp ?? 0, roster: new Map(), free: [], byGym: new Map(), at: new Map() };
+  for (const f of Object.values(w.fighters)) place(ix, f);
+  return ix;
+}
+
+/**
+ * Who is on which roster changed: a fighter signed, released, retired, added, or moved
+ * to another weight or gym. With the fighter, the index is patched in place; without,
+ * it's rebuilt when next read. (It used to be rebuilt after every change to the world,
+ * a quarter of the simulation's time.)
+ */
+export function touchRoster(w: World, f?: Fighter): void {
+  const ix = cache.get(w);
+  const current = !!ix && ix.stamp === (w.rstamp ?? 0);
+  w.rstamp = (w.rstamp ?? 0) + 1;
+  if (ix && current && f) {
+    unplace(ix, f);
+    place(ix, f);
+    ix.stamp = w.rstamp;
+  }
+  touch(w);
 }
 
 function index(w: World): Index {
   let ix = cache.get(w);
-  if (!ix || ix.stamp !== w.stamp) {
+  if (!ix || ix.stamp !== (w.rstamp ?? 0)) {
     ix = build(w);
     cache.set(w, ix);
   }

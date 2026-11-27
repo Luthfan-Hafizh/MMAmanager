@@ -9,7 +9,7 @@ import { DIVISIONS, ladderOf, type DivisionId } from "../data/divisions";
 import { PROMOTIONS, TIER_RANK } from "../data/promotions";
 import { ovrOf } from "../model/attributes";
 import type { Fighter, Gym, World } from "../model/types";
-import { addNews, fullName, gymMembers, isChampion, rankOf, touch, withRng } from "../world/core";
+import { addNews, fullName, gymMembers, isChampion, rankOf, touch, withRng, touchRoster } from "../world/core";
 import { vacate } from "../world/titles";
 import { activityScore, updateRankings } from "../world/rankings";
 import { notify } from "./inbox";
@@ -95,6 +95,7 @@ export function joinGym(w: World, f: Fighter, gymId: string): string {
   if (!ok) return `${g.name} passed for now. Win a couple more and ask again.`;
   const old = w.gyms[f.gym];
   f.gym = g.id;
+  touchRoster(w, f);
   g.fee = gymFee(g);
   fc.adapt = 4;
   if (w.career.mode === "fighter") ledger(w, { amount: -opt.cost, what: `Moving to ${g.name}`, cat: "travel", fighter: f.id });
@@ -135,6 +136,7 @@ export function moveDivision(w: World, f: Fighter, to: DivisionId): string {
   if (chk.vacates) vacate(w, f, "moved");
   for (const o of w.career.fightOffers) if (o.fighter === f.id && o.status === "open") declineFight(w, o.id, true, "moved");
   f.div = to;
+  touchRoster(w, f);
   // Results at the new weight were kept as a second place there; now it is the fighter's own,
   // and the place earned there is kept.
   const earned = f.xw?.find((x) => x.promo === f.promo && x.div === to && x.score !== undefined && x.beat.length > x.lost);

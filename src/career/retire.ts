@@ -7,7 +7,7 @@ import { ageAt, fmtDate } from "../core/time";
 import { clamp, money } from "../core/util";
 import { PROMOTIONS } from "../data/promotions";
 import type { Fighter, World } from "../model/types";
-import { addNews, fullName, touch } from "../world/core";
+import { addNews, fullName, touch, touchRoster } from "../world/core";
 import { vacate } from "../world/titles";
 import { goatRank, legacyText } from "../world/legacy";
 import { notify } from "./inbox";
@@ -61,6 +61,7 @@ export function retirePlayer(w: World, f: Fighter): string {
   f.status = "retired";
   f.retired = w.day;
   f.promo = null;
+  touchRoster(w, f);
   f.contract = null;
   w.career.fighters = w.career.fighters.filter((x) => x !== f.id);
   w.career.retiredAt = w.day;

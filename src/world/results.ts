@@ -9,7 +9,7 @@ import { PROMOTIONS } from "../data/promotions";
 import { ovr, ovrOf } from "../model/attributes";
 import type { Bout, BoutResult, Fighter, MMAEvent, Reign, World } from "../model/types";
 import { simulate, methodPhrase, type Condition, type FightInput, type FightOutcome, isFinish } from "../engine/sim";
-import { addNews, fullName, isControlled, rankOf, ringRust, touch } from "./core";
+import { addNews, fullName, isControlled, rankOf, ringRust, touch, touchRoster } from "./core";
 import { fightStyle } from "./fightstyle";
 import { packRounds } from "./report";
 import { eloUpdate, entryElo, nameContenders, rankingNews, rankScore, updateP4P, updateRankings, unrank } from "./rankings";
@@ -250,7 +250,7 @@ export function applyResult(w: World, rng: Rng, b: Bout, o: FightOutcome): void 
   const keep = !!(A.ctrl || B.ctrl);
   b.res = toResult(o, keep);
   b.status = "done";
-  b.awaiting = false;
+  delete b.awaiting;
   const winner = o.winner === "a" ? A : o.winner === "b" ? B : null;
   const loser = winner === A ? B : winner === B ? A : null;
   b.rankA = rankOf(w, A);
@@ -473,6 +473,7 @@ function settleAtWeight(w: World, f: Fighter, b: Bout): void {
   const ps = w.promos[b.promo];
   if (ps.champs[from] === f.id || ps.interim[from] === f.id) return;
   f.div = d;
+  touchRoster(w, f);
   if (f.xw) f.xw = f.xw.filter((x) => x.div !== d);
   updateRankings(w, b.promo, [from, d]);
   if (f.ctrl) {
@@ -692,6 +693,7 @@ export function signTo(w: World, f: Fighter, promo: "ufc" | "pfl" | string, rng:
     unrank(w, f, f.promo);
   }
   f.promo = id;
+  touchRoster(w, f);
   // Signing with a pro promotion makes a pro (a short-notice debut, a signing from the level below).
   f.amateur = p.tier === "amateur";
   f.joined = w.day;

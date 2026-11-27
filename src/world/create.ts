@@ -14,7 +14,7 @@ import { ovrOf } from "../model/attributes";
 import type { Bout, Career, Contract, Fighter, Gym, PromoState, Stance, World } from "../model/types";
 import { defaultTraining } from "../career/training";
 import { ensureSchedule } from "./calendar";
-import { addNews, fullName, nextId, rankOf, touch, withRng } from "./core";
+import { addNews, fullName, nextId, rankOf, touch, withRng, touchRoster } from "./core";
 import { generateFighter, makeRecord, pickCountry } from "./generate";
 import { currentStreak, potentialNoise, prospectRoom, realFighter, realGym, type RosterFile } from "./real";
 import { entryElo, p4pOf, refitRankings, updateP4P, updateRankings } from "./rankings";
@@ -122,6 +122,7 @@ export function tidyGyms(w: World): void {
     const to = merge[f.gym];
     if (to && w.gyms[to]) {
       f.gym = to;
+      touchRoster(w, f);
       moved = true;
     }
   }
@@ -170,6 +171,8 @@ function freeGymName(taken: Set<string>, name: string, city: string, seed: numbe
 /** Fixes for every save on load, whatever its version. */
 export function repair(w: World): World {
   tidyGyms(w);
+  // Finished bouts used to keep "awaiting: false".
+  for (const b of Object.values(w.bouts)) if (b.awaiting === false) delete b.awaiting;
   // Real fighters the source got wrong (Shaqueme Rock was 833 years old).
   for (const [id, fx] of Object.entries(FIGHTER_FIXES as Record<string, { born?: string }>)) {
     const f = w.fighters[id];
@@ -415,6 +418,7 @@ function populate(w: World, rng: Rng, promo: PromoId): void {
       f.pop = Math.round(clamp((o - 40) * 0.6 + rng.normal(0, 5), 1, 40));
       f.joined = w.day;
       w.fighters[f.id] = f;
+      touchRoster(w, f);
       members.push(f);
     }
     // The champion: the best of them, usually.
@@ -446,6 +450,7 @@ function freeAgentPool(w: World, rng: Rng): void {
       f.elo = 1150 + (o - 54) * 9;
       f.lastFight = w.day - rng.int(30, 300);
       w.fighters[f.id] = f;
+      touchRoster(w, f);
     }
   }
 }
@@ -531,6 +536,7 @@ export function createWorld(roster: RosterFile, o: NewGameOptions): World {
     const gap = f.promo === "ufc" ? 200 : 170;
     f.lastFight = day - rng.int(rank === 0 ? 60 : 21, gap);
     w.fighters[f.id] = f;
+    touchRoster(w, f);
   }
   // UFC titles, rankings and ratings from the official list.
   const ups = w.promos.ufc;
@@ -589,6 +595,7 @@ export function createWorld(roster: RosterFile, o: NewGameOptions): World {
       f.pop = Math.round(clamp((o2 - 45) * 0.8, 5, 45));
       f.joined = day;
       w.fighters[f.id] = f;
+      touchRoster(w, f);
     }
   }
   // Divisions the real PFL rankings don't cover are ranked by rating; then the PFL's pound for pound.
@@ -728,6 +735,7 @@ export function createPlayerFighter(w: World, cf: CreatedFighter, o: NewGameOpti
   st.known = undefined;
   grantStyleTech(f);
   w.fighters[f.id] = f;
+  touchRoster(w, f);
   return f;
 }
 

@@ -1,7 +1,7 @@
 // The shell: a black broadcast bar (date, bank, Continue) over a white navigation
 // strip, then the page. Every page opens with a dark hero band.
 
-import { useEffect, useRef, type ReactNode } from "react";
+import { lazy, Suspense, useEffect, useRef, type ReactNode } from "react";
 import { fmtDate, DOW, ymd } from "../core/time";
 import { money } from "../core/util";
 import { DIVISIONS } from "../data/divisions";
@@ -14,25 +14,40 @@ import { Icons, Logo } from "./icons";
 import { go, Link, useRoute } from "./router";
 import { Band } from "./art";
 import { Title } from "./pages/Title";
-import { NewGame } from "./pages/NewGame";
 import { Home } from "./pages/Home";
-import { Inbox } from "./pages/Inbox";
-import { FighterPage } from "./pages/FighterPage";
-import { Training } from "./pages/Training";
-import { NextFight } from "./pages/NextFight";
-import { FightNight } from "./pages/FightNight";
-import { Contracts } from "./pages/Contracts";
-import { Finances } from "./pages/Finances";
-import { Events, EventPage } from "./pages/Events";
-import { Rankings } from "./pages/Rankings";
-import { News } from "./pages/News";
-import { Fighters } from "./pages/Fighters";
-import { Promotions, PromotionPage } from "./pages/Promotions";
-import { Settings } from "./pages/Settings";
-import { Agency, Scouting } from "./pages/Agency";
-import { Legacy } from "./pages/Legacy";
-import { Titles } from "./pages/Titles";
-import { Media, PressRoom } from "./pages/Media";
+
+// Pages load when first opened, so the first visit (on a phone above all) downloads less.
+const NewGame = lazy(() => import("./pages/NewGame").then((m) => ({ default: m.NewGame })));
+const Inbox = lazy(() => import("./pages/Inbox").then((m) => ({ default: m.Inbox })));
+const FighterPage = lazy(() => import("./pages/FighterPage").then((m) => ({ default: m.FighterPage })));
+const Training = lazy(() => import("./pages/Training").then((m) => ({ default: m.Training })));
+const NextFight = lazy(() => import("./pages/NextFight").then((m) => ({ default: m.NextFight })));
+const FightNight = lazy(() => import("./pages/FightNight").then((m) => ({ default: m.FightNight })));
+const Contracts = lazy(() => import("./pages/Contracts").then((m) => ({ default: m.Contracts })));
+const Finances = lazy(() => import("./pages/Finances").then((m) => ({ default: m.Finances })));
+const Events = lazy(() => import("./pages/Events").then((m) => ({ default: m.Events })));
+const EventPage = lazy(() => import("./pages/Events").then((m) => ({ default: m.EventPage })));
+const Rankings = lazy(() => import("./pages/Rankings").then((m) => ({ default: m.Rankings })));
+const News = lazy(() => import("./pages/News").then((m) => ({ default: m.News })));
+const Fighters = lazy(() => import("./pages/Fighters").then((m) => ({ default: m.Fighters })));
+const Promotions = lazy(() => import("./pages/Promotions").then((m) => ({ default: m.Promotions })));
+const PromotionPage = lazy(() => import("./pages/Promotions").then((m) => ({ default: m.PromotionPage })));
+const Settings = lazy(() => import("./pages/Settings").then((m) => ({ default: m.Settings })));
+const Agency = lazy(() => import("./pages/Agency").then((m) => ({ default: m.Agency })));
+const Scouting = lazy(() => import("./pages/Agency").then((m) => ({ default: m.Scouting })));
+const Legacy = lazy(() => import("./pages/Legacy").then((m) => ({ default: m.Legacy })));
+const Titles = lazy(() => import("./pages/Titles").then((m) => ({ default: m.Titles })));
+const Media = lazy(() => import("./pages/Media").then((m) => ({ default: m.Media })));
+const PressRoom = lazy(() => import("./pages/Media").then((m) => ({ default: m.PressRoom })));
+
+/** While a page's code arrives (a moment, the first time it's opened). */
+function Loading() {
+  return (
+    <div className="wrap page-body" aria-busy="true">
+      <p className="muted">Loading…</p>
+    </div>
+  );
+}
 import type { World } from "../model/types";
 
 export function App() {
@@ -41,7 +56,7 @@ export function App() {
   const t = useStore((s) => s.toast);
   const route = useRoute();
   let body: ReactNode;
-  if (!world) body = route.parts[0] === "new" ? <NewGame /> : <Title />;
+  if (!world) body = route.parts[0] === "new" ? <Suspense fallback={<Loading />}><NewGame /></Suspense> : <Title />;
   else body = <Shell />;
   return (
     <>
@@ -284,14 +299,16 @@ function Shell() {
       </nav>
       <Ticker w={w} />
       <main id="main">
-        {page.custom ? (
-          page.el
-        ) : (
-          <>
-            <Band eyebrow={page.eyebrow} title={page.title} sub={page.sub} />
-            <div className="wrap page-body">{page.el}</div>
-          </>
-        )}
+        <Suspense fallback={<Loading />}>
+          {page.custom ? (
+            page.el
+          ) : (
+            <>
+              <Band eyebrow={page.eyebrow} title={page.title} sub={page.sub} />
+              <div className="wrap page-body">{page.el}</div>
+            </>
+          )}
+        </Suspense>
       </main>
     </>
   );

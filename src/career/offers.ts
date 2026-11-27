@@ -10,7 +10,7 @@ import { PROMOTIONS, TIER_RANK, promoFor, type PromoId } from "../data/promotion
 import { countryOf } from "../data/countries";
 import { ovr, ovrOf } from "../model/attributes";
 import type { BidEnd, ContractOffer, Fact, FightOffer, Fighter, World } from "../model/types";
-import { addNews, fullName, nextId, rankOf, touch, isChampion, isInterim, withRng } from "../world/core";
+import { addNews, fullName, nextId, rankOf, touch, isChampion, isInterim, withRng, touchRoster } from "../world/core";
 import { dropInterim, vacate } from "../world/titles";
 import { promoteInterim, refreshDivision } from "../world/belts";
 import { callOff, cancelBout, withdraw } from "../world/matchmaking";
@@ -501,6 +501,7 @@ function joinPromotion(w: World, f: Fighter, promo: PromoId, t: Terms): PromoId 
     if (fc && f.contract && PROMOTIONS[f.contract.promo].tier !== "amateur") fc.lastDeal = { promo: f.contract.promo, show: f.contract.show, win: f.contract.win, ended: w.day };
   }
   f.promo = promo;
+  touchRoster(w, f);
   f.amateur = PROMOTIONS[promo].tier === "amateur";
   if (old !== promo) {
     f.joined = w.day;
@@ -582,6 +583,7 @@ function toFreeAgency(w: World, f: Fighter): void {
     }
   }
   f.promo = null;
+  touchRoster(w, f);
   f.contract = null;
   touch(w);
 }

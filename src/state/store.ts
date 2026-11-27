@@ -52,6 +52,8 @@ export function useVersion(): number {
 
 export function changed(): void {
   emit();
+  // Whatever was just done (an offer answered, a plan changed) is kept even without a Continue.
+  saveSoon();
 }
 
 export function setWorld(w: World | null): void {
@@ -124,6 +126,43 @@ export function save(): Promise<boolean> {
   return queued;
 }
 
+// ---------- saving in a quiet moment ----------
+
+type Pending = { idle: boolean; id: number };
+let pending: Pending | null = null;
+const canStore = () => typeof indexedDB !== "undefined";
+
+/**
+ * Save when the browser has a quiet moment, within a couple of seconds: a run of
+ * Continue doesn't stop to save after every week (a big career takes a moment to
+ * write). Leaving the tab saves at once.
+ */
+export function saveSoon(): void {
+  if (pending || !canStore() || !state.world) return;
+  const run = () => {
+    pending = null;
+    void save();
+  };
+  const ric = (globalThis as { requestIdleCallback?: (cb: () => void, o?: { timeout: number }) => number }).requestIdleCallback;
+  pending = ric ? { idle: true, id: ric(run, { timeout: 2500 }) } : { idle: false, id: setTimeout(run, 1500) as unknown as number };
+}
+
+function flushSave(): void {
+  if (!pending) return;
+  const cic = (globalThis as { cancelIdleCallback?: (id: number) => void }).cancelIdleCallback;
+  if (pending.idle && cic) cic(pending.id);
+  else if (!pending.idle) clearTimeout(pending.id);
+  pending = null;
+  void save();
+}
+
+if (typeof document !== "undefined" && typeof document.addEventListener === "function") {
+  document.addEventListener("visibilitychange", () => {
+    if (document.visibilityState === "hidden") flushSave();
+  });
+}
+if (typeof window !== "undefined" && typeof window.addEventListener === "function") window.addEventListener("pagehide", flushSave);
+
 /** Continue: advance in small steps so the page stays responsive. */
 export async function continueGame(max = 7): Promise<AdvanceResult | null> {
   const w = state.world;
@@ -150,7 +189,7 @@ export async function continueGame(max = 7): Promise<AdvanceResult | null> {
     state.lastStop = stop;
     emit();
   }
-  void save();
+  saveSoon();
   return { days: total, stop };
 }
 

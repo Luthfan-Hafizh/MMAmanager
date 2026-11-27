@@ -38,8 +38,8 @@ export const NAME_POOLS: Record<string, Pool> = {
     "García Fernández González Rodríguez López Martínez Sánchez Pérez Gómez Martín Jiménez Ruiz Hernández Díaz Moreno Muñoz Álvarez Romero Alonso Navarro Torres Domínguez Gil Vázquez Serrano Ramos Blanco Molina Ortega Delgado Castro Rubio Marín Iglesias Medina Garrido"
   ),
   brazil: P(
-    "João Lucas Gabriel Rafael Matheus Pedro Gustavo Felipe Bruno Thiago Diego Rodrigo Leonardo Vinicius Caio Igor Wellington Renato Marcos Jailton Charles Deiveson Gilbert Edson Alex Thiago Jorge Ronaldo Rogério Davi Ariane Jean Michel Elves Cláudio Wanderlei",
-    "Amanda Ana Juliana Larissa Bruna Mariana Beatriz Camila Jéssica Karine Taila Viviane Ketlen Tainara Priscila",
+    "João Lucas Gabriel Rafael Matheus Pedro Gustavo Felipe Bruno Thiago Diego Rodrigo Leonardo Vinicius Caio Igor Wellington Renato Marcos Jailton Charles Deiveson Gilbert Edson Alex Jorge Ronaldo Rogério Davi Adriano Jean Michel Elves Cláudio Wanderlei",
+    "Amanda Ana Juliana Larissa Bruna Mariana Beatriz Camila Jéssica Karine Taila Viviane Ketlen Tainara Priscila Ariane",
     "Silva Santos Oliveira Souza Rodrigues Ferreira Alves Pereira Lima Gomes Costa Ribeiro Martins Carvalho Almeida Lopes Soares Fernandes Vieira Barbosa Rocha Dias Nascimento Andrade Moreira Nunes Marques Machado Mendes Freitas Cardoso Ramos Gonçalves Santana Teixeira Moraes Borges Araújo Pinheiro Cavalcante Monteiro Medeiros Batista Brandão Queiroz Neves Pimenta Prates"
   ),
   french: P(

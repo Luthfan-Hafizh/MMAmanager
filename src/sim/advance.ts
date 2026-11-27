@@ -208,6 +208,12 @@ export function advanceDay(w: World): Stop[] {
     if (isFirstOfMonth(w.day)) monthly(w, rng);
     for (const ev of eventsOn(w, w.day)) {
       if (ev.status === "done") continue;
+      // A card that never came together isn't held with nobody on it: it comes off the calendar.
+      if (!ev.bouts.length) {
+        w.upcoming = w.upcoming.filter((id) => id !== ev.id);
+        delete w.events[ev.id];
+        continue;
+      }
       const mine = ev.bouts.some((id) => {
         const b = w.bouts[id];
         return b.status === "booked" && !b.pending && (w.fighters[b.a]?.ctrl || w.fighters[b.b]?.ctrl);
@@ -246,7 +252,7 @@ export function advance(w: World, max = 7, onDay?: (w: World) => void): AdvanceR
     if (block.length) return { days, stop: { kind: "decision", text: block[0].subject, ref: block[0].id } };
     const fn = fightNight(w);
     if (fn) return { days, stop: { kind: "fight", text: `Fight night: ${fn.name}`, ref: fn.id } };
-    if (!w.career.fighters.some((id) => w.fighters[id]?.status === "active") && !w.career.retiredAt) return { days, stop: { kind: "retired", text: "No active fighters." } };
+    if (w.career.mode === "fighter" && !w.career.fighters.some((id) => w.fighters[id]?.status === "active") && !w.career.retiredAt) return { days, stop: { kind: "retired", text: "No active fighters." } };
     const stops = advanceDay(w);
     days++;
     onDay?.(w);

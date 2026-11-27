@@ -67,6 +67,17 @@ function kFactor(w: World, f: Fighter, b: Bout): number {
   return k;
 }
 
+/** Off a promotion's lists the moment a fighter leaves it (signed elsewhere, released, retired), not at its next update. */
+export function unrank(w: World, f: Fighter, promo: PromoId): void {
+  const ps = w.promos[promo];
+  if (!ps) return;
+  for (const d of Object.keys(ps.ranks) as DivisionId[]) {
+    const list = ps.ranks[d];
+    if (list?.includes(f.id)) ps.ranks[d] = list.filter((x) => x !== f.id);
+    if (ps.contender[d] === f.id) ps.contender[d] = null;
+  }
+}
+
 /** Proven here: has fought on this stage (or was on the roster when the world began). */
 function provenHere(w: World, f: Fighter, promo: PromoId): boolean {
   if (f.promo === promo && f.joined <= w.start) return true;

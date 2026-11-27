@@ -39,10 +39,13 @@ export function readyFor(w: World, f: Fighter, ev: MMAEvent, opts: { shortNotice
   if (f.promo !== ev.promo && ev.promo !== "dwcs") return false;
   if (f.contract && f.contract.left <= 0 && PROMOTIONS[ev.promo].tier !== "amateur") return false;
   const clear = availableFrom(f);
-  if (clear > ev.day - (opts.shortNotice ? 3 : 21)) return false;
+  // The first weeks of a new world: the fighters on these cards were already in camp
+  // when it began, so the cards fill like short-notice ones instead of running empty.
+  const early = ev.day - w.start < 42;
+  if (clear > ev.day - (opts.shortNotice || early ? 3 : 21)) return false;
   const p = PROMOTIONS[ev.promo];
   const since = f.lastFight === null ? 9999 : ev.day - f.lastFight;
-  const need = opts.shortNotice ? 35 : restNeeded(f, p.gap);
+  const need = opts.shortNotice ? 35 : early ? Math.min(35, restNeeded(f, p.gap)) : restNeeded(f, p.gap);
   if (since < need) return false;
   return true;
 }

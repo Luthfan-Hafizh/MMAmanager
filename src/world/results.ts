@@ -12,7 +12,7 @@ import { simulate, methodPhrase, type Condition, type FightInput, type FightOutc
 import { addNews, fullName, isControlled, rankOf, ringRust, touch } from "./core";
 import { fightStyle } from "./fightstyle";
 import { packRounds } from "./report";
-import { eloUpdate, entryElo, nameContenders, rankingNews, rankScore, updateP4P, updateRankings } from "./rankings";
+import { eloUpdate, entryElo, nameContenders, rankingNews, rankScore, updateP4P, updateRankings, unrank } from "./rankings";
 import { markDone } from "./calendar";
 import { orderCard, refreshCard } from "./matchmaking";
 import { afterFightCareer, payControlled } from "../career/afterfight";
@@ -657,7 +657,10 @@ function bigStage(promo: string): boolean {
 export function signTo(w: World, f: Fighter, promo: "ufc" | "pfl" | string, rng: Rng, opts: { fights?: number; show?: number } = {}): void {
   const id = promo as keyof typeof PROMOTIONS;
   const p = PROMOTIONS[id];
-  if (f.promo && f.promo !== id) vacate(w, f, "moved");
+  if (f.promo && f.promo !== id) {
+    vacate(w, f, "moved");
+    unrank(w, f, f.promo);
+  }
   f.promo = id;
   // Signing with a pro promotion makes a pro (a short-notice debut, a signing from the level below).
   f.amateur = p.tier === "amateur";

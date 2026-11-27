@@ -8,6 +8,7 @@
 // exposure, and a loss that is forgiven more easily than most.
 
 import { clamp } from "../core/util";
+import { countryOf } from "../data/countries";
 import { DIVISIONS, neighbourDivisions } from "../data/divisions";
 import { PROMOTIONS, TIER_RANK, type PromoId } from "../data/promotions";
 import { ovrOf } from "../model/attributes";
@@ -88,6 +89,8 @@ export function findCall(w: World, ev: MMAEvent, b: Bout, stay: Fighter, days: n
     // A Contender Series week accepted: no calls around it.
     if (tryoutHold(w, f, ev.day)) continue;
     if ((f.injury && f.injury.until > ev.day - 2) || f.susp > ev.day) continue;
+    // An amateur turns pro by choice, never on a phone call.
+    if (f.amateur || (f.promo && PROMOTIONS[f.promo].tier === "amateur")) continue;
     if (f.lastFight !== null && ev.day - f.lastFight < 21) continue;
     if (DIVISIONS[f.div].sex !== DIVISIONS[b.div].sex) continue;
     // Champions don't step in on short notice.
@@ -120,7 +123,8 @@ export function findCall(w: World, ev: MMAEvent, b: Bout, stay: Fighter, days: n
       if (ev.promo === "ufc" && (o < 64 || f.rec.w < 5 || f.rec.w < f.rec.l * 2)) continue;
       if (ev.promo === "pfl" && (o < 60 || f.rec.w < 4 || f.rec.w < f.rec.l * 1.5)) continue;
       if (p.tier === "regional" && (o < 52 || f.rec.w < 2)) continue;
-      if (p.tier === "regional" && p.region !== "global" && PROMOTIONS[ev.promo].region !== (f.promo ? PROMOTIONS[f.promo].region : p.region)) continue;
+      // Regional and local shows call fighters from their own region (a free agent's is home).
+      if ((p.tier === "regional" || p.tier === "local") && p.region !== "global" && p.region !== (f.promo ? PROMOTIONS[f.promo].region : countryOf(f.country).region)) continue;
       debut = ev.promo;
     }
     // Credible against this opponent?

@@ -24,6 +24,8 @@ export interface RealFighter {
   cn: string;
   h?: string;
   a: number;
+  /** The exact birth date (YYYY-MM-DD), where the source's age was put right. */
+  bd?: string;
   ht: number;
   rc: number;
   b: string;
@@ -287,7 +289,7 @@ export function realFighter(rf: RealFighter, ctx: RealContext, seed: number): Fi
     sex: def0.sex,
     country: rf.c,
     hometown: rf.h || rng.pick(country.cities),
-    birth: Math.round(ctx.day - rf.a * 365.25 - rng.int(0, 364)),
+    birth: birthOf(rf, ctx.day, rng.int(0, 364)),
     div: rf.d,
     height: rf.ht,
     reach: rf.rc || rf.ht,
@@ -374,4 +376,13 @@ export function realGym(g: RealGym): Gym {
     fee: g.rep >= 80 ? 15 : g.rep >= 70 ? 12 : 10,
     real: true,
   };
+}
+
+/** The birth day: the exact date where the roster has one, else the age less a random part of the year. */
+function birthOf(rf: RealFighter, day: number, within: number): number {
+  if (rf.bd) {
+    const [y, m, d] = rf.bd.split("-").map(Number);
+    return dayOf(y, m - 1, d);
+  }
+  return Math.round(day - rf.a * 365.25 - within);
 }

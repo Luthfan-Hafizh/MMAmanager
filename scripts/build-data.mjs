@@ -9,6 +9,16 @@ const src = JSON.parse(readFileSync("data-src/roster-2026-10.json", "utf8"));
 // for one fighter who names both) are merged, and names and places cleaned: src/data/gym-fixes.json.
 const GYM_FIX = JSON.parse(readFileSync("src/data/gym-fixes.json", "utf8"));
 const gymOf = (id) => (id && GYM_FIX.merge[id]) || id;
+// Real fighters the snapshot gets wrong (Shaqueme Rock at 833): src/data/fighter-fixes.json.
+const FIGHTER_FIX = JSON.parse(readFileSync("src/data/fighter-fixes.json", "utf8"));
+/** Age in whole years on a day, from a YYYY-MM-DD birth date. */
+function ageOn(born, on) {
+  const [by, bm, bd] = born.split("-").map(Number);
+  const t = new Date(on);
+  let a = t.getUTCFullYear() - by;
+  if (t.getUTCMonth() + 1 < bm || (t.getUTCMonth() + 1 === bm && t.getUTCDate() < bd)) a--;
+  return a;
+}
 const DIV = {
   flyweight: "FLY", bantamweight: "BW", featherweight: "FW", lightweight: "LW", welterweight: "WW", middleweight: "MW",
   "light-heavyweight": "LHW", heavyweight: "HW", "womens-strawweight": "WSW", "womens-flyweight": "WFLY",
@@ -48,7 +58,8 @@ function compact(f, promo) {
     c: f.countryCode || "US",
     cn: f.country,
     h: f.hometown || undefined,
-    a: f.age,
+    a: FIGHTER_FIX[f.id]?.born ? ageOn(FIGHTER_FIX[f.id].born, src.meta.snapshotDate) : f.age,
+    bd: FIGHTER_FIX[f.id]?.born,
     ht: f.heightIn,
     rc: f.reachIn || f.heightIn,
     b: f.build,

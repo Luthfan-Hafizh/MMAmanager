@@ -75,7 +75,16 @@ for (const id of PROMO_IDS) {
   for (const [d, list] of Object.entries(ps.ranks)) {
     if (new Set(list).size !== list!.length) errors.push(`${id} ${d} ranking has duplicates`);
     if (ps.champs[d as keyof typeof ps.champs] && list!.includes(ps.champs[d as keyof typeof ps.champs]!)) errors.push(`${id} ${d} champion is also ranked`);
+    // Off the list the moment they leave (signed elsewhere, released, retired).
+    for (const r of list ?? []) {
+      const f = w.fighters[r];
+      if (!f || f.status !== "active" || f.promo !== id) errors.push(`${id} ${d} still ranks ${f ? `${f.first} ${f.surname} (${f.status === "active" ? f.promo ?? "free agent" : "retired"})` : r}`);
+    }
   }
+}
+// Every event held had fights on it (a new world's first weeks used to run empty cards).
+for (const ev of Object.values(w.events)) {
+  if (ev.status === "done" && !ev.bouts.some((id) => w.bouts[id]?.status === "done")) errors.push(`${ev.name} (day ${ev.day}) was held with no fights`);
 }
 
 // Champions and interim champions fight only for belts at their weight (as in the

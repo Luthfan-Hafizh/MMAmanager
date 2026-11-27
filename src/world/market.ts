@@ -13,7 +13,7 @@ import type { Fighter, FightRecord, World } from "../model/types";
 import { addNews, freeAgents, fullName, isChampion, nextId, rankOf, rosterOf, stageFights, touch } from "./core";
 import { contractFor, levelOf, pickGym } from "./create";
 import { blankRecord, generateFighter, makeRecord } from "./generate";
-import { entryElo } from "./rankings";
+import { entryElo, unrank } from "./rankings";
 import { clockShift } from "./development";
 import { signTo } from "./results";
 import { vacate } from "./titles";
@@ -24,6 +24,7 @@ export function release(w: World, f: Fighter, why: string, text?: string): void 
   if (!p) return;
   vacate(w, f, "vacated");
   if (f.booked) return; // let the booked fight happen first
+  unrank(w, f, p);
   f.promo = null;
   f.contract = null;
   if (text) addNews(w, { kind: "release", promo: p, fighters: [f.id], big: true, text });
@@ -39,6 +40,7 @@ function retire(w: World, f: Fighter, why: string): void {
   const notable = f.reigns > 0 || f.pop > 45 || (f.promo === "ufc" && rankOf(w, f) !== null);
   if (notable) addNews(w, { kind: "retire", promo: f.promo ?? undefined, fighters: [f.id], big: f.reigns > 0, text: `${fullName(f)} retires from MMA at ${Math.floor(ageAt(f.birth, w.day))}, finishing ${f.rec.w}-${f.rec.l}${f.rec.d ? `-${f.rec.d}` : ""}${why ? ` (${why})` : ""}.` });
   if (f.reigns > 0 && f.rec.w >= 18) w.hof.push({ fighter: f.id, year: ymd(w.day).y });
+  if (f.promo) unrank(w, f, f.promo);
   f.promo = null;
   f.contract = null;
   touch(w);

@@ -1,0 +1,6 @@
+{
+  "_": "Real fighters the source snapshot gets wrong, by id. 'born' (YYYY-MM-DD) sets the birth date: the age and the birthday follow. Read by scripts/build-data.mjs and world/create.ts repair() for saves made before.",
+  "pfl-shaqueme-rock": {
+    "born": "1993-11-05"
+  }
+}

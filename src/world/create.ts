@@ -3,7 +3,7 @@
 // country, a calendar, and the player's career.
 
 import { Rng, hashString } from "../core/rng";
-import { ageAt } from "../core/time";
+import { ageAt, dayOf } from "../core/time";
 import { clamp } from "../core/util";
 import { COUNTRY_LIST, countriesIn, countryOf, REGION_IDS, type RegionId } from "../data/countries";
 import { DIVISIONS, type DivisionId, type Sex } from "../data/divisions";
@@ -27,6 +27,7 @@ import { dayOfIso, realSignals } from "./real";
 import { styleFit, type GrappleStyle, type StrikeStyle } from "../data/fightstyles";
 import type { Build } from "../data/body";
 import GYM_FIXES from "../data/gym-fixes.json";
+import FIGHTER_FIXES from "../data/fighter-fixes.json";
 
 export const SAVE_VERSION = 6;
 /** The oldest save format this version can bring up to date. */
@@ -169,6 +170,16 @@ function freeGymName(taken: Set<string>, name: string, city: string, seed: numbe
 /** Fixes for every save on load, whatever its version. */
 export function repair(w: World): World {
   tidyGyms(w);
+  // Real fighters the source got wrong (Shaqueme Rock was 833 years old).
+  for (const [id, fx] of Object.entries(FIGHTER_FIXES as Record<string, { born?: string }>)) {
+    const f = w.fighters[id];
+    if (!f || !fx.born) continue;
+    const [y, m, d] = fx.born.split("-").map(Number);
+    const born = dayOf(y, m - 1, d);
+    if (Math.abs(f.birth - born) > 400) f.birth = born;
+  }
+  // "Ariane" was in the Brazilian men's names.
+  for (const f of Object.values(w.fighters)) if (!f.real && f.sex === "M" && f.first === "Ariane") f.first = "Adriano";
   // Some signings used to leave the amateur flag on a fighter who had turned pro.
   for (const f of Object.values(w.fighters)) {
     if (f.amateur && ((f.promo && PROMOTIONS[f.promo].tier !== "amateur") || f.rec.w + f.rec.l + f.rec.d + f.rec.nc > 0)) f.amateur = false;

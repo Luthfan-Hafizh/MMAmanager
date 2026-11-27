@@ -3,6 +3,7 @@
 // against prospects. The player's fighters are offered fights instead of being
 // booked. Fighters get hurt in camp; replacements come in on short notice.
 
+import { storyBooked, storyPull } from "./stories";
 import type { Rng } from "../core/rng";
 import { clamp } from "../core/util";
 import { DIVISIONS, neighbourDivisions, type DivisionId } from "../data/divisions";
@@ -101,7 +102,9 @@ export function pairCost(w: World, a: Fighter, b: Fighter, promo: PromoId, rng?:
     if (r > 0 && r <= 10 && other.streak < 3) c += 7;
     else if (r > 0) c += other.streak >= 3 ? 1.5 : 3;
   }
-  if (metRecently(w, a, b, 900)) c += 30;
+  const story = storyPull(w, a.id, b.id);
+  if (story) c += story;
+  else if (metRecently(w, a, b, 900)) c += 30;
   else if (metRecently(w, a, b, 3650)) c += 6;
   const newA = na < 2;
   const newB = nb < 2;
@@ -181,6 +184,7 @@ export function makeBout(w: World, ev: MMAEvent, a: Fighter, b: Fighter, kind: B
   a.booked = bout.id;
   b.booked = bout.id;
   setOdds(w, bout);
+  storyBooked(w, ev, bout);
   return bout;
 }
 

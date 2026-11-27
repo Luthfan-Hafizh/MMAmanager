@@ -122,6 +122,39 @@ function loudRivals(w: World, f: Fighter): Fighter[] {
 
 const LIFE: LifeDef[] = [
   {
+    // The UFC and the PFL test at random (world/testing.ts); the player only risks a positive by choosing to.
+    id: "supplement",
+    cooldown: 300,
+    weight: (w, c) => (c.f.promo === "ufc" || c.f.promo === "pfl" ? 0.9 : 0),
+    make: (w, rng, c) => ({
+      subject: "A supplement from a training partner",
+      from: "Training partner",
+      body: `A training partner swears by a recovery powder from an online shop: ${c.days !== null && c.days < 60 ? "\"you'll feel it before the fight\"" : "faster recovery, better sessions"}. Nobody has had it tested, and the label is in a language nobody at the gym reads. The ${PROMOTIONS[c.f.promo!].short} tests at random, any month.`,
+      facts: [
+        { k: "Tested by a lab", v: "No", tone: "bad" },
+        { k: "Random tests", v: "Any month" },
+      ],
+      options: [
+        { id: "test", label: "Send it to a lab first ($400)", primary: true },
+        { id: "take", label: "Take it", danger: true },
+        { id: "no", label: "Leave it" },
+      ],
+    }),
+    resolve: (w, rng, c, opt) => {
+      if (opt === "test") {
+        pay(w, c.f, -400, "Lab test of a supplement");
+        return rng.chance(0.5) ? "The lab finds a banned substance in it. Good thing it never went near the blood." : "The lab finds nothing banned in it. Fine to take, if it does anything at all.";
+      }
+      if (opt === "take") {
+        c.fc.tainted = w.day + 120;
+        c.f.attrs.recovery = clamp(c.f.attrs.recovery + 0.3, 1, 20);
+        morale(c, 2);
+        return "Recovery does feel quicker. Whether it shows up in a test is another matter: the next four months are a gamble.";
+      }
+      return "Better safe than sorry.";
+    },
+  },
+  {
     id: "fans",
     cooldown: 60,
     pub: true,

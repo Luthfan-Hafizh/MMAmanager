@@ -1476,3 +1476,6 @@ tr.click:focus-visible, .list-row[tabindex]:focus-visible { outline: 2px solid v
   .cmp-vs { justify-self: center; }
   .cmp-attrs { grid-template-columns: 1fr; }
 }
+
+/* A bout billed as a rematch, a trilogy or a grudge match */
+.story-tag { margin-left: 8px; padding: 1px 6px; border-radius: 2px; background: var(--gold); color: #17110a; font-stretch: 75%; font-weight: 800; font-size: 10px; letter-spacing: 0.08em; text-transform: uppercase; vertical-align: middle; }

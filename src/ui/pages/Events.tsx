@@ -1,4 +1,5 @@
 import { useState, Fragment } from "react";
+import { storyLabel } from "../../world/stories";
 import { clock, DOW, fmtDate, MONTHS, ymd } from "../../core/time";
 import { countryOf } from "../../data/countries";
 import { DIVISIONS } from "../../data/divisions";
@@ -214,7 +215,7 @@ function BoutRow({ w, b }: { w: World; b: Bout }) {
       <div className={`bout${mine ? " mine" : ""}${b.status === "cancelled" ? " cancel" : ""}${title ? " title-bout" : ""}`} onClick={() => b.status !== "cancelled" && setOpen((o) => !o)} aria-expanded={open}>
         <Corner w={w} b={b} id={b.a} side="a" result={ra} bonus={bonus.includes("potn-a")} />
         <div className="mid">
-          <div className={`wc${b.kind === "bmf" ? " bmf-t" : ""}`}>{stakeLabel(b, true) ?? `${DIVISIONS[b.div].name} bout`}</div>
+          <div className={`wc${b.kind === "bmf" ? " bmf-t" : ""}`}>{stakeLabel(b, true) ?? `${DIVISIONS[b.div].name} bout`}{storyLabel(b) && <span className="story-tag">{storyLabel(b)}</span>}</div>
           {done ? (
             <>
               <div className="res">{methodText(b.res!.method, b.res!.detail)}</div>

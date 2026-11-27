@@ -1,6 +1,8 @@
 // The day-by-day loop. Continue moves the calendar until something needs the
 // player: a decision in the inbox, a fight night, or the end of the week.
 
+import { testingMonthly } from "../world/testing";
+import { storiesMonthly } from "../world/stories";
 import { awardsMonthly } from "../world/awards";
 import { Rng, hashString, mix } from "../core/rng";
 import { isFirstOfMonth, isMonday, fmtDate } from "../core/time";
@@ -133,6 +135,8 @@ function monthly(w: World, rng: Rng): void {
   walkMonthly(w);
   legacyMonthly(w);
   awardsMonthly(w);
+  testingMonthly(w, rng);
+  storiesMonthly(w, rng);
   stripMonthly(w);
   bmfMonthly(w);
   pruneReports(w);

@@ -147,7 +147,7 @@ export function NextFightCard({ w, f }: { w: World; f: Fighter }) {
   return (
     <Panel title="Next fight">
       <Empty title="No fight booked">
-        {f.injury && f.injury.until > w.day ? `Injured until ${fmtDate(f.injury.until)}.` : f.susp > w.day ? `Medically suspended until ${fmtDate(f.susp)}.` : waiting ?? (fc?.asked ? "The matchmaker knows you want a fight." : "Offers come when the next cards are made.")}
+        {f.injury && f.injury.until > w.day ? `Injured until ${fmtDate(f.injury.until)}.` : f.susp > w.day ? `${f.suspWhy ? "Suspended" : "Medically suspended"} until ${fmtDate(f.susp)}${f.suspWhy ? ` for ${f.suspWhy}` : ""}.` : waiting ?? (fc?.asked ? "The matchmaker knows you want a fight." : "Offers come when the next cards are made.")}
       </Empty>
       {!fc?.asked && f.promo && !(f.injury && f.injury.until > w.day) && f.susp <= w.day && (
         <div className="center" style={{ paddingBottom: 8 }}>
@@ -176,7 +176,7 @@ export function ConditionPanel({ w, f }: { w: World; f: Fighter }) {
         {row("Morale", f.morale, "gold")}
         <div className="spread small"><span className="label">Walking weight</span><b>{f.walk} lb <span className="dim">({over > 0 ? `${over} over` : "on"} {limit})</span></b></div>
         {f.injury && f.injury.until > w.day && <InjuryCard w={w} f={f} />}
-        {f.susp > w.day && <div className="notice warn small">Medical suspension until {fmtDate(f.susp)}</div>}
+        {f.susp > w.day && <div className="notice warn small">{f.suspWhy ? `Suspended for ${f.suspWhy}` : "Medical suspension"} until {fmtDate(f.susp)}</div>}
       </div>
     </Panel>
   );

@@ -175,6 +175,8 @@ export interface Fighter {
   streak: number;
   injury: Injury | null;
   susp: number;
+  /** Why the suspension, when it isn't a medical one ("a failed drug test"). */
+  suspWhy?: string;
   booked: string | null;
   status: "active" | "retired";
   retired?: number;
@@ -323,6 +325,8 @@ export interface Bout {
   fineCut?: { a?: number; b?: number };
   /** The side that used the extra hour to make weight. */
   extraHour?: "a" | "b";
+  /** Billed as a rematch, a trilogy or a grudge match (world/stories.ts). */
+  story?: StoryKind;
 }
 
 export type EventKind = "numbered" | "fightnight" | "standard" | "tryout" | "amateur";
@@ -648,6 +652,8 @@ export interface FighterCareer {
   next?: SignedNext;
   /** The Contender Series: this season's invitation, the answer, and the week. */
   tryout?: { season: number; day: number; yes?: boolean; ev?: string; done?: boolean };
+  /** Took a supplement nobody checked: a drug test until this day may come back positive. */
+  tainted?: number;
 }
 
 export interface Rivalry {
@@ -732,6 +738,20 @@ export interface Career {
   media?: MediaSession[];
 }
 
+/** A storyline between two of the world's fighters (world/stories.ts). */
+export type StoryKind = "rematch" | "trilogy" | "grudge";
+export interface Story {
+  a: string;
+  b: string;
+  kind: StoryKind;
+  promo: PromoId;
+  why: string;
+  since: number;
+  /** The bout that settles it, once booked. */
+  booked?: string;
+  done?: boolean;
+}
+
 /** A year-end award (world/awards.ts). */
 export type AwardKind = "fighter" | "fight" | "ko" | "sub" | "upset" | "newcomer";
 export interface Award {
@@ -765,6 +785,8 @@ export interface World {
   hof: { fighter: string; year: number }[];
   /** Year-end awards, every January for the year gone (world/awards.ts). */
   awards: Award[];
+  /** Open and recent storylines between the world's fighters. */
+  stories?: Story[];
   /** Fighters whose state changed since the indexes were built. */
   stamp: number;
   /** Bumped when rosters change (touchRoster): the roster index follows it. */

@@ -63,7 +63,12 @@ for (const b of Object.values(w.bouts)) {
 }
 for (const f of Object.values(w.fighters)) {
   if (f.booked && w.bouts[f.booked]?.status !== "booked") errors.push(`${f.id} stale booking ${f.booked}`);
+  // A fighter suspended for a failed test isn't booked to fight before the suspension ends.
+  const bk = f.booked ? w.bouts[f.booked] : null;
+  if (f.suspWhy && bk && bk.status === "booked" && !bk.pending && bk.day < f.susp) errors.push(`${f.first} ${f.surname} is booked on day ${bk.day} while suspended to day ${f.susp}`);
 }
+// Storylines name fighters who exist.
+for (const st of w.stories ?? []) if (!w.fighters[st.a] || !w.fighters[st.b]) errors.push(`a storyline names a fighter who doesn't exist`);
 for (const id of PROMO_IDS) {
   const ps = w.promos[id];
   for (const [d, c] of Object.entries(ps.champs)) {

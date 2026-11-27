@@ -1,6 +1,7 @@
 // Fight night: weigh-ins, the fights, and everything a result changes —
 // records, ratings, belts, rankings, suspensions, injuries, bonuses and news.
 
+import { storyAfterBout } from "./stories";
 import type { Rng } from "../core/rng";
 import { clamp } from "../core/util";
 import { fmtDate } from "../core/time";
@@ -384,6 +385,7 @@ export function applyResult(w: World, rng: Rng, b: Bout, o: FightOutcome): void 
     } else if (side.kd >= 2 || side.head < 40) susp = Math.max(susp, 30);
     else if (f === loser && m === "SUB") susp = rng.int(7, 21);
     f.susp = Math.max(f.susp, b.day + susp);
+    if (f.susp === b.day + susp) f.suspWhy = undefined;
     // Fought on an injury: it can come out worse.
     const carried = f.injury && f.injury.until > b.day ? f.injury : null;
     if (carried && rng.chance(0.4)) {
@@ -403,6 +405,7 @@ export function applyResult(w: World, rng: Rng, b: Bout, o: FightOutcome): void 
   // Belts, and what the result does for a legacy.
   const champBefore = w.promos[b.promo].champs[b.div] ?? null;
   handleTitle(w, rng, b, winner, loser);
+  storyAfterBout(w, rng, b);
   if (b.kind === "bmf") handleBmf(w, b, winner, loser);
   // Fights already booked in the division are for whatever the belts are now.
   if (isBeltFight(b)) refreshDivision(w, b.promo, b.div);

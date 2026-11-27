@@ -9,7 +9,7 @@ import { DIVISIONS, neighbourDivisions, type DivisionId } from "../data/division
 import { PROMOTIONS, roundsFor, type PromoId } from "../data/promotions";
 import { ovrOf } from "../model/attributes";
 import type { Bout, BoutKind, Fact, FightOffer, Fighter, MMAEvent, World } from "../model/types";
-import { addNews, availableFrom, daysSinceFight, fullName, isControlled, nextId, rankLabel, rankOf, rosterOf, stageFights } from "./core";
+import { addNews, availableFrom, daysSinceFight, fullName, isControlled, nextId, otherRanks, rankIn, rankLabel, rankOf, rosterOf, stageFights } from "./core";
 import { lostToRecently, ratingFor } from "./rankings";
 import { tryoutProspect } from "./market";
 import { clearWant, nextWant, passedOn, snubbed } from "../career/promoter";
@@ -23,6 +23,8 @@ import { fightOfferPay, payShowOnly } from "../career/money";
 import { boutLimit, CUT_TEXT, cutCheck, findCall, type Call } from "../career/shortnotice";
 import { fmtDate } from "../core/time";
 import { money } from "../core/util";
+import { debutBand, type DebutBand } from "../career/standing";
+import { bookTryouts, tryoutHold } from "../career/tryout";
 
 const DEFENCE_GAP: Record<string, number> = { major: 150, league: 125, regional: 105, local: 95, amateur: 80, tryout: 0 };
 
@@ -128,10 +130,30 @@ function bestOpponent(w: World, rng: Rng, f: Fighter, pool: Fighter[], promo: Pr
   return bc < 60 ? best : null;
 }
 
-export function makeBout(w: World, ev: MMAEvent, a: Fighter, b: Fighter, kind: BoutKind, opts: { shortNotice?: boolean; pending?: string; why?: string } = {}): Bout {
+/**
+ * A newcomer with a name made elsewhere meets a ranked fighter first time out:
+ * the best fit in the band of the rankings the record earned, then a little
+ * wider, then anyone ranked.
+ */
+function debutOpponent(w: World, rng: Rng, f: Fighter, pool: Fighter[], promo: PromoId, band: DebutBand): Fighter | null {
+  const n = PROMOTIONS[promo].rankSize;
+  const bands: [number, number][] = [[band.lo, band.hi], [Math.max(1, band.lo - 2), Math.min(n, band.hi + 3)], [1, n]];
+  for (const [lo, hi] of bands) {
+    const fits = pool.filter((x) => {
+      const r = rankOf(w, x);
+      return r !== null && r >= lo && r <= hi;
+    });
+    const o = bestOpponent(w, rng, f, fits, promo, new Set());
+    if (o) return o;
+  }
+  return null;
+}
+
+export function makeBout(w: World, ev: MMAEvent, a: Fighter, b: Fighter, kind: BoutKind, opts: { shortNotice?: boolean; pending?: string; why?: string; div?: DivisionId } = {}): Bout {
   const p = PROMOTIONS[ev.promo];
+  const div = opts.div ?? a.div;
   // A champion's fight at the weight is for the belt, however it was made.
-  kind = beltKindFor(w, ev.promo, a.div, a.id, b.id, kind);
+  kind = beltKindFor(w, ev.promo, div, a.id, b.id, kind);
   const title = kind === "title" || kind === "interim" || kind === "vacant";
   const bout: Bout = {
     id: nextId(w, "b"),
@@ -140,7 +162,7 @@ export function makeBout(w: World, ev: MMAEvent, a: Fighter, b: Fighter, kind: B
     day: ev.day,
     a: a.id,
     b: b.id,
-    div: a.div,
+    div,
     rounds: roundsFor(p, title, false),
     roundSec: p.roundSec,
     kind: p.tier === "amateur" ? (title ? kind : "amateur") : p.tier === "tryout" ? "tryout" : kind,
@@ -404,7 +426,9 @@ export function fillCard(w: World, rng: Rng, ev: MMAEvent, size: number): void {
     // The one who has waited longest goes first.
     pool.sort((x, y) => daysSinceFight(w, y) - daysSinceFight(w, x));
     const f = pool[rng.chance(0.75) ? 0 : Math.min(pool.length - 1, rng.int(1, 3))];
-    const o = bestOpponent(w, rng, f, pool, ev.promo, new Set());
+    // A newcomer with a name made elsewhere meets a ranked fighter first.
+    const band = debutBand(w, f, ev.promo);
+    const o = (band && debutOpponent(w, rng, f, pool, ev.promo, band)) || bestOpponent(w, rng, f, pool, ev.promo, new Set());
     if (!o) {
       pool.splice(pool.indexOf(f), 1);
       continue;
@@ -456,18 +480,8 @@ function buildDwcs(w: World, rng: Rng, ev: MMAEvent): void {
     if (!l) byDiv.set(f.div, (l = []));
     l.push(f);
   }
-  // A player's fighter with the record for it gets an invitation.
-  for (const id of w.career.fighters) {
-    const f = w.fighters[id];
-    if (!f || f.booked || !f.promo || !["regional", "local"].includes(PROMOTIONS[f.promo].tier)) continue;
-    if (f.rec.w < 5 || f.streak < 2 || ovrOf(f.attrs) < 62) continue;
-    if (w.career.fightOffers.some((o) => o.fighter === f.id && o.status === "open")) continue;
-    if (f.lastFight !== null && ev.day - f.lastFight < 49) continue;
-    if (rng.chance(0.5)) continue;
-    const opps = (byDiv.get(f.div) ?? []).filter((o) => !o.booked);
-    const o = opps[0];
-    if (o) offerFight(w, rng, ev, f, o, "tryout");
-  }
+  // The player's fighters who accepted the invitation for this week, and a spot that opened up.
+  bookTryouts(w, rng, ev, byDiv);
   let n = 0;
   for (const [, list] of byDiv) {
     while (list.length >= 2 && ev.bouts.length < 5 && n < 8) {
@@ -500,6 +514,8 @@ export function wantsOffer(w: World, f: Fighter, ev: MMAEvent): boolean {
   if (!readyFor(w, f, ev)) return false;
   const fc = w.career.fc[f.id];
   if (fc?.lastAsk && w.day < fc.lastAsk) return false; // cooling off after a refusal
+  // A Contender Series week accepted: nothing else around it.
+  if (ev.promo !== "dwcs" && tryoutHold(w, f, ev.day)) return false;
   return true;
 }
 
@@ -518,6 +534,9 @@ export function offerFight(w: World, rng: Rng, ev: MMAEvent, f: Fighter, opp?: F
   const d = replace ? replace.div : f.div;
   let k: BoutKind = kind ?? "regular";
   let o = opp ?? null;
+  // The weight the bout is made at, and a first fight here against the ranked (and why).
+  let bd: DivisionId = d;
+  let rankedDebut: string | undefined;
   if (!o) {
     // Whoever the fighter turned down lately is off the table: the offer is somebody else.
     const passed = passedOn(w, f, ev.promo);
@@ -590,6 +609,32 @@ export function offerFight(w: World, rng: Rng, ev: MMAEvent, f: Fighter, opp?: F
         if (gap <= 8 && rng.chance(hot.r.heat / 130)) o = hot.f;
       }
     }
+    // A newcomer with a name made elsewhere (a long title reign) meets a ranked fighter first time out.
+    if (!o && k === "regular") {
+      const band = debutBand(w, f, ev.promo);
+      if (band) {
+        o = debutOpponent(w, rng, f, free, ev.promo, band);
+        if (o) rankedDebut = band.why;
+      }
+    }
+    // Ranked at another weight as well (a win there over a ranked fighter): some fights are
+    // made there, against someone ranked near that place; more often when the place is better.
+    if (!o && k === "regular" && !replace) {
+      const alt = otherRanks(w, f)[0];
+      const mine = rankOf(w, f);
+      if (alt && rng.chance(mine === null || alt.rank < mine ? 0.5 : 0.25)) {
+        const there = rosterOf(w, ev.promo, alt.div).filter((x) => !x.ctrl && !passed.has(x.id) && x.id !== ps.champs[alt.div] && x.id !== ps.interim[alt.div] && readyFor(w, x, ev));
+        const near = there.filter((x) => {
+          const r = rankOf(w, x);
+          return r !== null && r > 0 && Math.abs(r - alt.rank) <= 4;
+        });
+        const c = bestOpponent(w, rng, f, near.length ? near : there, ev.promo, new Set());
+        if (c) {
+          o = c;
+          bd = alt.div;
+        }
+      }
+    }
     // After a no for the right reasons: a step up, or a more even fight.
     const want = nextWant(w, f, ev.promo);
     if (!o && want) {
@@ -606,11 +651,11 @@ export function offerFight(w: World, rng: Rng, ev: MMAEvent, f: Fighter, opp?: F
   }
   if (!o) return null;
   if (k === "regular" && p.rankSize) {
-    const rf = rankOf(w, f);
+    const rf = bd === f.div ? rankOf(w, f) : rankIn(w, f, ev.promo, bd);
     const ro = rankOf(w, o);
     if (rf !== null && ro !== null && rf > 0 && ro > 0 && rf <= 5 && ro <= 5) k = "eliminator";
   }
-  const bout = replace ?? makeBout(w, ev, f, o, k, { shortNotice, pending: "x" });
+  const bout = replace ?? makeBout(w, ev, f, o, k, { shortNotice, pending: "x", div: bd });
   if (replace) {
     // A replacement spot: the player's fighter steps in.
     if (replace.a === "") replace.a = f.id;
@@ -636,7 +681,7 @@ export function offerFight(w: World, rng: Rng, ev: MMAEvent, f: Fighter, opp?: F
     opp: o.id,
     ev: ev.id,
     day: ev.day,
-    div: d,
+    div: bd,
     rounds: bout.rounds,
     kind: bout.kind,
     show: pay.show,
@@ -650,6 +695,7 @@ export function offerFight(w: World, rng: Rng, ev: MMAEvent, f: Fighter, opp?: F
     debut: extra.debut,
     stay: extra.stay,
     replaced: extra.replaced,
+    rankedDebut,
   };
   bout.pending = offer.id;
   w.career.fightOffers.push(offer);
@@ -700,18 +746,33 @@ export function offerFight(w: World, rng: Rng, ev: MMAEvent, f: Fighter, opp?: F
     return offer;
   }
   const kindText = bout.kind === "bmf" ? (bout.stake === "bmf-defence" ? "a BMF title defence" : "a fight for the BMF title, five rounds") : bout.kind === "title" ? (bout.stake === "unify" ? "a title unification" : "a title fight") : bout.kind === "vacant" ? "a fight for the vacant title" : bout.kind === "interim" ? (bout.stake === "interim-defence" ? "an interim title defence" : "an interim title fight") : bout.kind === "tryout" ? "a Contender Series fight" : "a fight";
+  // A first fight against the ranked, or a fight at the other weight where the fighter is ranked too.
+  const facts: Fact[] = [];
+  let extraText = "";
+  if (rankedDebut) {
+    extraText += ` A ranked opponent first time out (${rankLabel(w, o) || "ranked"}): ${rankedDebut} earned it.`;
+    facts.push({ k: "Debut", v: `Against the ${rankLabel(w, o) || "ranked"} at ${DIVISIONS[bd].name.toLowerCase()}`, tone: "good" }, { k: "Earned by", v: rankedDebut });
+  }
+  if (bd !== f.div) {
+    const there = rankIn(w, f, ev.promo, bd);
+    const up = DIVISIONS[bd].limit > DIVISIONS[f.div].limit;
+    extraText += ` It's at ${DIVISIONS[bd].name.toLowerCase()} (${DIVISIONS[bd].limit} lb), a division ${up ? "up" : "down"}${there ? `, where you're ranked #${there}` : ""}.`;
+    facts.push({ k: "Weight", v: `${DIVISIONS[bd].name}, ${DIVISIONS[bd].limit} lb (a division ${up ? "up" : "down"})`, tone: up ? undefined : "warn" });
+    if (there) facts.push({ k: "Your rank there", v: `#${there}`, tone: "good" });
+  }
   notify(w, {
     kind: "offer",
     fighter: f.id,
     ref: offer.id,
     from: `${p.short} matchmaker`,
-    subject: `${p.short} offer: ${fullName(o)}${stakeLabel(bout) ? ` (${stakeLabel(bout)!.toLowerCase()})` : ""}`,
-    body: `${p.name} offers ${you} ${kindText} against ${fullName(o)} (${rec}) at ${ev.name} on ${fmtDate(ev.day)} in ${ev.city}. ${bout.rounds} rounds. ${purse}${grudge ? ` The bad blood sells: ${money(grudge)} of that is for the grudge.` : ""}`,
+    subject: `${p.short} offer: ${fullName(o)}${stakeLabel(bout) ? ` (${stakeLabel(bout)!.toLowerCase()})` : rankedDebut ? " (ranked debut)" : bd !== f.div ? ` (at ${DIVISIONS[bd].name.toLowerCase()})` : ""}`,
+    body: `${p.name} offers ${you} ${kindText} against ${fullName(o)} (${rec}) at ${ev.name} on ${fmtDate(ev.day)} in ${ev.city}. ${bout.rounds} rounds. ${purse}${grudge ? ` The bad blood sells: ${money(grudge)} of that is for the grudge.` : ""}${extraText}`,
     needs: true,
     actions: [
       { id: "accept", label: "Accept", primary: true },
       { id: "decline", label: "Decline", danger: true },
     ],
+    facts: facts.length ? facts : undefined,
   });
   return offer;
 }

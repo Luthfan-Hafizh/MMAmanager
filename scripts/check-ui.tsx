@@ -32,7 +32,13 @@ import { FightReport, reportOf } from "../src/ui/report";
 import { FightSim, simulate } from "../src/engine/sim";
 import { retirePlayer } from "../src/career/retire";
 import { becomeManager } from "../src/career/retire";
-import { declineFight, hireManager, makeContractOffer } from "../src/career/offers";
+import { careerInterest, declineFight, expireOffers, hireManager, makeContractOffer, rejectContract, signContract, startSignedDeals } from "../src/career/offers";
+import { perFight } from "../src/career/standing";
+import { tryoutInvites } from "../src/career/tryout";
+import { moveDivision } from "../src/career/moves";
+import { rankIn } from "../src/world/core";
+import { buildCard } from "../src/world/matchmaking";
+import type { ContractOffer, MMAEvent } from "../src/model/types";
 import { cancelBout, offerFight, withdraw } from "../src/world/matchmaking";
 import { withRng } from "../src/world/core";
 import { neighbourDivisions } from "../src/data/divisions";
@@ -778,6 +784,201 @@ pages(tw, "Retired fighter turned manager");
         }
       }
     }
+  }
+}
+
+// Contracts that remember, the UFC's approach and the ranked debut: a promotion turned
+// down comes back at the same money (a $1.9M PFL champion no longer hears $162k), a
+// champion walking into free agency leaves the belt behind, the UFC talks to a fighter on
+// the last fight of a PFL deal while the PFL matches, a deal signed early starts after
+// that fight, and a long PFL reign earns a ranked opponent first time out.
+{
+  const fail = (what: string) => { failures++; console.log(`  FAIL ${what}`); };
+  const allIn = (o: { show: number; win: number }) => perFight(o.show, o.win);
+  const usd = (x: number) => `$${Math.round(x).toLocaleString("en-US")}`;
+  const openOf = (w: World, id: string) => w.career.contractOffers.filter((o) => o.fighter === id && o.status === "open");
+  const pflChamp = (seed: number) => {
+    const w = createWorld(roster, { name: "UI", seed, mode: "fighter", difficulty: "normal", takeover: "pfl-usman-nurmagomedov" });
+    const f = w.fighters[w.career.fighters[0]];
+    const r = [...w.promos.pfl.reigns].reverse().find((x) => x.fighter === f.id && x.lost === undefined);
+    if (r) r.defenses = 11;
+    f.booked = null;
+    w.day += 10;
+    return { w, f };
+  };
+  {
+    const { w, f } = pflChamp(84);
+    f.contract = { ...f.contract!, show: 1900000, win: 0, left: 0 };
+    withRng(w, (rng) => careerInterest(w, rng));
+    const first = openOf(w, f.id).find((o) => o.promo === "pfl");
+    if (!first) fail("a PFL champion whose deal is done got no renewal");
+    else {
+      for (const o of openOf(w, f.id)) rejectContract(w, o.id);
+      const vacated = w.promos.pfl.champs[f.div] !== f.id && w.news.some((n) => n.text.includes("leaves the PFL as champion"));
+      let back: ContractOffer | undefined;
+      for (let m = 0; m < 5 && !back; m++) {
+        for (let d = 0; d < 30; d++) {
+          w.day++;
+          expireOffers(w);
+        }
+        withRng(w, (rng) => careerInterest(w, rng));
+        back = openOf(w, f.id).find((o) => o.promo === "pfl");
+      }
+      const ratio = back ? allIn(back) / allIn(first) : 0;
+      if (!vacated) fail("walking away from the PFL as champion left the belt with a free agent");
+      else if (!back) fail("the PFL never came back after being turned down");
+      else if (ratio < 0.85 || ratio > 1.3) fail(`the PFL came back at ${Math.round(ratio * 100)}% of the money it offered (${usd(allIn(first))} then, ${usd(allIn(back))} now)`);
+      else if (!back.last) fail("the PFL's second offer doesn't remember the first");
+      else console.log(`Turned down: the PFL's ${usd(allIn(first))} a fight came back as ${usd(allIn(back))} (${Math.round(ratio * 100)}%), and the belt was vacated on the way out`);
+    }
+  }
+  {
+    const { w, f } = pflChamp(85);
+    f.contract = { ...f.contract!, show: 600000, win: 0, left: 1 };
+    for (let m = 0; m < 5 && !openOf(w, f.id).some((o) => o.promo === "ufc"); m++) withRng(w, (rng) => careerInterest(w, rng));
+    const ufc = openOf(w, f.id).find((o) => o.promo === "ufc");
+    const match = openOf(w, f.id).find((o) => o.promo === "pfl");
+    if (!ufc || !ufc.approach) fail("the UFC never approached a PFL champion on the last fight of the deal");
+    else if (!match || match.matches !== "ufc" || allIn(match) < allIn(ufc) * 0.98) fail("the PFL didn't answer the UFC's approach with a match");
+    else {
+      setWorld(w);
+      const page = renderToString(<Contracts id={f.id} />).replace(/<!-- -->/g, "");
+      withRng(w, (rng) => signContract(w, rng, ufc.id));
+      const waits = f.promo === "pfl" && !!w.career.fc[f.id].next && match.status !== "open";
+      setWorld(w);
+      const signedPage = renderToString(<Contracts id={f.id} />).replace(/<!-- -->/g, "");
+      startSignedDeals(w);
+      const stillPfl = f.promo === "pfl";
+      f.contract!.left = 0;
+      startSignedDeals(w);
+      if (!page.includes("UFC · approach") || !page.includes("PFL · matches the UFC") || !page.includes("A fight, all in")) fail("the Contracts page doesn't say which offer is the UFC's approach and which is the PFL's match");
+      else if (!waits || !stillPfl || !signedPage.includes("Signed next")) fail("signing the UFC's approach didn't wait for the last PFL fight, or the Contracts page doesn't show the deal signed next");
+      else if (f.promo !== "ufc" || f.contract!.show !== ufc.show || w.promos.pfl.champs[f.div] === f.id) fail("the deal signed early didn't start after the last PFL fight, or the PFL belt stayed");
+      else {
+        const ev = w.upcoming.map((id) => w.events[id]).find((e) => e.promo === "ufc" && e.status === "planned" && e.day > w.day + 21)!;
+        const fo = withRng(w, (rng) => offerFight(w, rng, ev, f));
+        const opp = fo ? w.fighters[fo.opp] : null;
+        const r = opp ? rankOf(w, opp) : null;
+        setWorld(w);
+        const msg = fo ? w.inbox.find((m) => m.ref === fo.id) : undefined;
+        const view = msg ? renderToString(<Inbox id={msg.id} />).replace(/<!-- -->/g, "") : "";
+        if (!fo || !opp || r === null || r < 1 || !fo.rankedDebut) fail(`a PFL champion with 11 defences debuted against ${opp ? `${opp.first} ${opp.surname} (${r === null ? "unranked" : `#${r}`})` : "nobody"}`);
+        else if (!view.includes("Ranked debut")) fail("the debut offer doesn't say it's against the ranked");
+        else console.log(`The UFC approached on the last PFL fight (${usd(allIn(ufc))} a fight), the PFL matched (${usd(allIn(match))}); signed, the move waited for that fight; first UFC offer: ${opp.first} ${opp.surname}, #${r} (${fo.rankedDebut})`);
+      }
+    }
+  }
+}
+
+// The Contender Series: a regional champion with three defences (Bilal Hasan's road) is
+// invited, not signed; said yes, the week is set and booked when its card is made. A
+// long reign (Salahdine Parnasse's) is signed by the UFC straight away.
+{
+  const fail = (what: string) => { failures++; console.log(`  FAIL ${what}`); };
+  const w = createWorld(roster, { name: "UI", seed: 86, mode: "fighter", difficulty: "normal", created: { first: "Cage", surname: "Fury", sex: "M", country: "US", div: "FLY", age: 24, height: 66, reach: 68, stance: "orthodox", art: "wrestling", talent: "prospect", start: "debut" } });
+  const f = w.fighters[w.career.fighters[0]];
+  w.day += 10;
+  f.promo = "lfa";
+  f.amateur = false;
+  f.contract = { promo: "lfa", fights: 3, left: 2, show: 6000, win: 6000, escal: 600, start: w.day, end: w.day + 700, champClause: false, signBonus: 0 };
+  for (const k of Object.keys(f.attrs) as (keyof typeof f.attrs)[]) f.attrs[k] = Math.max(f.attrs[k], 14.6);
+  f.rec = { ...f.rec, w: 9, l: 0 };
+  f.streak = 9;
+  w.promos.lfa.champs.FLY = f.id;
+  const reign = { fighter: f.id, promo: "lfa" as const, div: "FLY" as const, won: w.day - 500, defenses: 3, how: "won" };
+  w.promos.lfa.reigns.push(reign);
+  for (let m = 0; m < 6; m++) withRng(w, (rng) => careerInterest(w, rng));
+  const direct = w.career.contractOffers.some((o) => o.promo === "ufc");
+  for (const o of w.career.contractOffers) if (o.status === "open") rejectContract(w, o.id);
+  // Two weeks of a season, eight and nine weeks out.
+  const weeks: MMAEvent[] = [0, 1].map((k) => ({ id: `ev-ui-dwcs-${k}`, promo: "dwcs", name: `Contender Series S99, Week ${k + 1}`, day: w.day + 56 + k * 7, city: "Las Vegas", country: "US", venue: "Meta APEX", kind: "tryout", number: k + 1, bouts: [], status: "planned" }));
+  for (const e of weeks) {
+    w.events[e.id] = e;
+    w.upcoming.push(e.id);
+  }
+  w.upcoming.sort((a, b) => w.events[a].day - w.events[b].day);
+  for (let k = 0; k < 4 && !w.career.fc[f.id].tryout; k++) withRng(w, (rng) => tryoutInvites(w, rng));
+  const inv = w.inbox.find((m) => m.ref?.startsWith("tryout:") && m.fighter === f.id);
+  if (direct) fail("a regional champion with three defences was signed by the UFC without the Contender Series");
+  else if (!inv || !inv.actions?.some((a) => a.id === "tryout:yes")) fail("a regional champion with three defences got no Contender Series invitation");
+  else {
+    answer(w, inv.id, "tryout:yes");
+    const t = w.career.fc[f.id].tryout!;
+    const ev = t.ev ? w.events[t.ev] : undefined;
+    setWorld(w);
+    const page = renderToString(<Contracts id={f.id} />).replace(/<!-- -->/g, "");
+    if (ev) withRng(w, (rng) => buildCard(w, rng, ev));
+    const b = f.booked ? w.bouts[f.booked] : undefined;
+    if (!ev || !b || b.ev !== ev.id || b.pending) fail("an accepted Contender Series invitation wasn't booked when the card was made");
+    else if (!page.includes("Contender Series") || !page.includes(ev.name)) fail("the Contracts page doesn't show the Contender Series week");
+    else {
+      cancelBout(w, b, "check");
+      reign.defenses = 5;
+      let note = "";
+      for (let m = 0; m < 10 && !note; m++) {
+        for (const o of w.career.contractOffers) if (o.status === "open") rejectContract(w, o.id);
+        for (const o of w.career.contractOffers) if (o.promo === "ufc") note = o.note ?? "";
+        if (!note) withRng(w, (rng) => careerInterest(w, rng));
+        for (const o of w.career.contractOffers) if (o.promo === "ufc") note = o.note ?? "";
+      }
+      if (!note.includes("doesn't need the Contender Series")) fail("a regional champion with five defences wasn't signed by the UFC straight away");
+      else console.log(`The Contender Series: three LFA defences brought an invitation, not a contract, and ${ev.name} was booked once said yes; five brought the UFC's call ("${note}")`);
+    }
+  }
+}
+
+// Ranked at two weights: a bantamweight who beats the featherweight #8 is ranked at
+// featherweight too, in that place; the matchmaker offers fights at either weight; and
+// moving up keeps the place.
+{
+  const fail = (what: string) => { failures++; console.log(`  FAIL ${what}`); };
+  const w = createWorld(roster, { name: "UI", seed: 88, mode: "fighter", difficulty: "normal", takeover: "ufc-bilal-hasan" });
+  const me = w.fighters[w.career.fighters[0]];
+  me.div = "BW";
+  me.booked = null;
+  w.day += 10;
+  updateRankings(w, "ufc");
+  const eighth = w.fighters[(w.promos.ufc.ranks.FW ?? [])[7]];
+  const ev = w.upcoming.map((id) => w.events[id]).find((e) => e.promo === "ufc" && e.status === "planned")!;
+  eighth.booked = null;
+  const keep = { ...me.attrs };
+  for (const k of Object.keys(me.attrs) as (keyof typeof me.attrs)[]) me.attrs[k] = 20;
+  const b = makeBout(w, ev, me, eighth, "regular", { div: "FW" });
+  const out = quickSim(w, b);
+  withRng(w, (rng) => applyResult(w, rng, b, out));
+  Object.assign(me.attrs, keep);
+  updateRankings(w, "ufc", ["FW", "BW"]);
+  const there = rankIn(w, me, "ufc", "FW");
+  setWorld(w);
+  const page = renderToString(<Rankings />).replace(/<!-- -->/g, "");
+  const home = renderToString(<Home />).replace(/<!-- -->/g, "");
+  if (out.winner !== "a") fail("the check's bantamweight lost the fight at featherweight");
+  else if (!there || there > 9 || (rankOf(w, eighth) ?? 99) <= there) fail(`beating the featherweight #8 ranked a bantamweight ${there ? `#${there}` : "nowhere"} at featherweight (the beaten one #${rankOf(w, eighth)})`);
+  else if (!w.inbox.some((m) => m.subject.startsWith("Ranked at featherweight")) || !w.news.some((n) => n.text.includes("is ranked at featherweight too"))) fail("no news or word to the player of the place at the second weight");
+  else if (!page.includes('class="rk-x"') || !home.includes(`#${there} FW`)) fail("the Rankings page or Home doesn't show the place at the second weight");
+  else {
+    let atFw = 0;
+    let said = false;
+    const evs = w.upcoming.map((id) => w.events[id]).filter((e) => e.promo === "ufc" && e.status === "planned" && e.day > w.day + 40).slice(0, 8);
+    for (const e of evs) {
+      me.booked = null;
+      me.lastFight = e.day - 160;
+      const fo = withRng(w, (rng) => offerFight(w, rng, e, me));
+      if (!fo) continue;
+      if (fo.div === "FW") {
+        atFw++;
+        said = said || w.inbox.some((m) => m.ref === fo.id && m.body.includes(`where you're ranked #`));
+      }
+      const bt = Object.values(w.bouts).find((x) => x.pending === fo.id);
+      if (bt) cancelBout(w, bt, "check");
+      fo.status = "withdrawn";
+    }
+    me.booked = null;
+    const moved = moveDivision(w, me, "FW");
+    const after = rankOf(w, me);
+    if (!atFw || !said) fail(`ranked at featherweight, the bantamweight got ${atFw} featherweight offers in ${evs.length}${atFw && !said ? ", and none said where they're ranked" : ""}`);
+    else if (!after) fail(`moving up to featherweight lost the place won there (${moved})`);
+    else console.log(`Two weights: beating the featherweight #8 ranked a bantamweight #${there} there (the beaten one now #${rankOf(w, eighth)}); ${atFw} of ${evs.length} offers came at featherweight; moving up kept #${after}`);
   }
 }
 

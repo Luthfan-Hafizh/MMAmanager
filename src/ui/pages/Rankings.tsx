@@ -92,10 +92,15 @@ function DivisionColumn({ w, promo, d }: { w: World; promo: PromoId; d: Division
         {ids.map((id, i) => {
           const f = w.fighters[id];
           const mv = rankMove(w, promo, d, id);
+          // Ranked here from another weight, after a win at this one.
+          const from = f.div !== d ? f.div : null;
           return (
             <Link key={id} to={`/fighter/${id}`} className={f.ctrl ? "me" : ""}>
               <span className="n">{ps.interim[d] === id ? "IC" : rankNumber(ids, ps.interim[d] ?? null, i)}</span>
-              <span className="ellip" style={{ fontWeight: f.ctrl ? 800 : 500 }}>{f.first} {f.surname}</span>
+              <span className="rk-name" style={{ fontWeight: f.ctrl ? 800 : 500 }}>
+                <span className="ellip">{f.first} {f.surname}</span>
+                {from && <span className="rk-x" title={`Fights at ${DIVISIONS[from].name.toLowerCase()}; ranked here too after a win at ${DIVISIONS[d].name.toLowerCase()}`}>{DIVISIONS[from].short}</span>}
+              </span>
               <span className={`mv ${typeof mv === "number" ? (mv > 0 ? "good" : "bad") : "dim"}`}>{mv === "new" ? "NEW" : typeof mv === "number" && mv !== 0 ? (mv > 0 ? `▲${mv}` : `▼${-mv}`) : ""}</span>
             </Link>
           );

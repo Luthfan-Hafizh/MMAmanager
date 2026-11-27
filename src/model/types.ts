@@ -46,6 +46,19 @@ export interface FightRecord {
   decL: number;
 }
 
+/** A fighter's results at a weight other than their own, at one promotion. */
+export interface CrossWeight {
+  promo: PromoId;
+  div: DivisionId;
+  /** Who was beaten there, the latest last. */
+  beat: string[];
+  lost: number;
+  /** Day of the last fight there. */
+  last: number;
+  /** The place earned there, as a ranking score: just above the best fighter beaten, as they stood before the fight; a loss there takes some off. */
+  score?: number;
+}
+
 export interface Contract {
   promo: PromoId;
   fights: number;
@@ -188,6 +201,8 @@ export interface Fighter {
   bestStreak?: number;
   /** Fights on a promotion's stage before the world began (real fighters). */
   prior?: { promo: PromoId; n: number };
+  /** Fights at another weight: who was beaten there, for a place in that division's rankings too. */
+  xw?: CrossWeight[];
   /** How they strike and grapple, and how well they know each style. */
   style?: FighterStyle;
 }
@@ -454,6 +469,38 @@ export interface FightOffer {
   replaced?: string;
   /** Turned down for the money once, and the purse went up. */
   raised?: boolean;
+  /** A first fight here against a ranked opponent, and the record elsewhere that earned it. */
+  rankedDebut?: string;
+}
+
+/** How a contract offer ended. */
+export type BidEnd = "signed" | "rejected" | "expired" | "withdrawn";
+
+/** What a promotion last put on the table for a fighter, so its next offer starts from there. */
+export interface Bid {
+  show: number;
+  win: number;
+  fights: number;
+  limit: number;
+  day: number;
+  how: BidEnd;
+  /** The record and the relationship at the time: what has changed since moves the next offer. */
+  w: number;
+  l: number;
+  rap: number;
+}
+
+/** A deal signed now that starts when the current one is done (the UFC's approach). */
+export interface SignedNext {
+  promo: PromoId;
+  fights: number;
+  show: number;
+  win: number;
+  escal: number;
+  signBonus: number;
+  champClause: boolean;
+  termDays: number;
+  signed: number;
 }
 
 export interface ContractOffer {
@@ -476,6 +523,12 @@ export interface ContractOffer {
   patience: number;
   note?: string;
   renewal?: boolean;
+  /** Made before the current deal is done: signed, it starts when that deal ends. */
+  approach?: boolean;
+  /** The current promotion's answer to a rival's offer: the rival it matches. */
+  matches?: PromoId;
+  /** This promotion's offer last time, when it comes back. */
+  last?: { show: number; win: number; day: number; how: BidEnd };
 }
 
 export interface SponsorDeal {
@@ -587,6 +640,14 @@ export interface FighterCareer {
   passed?: { opp: string; promo: PromoId; until: number }[];
   /** What the next offer should be after a no: a step up, or a more even fight. */
   want?: { promo: PromoId; kind: "up" | "even"; until: number };
+  /** What each promotion last offered and how it ended: a promotion coming back starts from there. */
+  bids?: Partial<Record<PromoId, Bid>>;
+  /** The last deal, kept through free agency: what the market has been paying. */
+  lastDeal?: { promo: PromoId; show: number; win: number; ended: number };
+  /** A deal signed for when the current one is done. */
+  next?: SignedNext;
+  /** The Contender Series: this season's invitation, the answer, and the week. */
+  tryout?: { season: number; day: number; yes?: boolean; ev?: string; done?: boolean };
 }
 
 export interface Rivalry {

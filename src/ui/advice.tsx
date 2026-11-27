@@ -9,7 +9,7 @@ import type { FightOffer, Fighter, World } from "../model/types";
 import { adviseFight, boutOfOffer, type Advice } from "../career/advisor";
 import { boutLimit, CUT_TEXT, cutCheck } from "../career/shortnotice";
 import { moneyline } from "../world/odds";
-import { rankLabel, recordText } from "../world/core";
+import { rankIn, rankLabel, recordText } from "../world/core";
 import { defOf, SEVERITY_TEXT } from "../data/injuries";
 import { Link } from "./router";
 import { RapportLine } from "./decline";
@@ -76,6 +76,29 @@ export function FightOfferView({ w, o, f, compact }: { w: World; o: FightOffer; 
           <span className="sn-ans">{answer}</span>
         </div>
       )}
+      {!o.shortNotice && (o.rankedDebut || o.div !== f.div) && (() => {
+        // A first fight here against the ranked, or a fight at the other weight where the fighter is ranked too.
+        const up = DIVISIONS[o.div].limit > DIVISIONS[f.div].limit;
+        const there = o.div !== f.div ? rankIn(w, f, o.promo, o.div) : null;
+        return (
+          <div className="sn-strip calm">
+            {o.rankedDebut && (
+              <>
+                <b>Ranked debut</b>
+                <span>{rankLabel(w, opp) || "Ranked"} at {DIVISIONS[o.div].name.toLowerCase()}</span>
+                <span className="sn-why">Earned by: {o.rankedDebut}</span>
+              </>
+            )}
+            {o.div !== f.div && (
+              <>
+                <b>{up ? "A division up" : "A division down"}</b>
+                <span>{DIVISIONS[o.div].name}</span>
+                {there ? <span>You're #{there} there</span> : null}
+              </>
+            )}
+          </div>
+        );
+      })()}
       <div className="offer-grid">
         <div>
           <div className="label">Opponent</div>

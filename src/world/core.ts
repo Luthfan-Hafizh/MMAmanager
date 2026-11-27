@@ -159,6 +159,32 @@ export function rankOf(w: World, f: Fighter): number | null {
 }
 
 /**
+ * Rank in one of a promotion's divisions, the fighter's own or another weight
+ * where a ranked win put them on the list too: 0 champion, 1-15, or null.
+ */
+export function rankIn(w: World, f: Fighter, promo: PromoId, div: DivisionId): number | null {
+  const ps = w.promos[promo];
+  if (!ps || f.promo !== promo) return null;
+  if (ps.champs[div] === f.id) return 0;
+  const list = ps.ranks[div];
+  if (!list) return null;
+  const i = list.indexOf(f.id);
+  return i >= 0 ? rankNumber(list, ps.interim[div] ?? null, i) : null;
+}
+
+/** The other weights where a fighter is ranked as well, best first. */
+export function otherRanks(w: World, f: Fighter): { div: DivisionId; rank: number }[] {
+  if (!f.promo || !f.xw?.length) return [];
+  const out: { div: DivisionId; rank: number }[] = [];
+  for (const x of f.xw) {
+    if (x.promo !== f.promo || x.div === f.div) continue;
+    const r = rankIn(w, f, f.promo, x.div);
+    if (r) out.push({ div: x.div, rank: r });
+  }
+  return out.sort((a, b) => a.rank - b.rank);
+}
+
+/**
  * The number at a place in a ranking list. An interim champion heads the list
  * without a number, as on the UFC's rankings, so the first contender under
  * them is still number one.

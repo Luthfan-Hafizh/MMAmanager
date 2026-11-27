@@ -14,6 +14,7 @@ import { ovrOf } from "../model/attributes";
 import type { Bout, Fighter, MMAEvent, World } from "../model/types";
 import { rankOf } from "../world/core";
 import { callFactor, passedOn, rapport } from "./promoter";
+import { tryoutHold } from "./tryout";
 
 /** The weight a bout is contracted at. */
 export function boutLimit(b: Pick<Bout, "div" | "limit">): number {
@@ -84,6 +85,8 @@ export function findCall(w: World, ev: MMAEvent, b: Bout, stay: Fighter, days: n
     if (!f || !fc || f.status !== "active" || !fc.shortNotice || f.booked || id === stay.id) continue;
     if (w.career.fightOffers.some((o) => o.fighter === id && o.status === "open")) continue;
     if (fc.lastCall !== undefined && w.day - fc.lastCall < 21) continue;
+    // A Contender Series week accepted: no calls around it.
+    if (tryoutHold(w, f, ev.day)) continue;
     if ((f.injury && f.injury.until > ev.day - 2) || f.susp > ev.day) continue;
     if (f.lastFight !== null && ev.day - f.lastFight < 21) continue;
     if (DIVISIONS[f.div].sex !== DIVISIONS[b.div].sex) continue;

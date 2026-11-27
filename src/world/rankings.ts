@@ -3,13 +3,16 @@
 // adds a little; fighting often helps; after eighteen months out the score
 // decays faster and faster; and a winner always moves above the fighter beaten.
 // A champion who loses the belt goes straight to number one, as on the UFC's
-// rankings, and stays there until fighting again.
+// rankings, and stays there until fighting again. A fighter can hold places at
+// two weights at once: beat a ranked fighter a division up or down and that
+// division ranks you too, in the place of the fighter beaten.
 
 import { clamp } from "../core/util";
-import { DIVISIONS, type DivisionId } from "../data/divisions";
+import { DIVISIONS, neighbourDivisions, type DivisionId } from "../data/divisions";
 import { PROMOTIONS, type PromoId } from "../data/promotions";
 import type { Bout, Fighter, World } from "../model/types";
 import { addNews, fightsInPromo, fullName, rankNumber, rosterOf, stageFights } from "./core";
+import { notify } from "../career/inbox";
 
 const INACTIVE_FROM = 548; // eighteen months
 
@@ -90,6 +93,35 @@ export function justDethroned(w: World, promo: PromoId, d: DivisionId): Set<stri
   return out;
 }
 
+/**
+ * Fighters from the weights either side who have beaten someone here in the last
+ * eighteen months, and more often than they lost here: ranked here as well, in
+ * the place they took from the fighter beaten, as on the UFC's rankings where a
+ * fighter can hold places at two weights at once.
+ */
+function crossWeighters(w: World, promo: PromoId, d: DivisionId): { f: Fighter; s: number }[] {
+  const out: { f: Fighter; s: number }[] = [];
+  const nb = neighbourDivisions(d);
+  for (const od of [nb.up, nb.down]) {
+    if (!od) continue;
+    for (const f of rosterOf(w, promo, od)) {
+      const x = f.xw?.find((e) => e.promo === promo && e.div === d);
+      if (!x || x.score === undefined || x.beat.length <= x.lost || w.day - x.last > INACTIVE_FROM || f.status !== "active") continue;
+      out.push({ f, s: x.score });
+    }
+  }
+  return out;
+}
+
+/** A fighter's number on a division's list: 0 champion, 1-15, or null. */
+function rankNumberOf(w: World, promo: PromoId, d: DivisionId, id: string): number | null {
+  const ps = w.promos[promo];
+  if (ps.champs[d] === id) return 0;
+  const list = ps.ranks[d] ?? [];
+  const i = list.indexOf(id);
+  return i >= 0 ? rankNumber(list, ps.interim[d] ?? null, i) : null;
+}
+
 export function updateRankings(w: World, promo: PromoId, divs?: DivisionId[]): void {
   const p = PROMOTIONS[promo];
   if (!p.rankSize) return;
@@ -97,9 +129,13 @@ export function updateRankings(w: World, promo: PromoId, divs?: DivisionId[]): v
   for (const d of divs ?? p.divisions) {
     const champ = ps.champs[d] ?? null;
     const interim = ps.interim[d] ?? null;
-    const scored = rosterOf(w, promo, d)
-      .filter((f) => f.id !== champ && f.id !== interim && eligible(w, f, promo))
-      .map((f) => ({ f, s: rankScore(w, f) }))
+    const scored = [
+      ...rosterOf(w, promo, d)
+        .filter((f) => f.id !== champ && f.id !== interim && eligible(w, f, promo))
+        .map((f) => ({ f, s: rankScore(w, f) })),
+      // Fighters from the weights either side who beat someone here.
+      ...crossWeighters(w, promo, d).filter((x) => x.f.id !== champ && x.f.id !== interim),
+    ]
       .filter((x) => x.s > -1e9)
       .sort((x, y) => y.s - x.s);
     // The champion who just lost the belt is number one until fighting again.
@@ -108,8 +144,31 @@ export function updateRankings(w: World, promo: PromoId, divs?: DivisionId[]): v
     // Fifteen numbered places; an interim champion heads them without a number.
     const ids = list.slice(0, p.rankSize).map((x) => x.f.id);
     if (interim) ids.unshift(interim);
+    const was = new Set(ps.ranks[d] ?? []);
     ps.prevRanks[d] = ps.ranks[d] ?? [];
     ps.ranks[d] = ids;
+    // Ranked at a second weight: the news, and a word to the player.
+    ids.forEach((id, i) => {
+      const f = w.fighters[id];
+      if (!f || f.div === d || was.has(id)) return;
+      const n = rankNumber(ids, interim, i);
+      const text = `${fullName(f)} is ranked at ${DIVISIONS[d].name.toLowerCase()} too, at #${n}, after a win there.`;
+      if (promo === "ufc" || promo === "pfl") addNews(w, { kind: "ranking", promo, fighters: [id], text });
+      if (f.ctrl) {
+        const beat = f.xw?.find((x) => x.promo === promo && x.div === d)?.beat.slice(-1)[0];
+        notify(w, {
+          kind: "ranking",
+          fighter: id,
+          from: `${PROMOTIONS[promo].short} rankings`,
+          subject: `Ranked at ${DIVISIONS[d].name.toLowerCase()}: #${n}`,
+          body: `${fullName(f)} is on the ${PROMOTIONS[promo].short} ${DIVISIONS[d].name.toLowerCase()} rankings at #${n}${beat && w.fighters[beat] ? `, in the place of ${fullName(w.fighters[beat])}` : ""}, as well as at ${DIVISIONS[f.div].name.toLowerCase()}. The matchmaker can now offer fights at either weight; a loss up there costs the place, and it lapses after eighteen months without a fight at that weight.`,
+          facts: [
+            { k: DIVISIONS[d].name, v: `#${n}`, tone: "good" },
+            { k: DIVISIONS[f.div].name, v: ((): string => { const r = rankNumberOf(w, promo, f.div, id); return r === 0 ? "Champion" : r ? `#${r}` : "Unranked"; })() },
+          ],
+        });
+      }
+    });
     // Peak rank for the record.
     ids.forEach((id, i) => {
       const f = w.fighters[id];
@@ -184,7 +243,8 @@ export function nameContenders(w: World, promo: PromoId): void {
     if (!champ) continue;
     const list = ps.ranks[d] ?? [];
     const top = list[0] ? w.fighters[list[0]] : undefined;
-    if (top && top.streak >= 2 && !lostToRecently(w, top, champ)) {
+    // A number one from another weight is ranked here, but the title shot goes to the division's own.
+    if (top && top.div === d && top.streak >= 2 && !lostToRecently(w, top, champ)) {
       ps.contender[d] = top.id;
     }
   }

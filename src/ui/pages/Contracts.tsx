@@ -3,7 +3,8 @@ import { fmtDate } from "../../core/time";
 import { money } from "../../core/util";
 import { PROMOTIONS } from "../../data/promotions";
 import type { ContractOffer, Fighter, World } from "../../model/types";
-import { counterOffer, rejectContract, signContract } from "../../career/offers";
+import { counterOffer, exclusiveDeal, rejectContract, signContract, walksAsChampion } from "../../career/offers";
+import { marketPay, perFight } from "../../career/standing";
 import { adviseContract, managerNegotiate } from "../../career/advisor";
 import { AdviceCard } from "../advice";
 import { TeamPanel } from "../team";
@@ -22,6 +23,9 @@ export function Contracts({ id }: { id?: string }) {
   const offers = w.career.contractOffers.filter((o) => o.fighter === fid && o.status === "open");
   const fc = w.career.fc[fid];
   const c = f.contract;
+  const next = fc?.next;
+  const tryout = fc?.tryout?.yes && !fc.tryout.done && fc.tryout.ev ? w.events[fc.tryout.ev] : undefined;
+  const last = fc?.lastDeal;
   return (
     <div className="grid">
       <div className="c12"><FighterSwitch w={w} id={fid} base="/contracts" /></div>
@@ -40,12 +44,29 @@ export function Contracts({ id }: { id?: string }) {
                   <dt>Raise with each win</dt><dd>{money(c.escal)}</dd>
                   <dt>Runs until</dt><dd>{fmtDate(c.end)}</dd>
                   <dt>Champion's clause</dt><dd>{c.champClause ? "Yes" : "No"}</dd>
-                  <dt>Exclusive</dt><dd>{PROMOTIONS[f.promo].tier === "major" || PROMOTIONS[f.promo].tier === "league" ? "Binding until it is done" : "The UFC, the PFL and the Contender Series can call"}</dd>
+                  <dt>Exclusive</dt><dd>{f.promo === "ufc" ? "Binding until it is done" : exclusiveDeal(f.promo) ? "Binding; the UFC can talk to you in the last fight or the last four months" : "The UFC, the PFL and the Contender Series can call"}</dd>
                 </>
               )}
             </dl>
           ) : (
-            <Empty title="Free agent">Offers arrive in the inbox at the start of each month.</Empty>
+            <Empty title="Free agent">
+              Offers arrive in the inbox at the start of each month.
+              {last ? ` Your last deal (${PROMOTIONS[last.promo].short}, ${money(last.show)}${last.win ? ` + ${money(last.win)}` : " flat"}) is what promotions price you from for two years.` : ""}
+            </Empty>
+          )}
+          {next && (
+            <div className="co-next">
+              <span className="label">Signed next</span>
+              <b><PromoBadge p={next.promo} /> {next.fights} fights at {money(next.show)}{next.win ? ` + ${money(next.win)}` : " flat"}</b>
+              <span className="small dim">Starts when this deal is done{c && c.promo !== next.promo ? ` (${c.left} fight${c.left === 1 ? "" : "s"} left)` : ""}{next.signBonus ? `, with a ${money(next.signBonus)} signing bonus` : ""}.</span>
+            </div>
+          )}
+          {tryout && (
+            <div className="co-next">
+              <span className="label">Contender Series</span>
+              <b>{tryout.name}</b>
+              <span className="small dim">{fmtDate(tryout.day, { dow: true })} in Las Vegas. The opponent comes when the card is made.</span>
+            </div>
           )}
         </Panel>
         {fc && <MatchmakerPanel w={w} f={f} />}
@@ -86,17 +107,33 @@ function OfferCard({ w, o, f }: { w: World; o: ContractOffer; f: Fighter }) {
     setFights(o.fights);
     changed();
   };
+  // What kind of offer this is: the UFC's approach, a match, a promotion coming back.
+  const kind = o.approach ? "approach" : o.matches ? `matches the ${PROMOTIONS[o.matches].short}` : o.renewal ? "new deal" : o.last ? "back again" : null;
+  const walks = walksAsChampion(w, f, o);
+  const paid = marketPay(w, f);
+  const notes: { text: string; tone?: "good" | "warn" }[] = [];
+  if (o.approach && f.promo && f.promo !== o.promo && f.contract && f.contract.left > 0) notes.push({ text: `Starts after your last ${PROMOTIONS[f.promo].short} fight (${f.contract.left} left). Sign now and the move is done; the ${PROMOTIONS[f.promo].short} can't stop it.` });
+  if (o.matches) notes.push({ text: `Matches the ${PROMOTIONS[o.matches].short}'s money to keep you. Same money: the stage decides.`, tone: "good" });
+  if (o.last) notes.push({ text: `Last time ${p.short} offered ${money(o.last.show)}${o.last.win ? ` + ${money(o.last.win)}` : " flat"} (${o.last.how === "rejected" ? "turned down" : o.last.how === "expired" ? "left to lapse" : "withdrawn"} ${fmtDate(o.last.day, { year: false })}): it comes back at that level, moved by the results since.` });
+  if (paid && paid.promo !== o.promo) notes.push({ text: `${paid.current ? "Paid now" : "Last deal"}: ${PROMOTIONS[paid.promo].short}, ${money(paid.show)}${paid.win ? ` + ${money(paid.win)}` : " flat"}.` });
+  if (walks) notes.push({ text: `Turn this down and you're a free agent: the ${p.short} title is vacated.`, tone: "warn" });
   return (
-    <Panel title={`${p.short}${o.renewal ? " · new deal" : ""}`} hint={`expires ${fmtDate(o.expires)}`} className={o.promo === "ufc" ? "accent" : ""}>
+    <Panel title={`${p.short}${kind ? ` · ${kind}` : ""}`} hint={`expires ${fmtDate(o.expires)}`} className={o.promo === "ufc" ? "accent" : ""}>
       {o.note && <p className="muted">{o.note}</p>}
-      <div className="grid" style={{ gap: 12 }}>
-        <div className="c4"><div className="tile"><div className="k">Fights</div><div className="v">{o.fights}</div></div></div>
-        <div className="c4"><div className="tile"><div className="k">To show</div><div className="v">{money(o.show)}</div></div></div>
-        <div className="c4"><div className="tile"><div className="k">To win</div><div className="v">{o.win ? money(o.win) : "Flat"}</div></div></div>
+      <div className="grid co-tiles" style={{ gap: 12 }}>
+        <div className="c3"><div className="tile"><div className="k">Fights</div><div className="v">{o.fights}</div></div></div>
+        <div className="c3"><div className="tile"><div className="k">To show</div><div className="v">{money(o.show)}</div></div></div>
+        <div className="c3"><div className="tile"><div className="k">To win</div><div className="v">{o.win ? money(o.win) : "Flat"}</div></div></div>
+        <div className="c3"><div className="tile co-all"><div className="k">A fight, all in</div><div className="v">{money(perFight(o.show, o.win))}</div></div></div>
       </div>
       <p className="small dim" style={{ marginTop: 8 }}>
         +{money(o.escal)} after each win{o.signBonus ? ` · ${money(o.signBonus)} to sign` : ""} · {Math.round(o.termDays / 365)} years{o.champClause ? " · champion's clause" : ""}
       </p>
+      {notes.length > 0 && (
+        <ul className="co-notes">
+          {notes.map((n, i) => <li key={i} className={n.tone ?? ""}>{n.text}</li>)}
+        </ul>
+      )}
       <div style={{ marginTop: 12 }}><AdviceCard a={advice} /></div>
       <hr className="sep" />
       <div className="spread" style={{ marginBottom: 6 }}>
@@ -119,7 +156,7 @@ function OfferCard({ w, o, f }: { w: World; o: ContractOffer; f: Fighter }) {
       <div className="row" style={{ marginTop: 12 }}>
         <button className="btn primary" onClick={sign}>Sign</button>
         <button className="btn" onClick={counter} disabled={show === o.show && win === o.win && fights === o.fights}>Send counter</button>
-        <button className="btn danger" onClick={() => { toast(rejectContract(w, o.id)); changed(); }}>Reject</button>
+        <button className="btn danger" onClick={() => { toast(rejectContract(w, o.id)); changed(); }}>{walks ? "Walk away" : "Reject"}</button>
         <div style={{ flex: 1 }} />
         <span className="tiny dim">{fullName(f)}</span>
       </div>

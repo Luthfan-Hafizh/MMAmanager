@@ -12,7 +12,7 @@ import { simulate, methodPhrase, type Condition, type FightInput, type FightOutc
 import { addNews, fullName, isControlled, rankOf, ringRust, touch } from "./core";
 import { fightStyle } from "./fightstyle";
 import { packRounds } from "./report";
-import { eloUpdate, entryElo, nameContenders, rankingNews, updateP4P, updateRankings } from "./rankings";
+import { eloUpdate, entryElo, nameContenders, rankingNews, rankScore, updateP4P, updateRankings } from "./rankings";
 import { markDone } from "./calendar";
 import { orderCard, refreshCard } from "./matchmaking";
 import { afterFightCareer, payControlled } from "../career/afterfight";
@@ -288,7 +288,15 @@ export function applyResult(w: World, rng: Rng, b: Bout, o: FightOutcome): void 
       B.streak = 0;
     }
   }
+  // A fight at another weight counts in that division's rankings too (world/rankings.ts):
+  // the winner takes the place the beaten fighter held there before the fight.
+  const cross = m !== "NC" && PROMOTIONS[b.promo].rankSize > 0 && (A.div !== b.div || B.div !== b.div);
+  const before = cross ? { a: rankScore(w, A), b: rankScore(w, B) } : null;
   if (m !== "NC") eloUpdate(w, b, winner, A, B);
+  if (before) {
+    if (A.div !== b.div) crossWeight(w, A, b, winner === A ? { id: B.id, score: before.b } : null, !!winner && winner !== A);
+    if (B.div !== b.div) crossWeight(w, B, b, winner === B ? { id: A.id, score: before.a } : null, !!winner && winner !== B);
+  }
 
   // Contracts count the fight; a win lifts the next purse.
   for (const f of [A, B]) {
@@ -584,6 +592,29 @@ export function finishEvent(w: World, rng: Rng, ev: MMAEvent): void {
   touch(w);
 }
 
+/**
+ * A result at another weight, kept for that division's rankings: who was beaten
+ * there and the place it earned (just above them, as they stood before the
+ * fight), the losses there, and when.
+ */
+function crossWeight(w: World, f: Fighter, b: Bout, beat: { id: string; score: number } | null, lost: boolean): void {
+  const list = (f.xw ??= []);
+  let x = list.find((e) => e.promo === b.promo && e.div === b.div);
+  if (!x) {
+    x = { promo: b.promo, div: b.div, beat: [], lost: 0, last: b.day };
+    list.push(x);
+  }
+  if (beat) {
+    x.beat = [...x.beat.filter((id) => id !== beat.id), beat.id].slice(-4);
+    x.score = Math.max(x.score ?? -1e9, beat.score + 4);
+  }
+  if (lost) {
+    x.lost++;
+    x.score = (x.score ?? rankScore(w, f)) - 40;
+  }
+  x.last = b.day;
+}
+
 /** Contender Series: the boss hands out contracts to the winners who impressed. */
 function dwcsContracts(w: World, rng: Rng, ev: MMAEvent): void {
   for (const id of ev.bouts) {
@@ -593,7 +624,18 @@ function dwcsContracts(w: World, rng: Rng, ev: MMAEvent): void {
     const perf = b.res.perf[b.res.winner === "a" ? 0 : 1];
     // Most winners who impress get the call, as in recent seasons: about 30 contracts from 50 fights.
     const p = b.res.method !== "DEC" ? 0.9 : perf >= 7.2 ? 0.7 : 0.35;
-    if (!rng.chance(p)) continue;
+    if (!rng.chance(p)) {
+      if (f.ctrl) {
+        notify(w, {
+          kind: "contract",
+          fighter: f.id,
+          from: "Dana White's Contender Series",
+          subject: "A win, but no contract yet",
+          body: `${fullName(f)} won, but Dana White wants to see more before handing out a UFC contract: a decision on the Contender Series has to be dominant. Back to the regional scene; keep winning and the scouts will be back next summer.`,
+        });
+      }
+      continue;
+    }
     f.tags = [...(f.tags ?? []), "dwcs"];
     if (f.ctrl) {
       // The player's fighter gets the offer in the inbox (career/offers.ts).

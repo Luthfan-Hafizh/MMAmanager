@@ -10,6 +10,7 @@ import { autoPlay, sessionById, skipSession } from "./media";
 import { answerScale } from "./weighin";
 import { answerLife } from "./life";
 import type { DeclineReason } from "./promoter";
+import { answerTryout } from "./tryout";
 
 export function answer(w: World, msgId: string, action: string): string {
   const m = w.inbox.find((x) => x.id === msgId);
@@ -19,6 +20,8 @@ export function answer(w: World, msgId: string, action: string): string {
   if (m.kind === "offer" && m.ref) {
     // "decline:<reason>" says why; a bare "decline" (an old message) gives no reason.
     text = action === "accept" ? acceptFight(w, m.ref) : declineFight(w, m.ref, false, action.startsWith("decline:") ? (action.slice(8) as DeclineReason) : undefined);
+  } else if (action.startsWith("tryout:")) {
+    text = answerTryout(w, m, action);
   } else if (m.kind === "contract" && m.ref) {
     if (action === "sign") text = withRng(w, (rng) => signContract(w, rng, m.ref!));
     else if (action === "reject") text = rejectContract(w, m.ref);
@@ -58,7 +61,8 @@ export function autoAnswer(w: World): void {
   for (const m of [...w.inbox]) {
     if (!m.needs || m.done) continue;
     if (m.kind === "offer") answer(w, m.id, "accept");
-    else if (m.kind === "contract") answer(w, m.id, "sign");
+    // A contract is signed; an invitation (the Contender Series) accepted.
+    else if (m.kind === "contract") answer(w, m.id, m.actions?.[0]?.id ?? "sign");
     // Everything else: the first choice (the questions answered in the fighter's own voice, the extra hour, the stare-down).
     else if (m.actions?.length) answer(w, m.id, m.actions[0].id);
     else {

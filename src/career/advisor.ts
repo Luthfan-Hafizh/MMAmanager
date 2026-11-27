@@ -22,6 +22,7 @@ import { INJURY } from "../data/injuries";
 
 const INJURY_FOR = (id?: string) => (id ? INJURY[id] : undefined);
 import { counterOffer, valueOf } from "./offers";
+import { perFight } from "./standing";
 
 export type Verdict = "take" | "pass" | "think" | "sign" | "counter" | "wait";
 
@@ -266,12 +267,22 @@ export function adviseContract(w: World, f: Fighter, o: ContractOffer): Advice {
   if (o.signBonus) add(true, 0.6, `There's a ${money(o.signBonus)} signing bonus.`);
   const rising = ageAt(f.birth, w.day) < 28 && outlookRoom(f, w.day) > 4;
   if (rising && o.fights > 3) add(null, 0.5, `You're still improving: a shorter deal (${o.fights - 1} fights) lets us renegotiate sooner.`);
+  if (o.approach && f.promo && f.promo !== o.promo && f.contract && f.contract.left > 0) add(null, 0.8, `Sign it and the move is done: it starts after your last ${PROMOTIONS[f.promo].short} fight.`);
+  if (o.matches) add(true, 0.8, `They matched the ${PROMOTIONS[o.matches].short}: the money is the same, so it's about the stage.`);
+  if (o.last && o.last.how === "rejected") add(null, 0.6, `They came back after you said no; push too hard and they may walk this time.`);
+  // The other offers on the table, a fight all in.
+  const rivals = w.career.contractOffers.filter((x) => x.fighter === f.id && x.status === "open" && x.id !== o.id);
+  for (const x of rivals) {
+    const mine = perFight(o.show, o.win);
+    const theirs = perFight(x.show, x.win);
+    add(theirs > mine * 1.05 ? false : theirs < mine * 0.95 ? true : null, 1, `${PROMOTIONS[x.promo].short} is offering too: about ${money(theirs)} a fight all in, against ${money(mine)} here.`);
+  }
   // A better offer elsewhere?
   const other = (["ufc", "pfl"] as PromoId[]).filter((x) => x !== o.promo).map((x) => ({ x, v: valueOf(w, f, x) })).sort((a, b) => b.v - a.v)[0];
   const freeAgency = o.renewal && f.contract && f.contract.left <= 0;
   let verdict: Verdict;
   let counter: Advice["counter"];
-  if (freeAgency && other && other.v > Math.max(opening, ceiling) * 1.35 && !isChampion(w, f) && TIER_RANK[PROMOTIONS[other.x].tier] >= newTier) {
+  if (freeAgency && !rivals.length && other && other.v > Math.max(opening, ceiling) * 1.35 && !isChampion(w, f) && TIER_RANK[PROMOTIONS[other.x].tier] >= newTier) {
     verdict = "wait";
     add(false, 1.5, `${PROMOTIONS[other.x].short} would pay about ${money(other.v)}. Test free agency.`);
   } else if (opening >= target) {

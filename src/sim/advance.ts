@@ -18,7 +18,7 @@ import { simulate, type FightOutcome } from "../engine/sim";
 import { campWeek, fightEve } from "../career/camp";
 import { blocking, notify } from "../career/inbox";
 import { monthlyMoney } from "../career/money";
-import { careerInterest, expireOffers } from "../career/offers";
+import { careerInterest, expireOffers, startSignedDeals } from "../career/offers";
 import { trainingWeek } from "../career/training";
 import { rankAchievements } from "../career/achievements";
 import { monthlySponsors, weeklySponsors } from "../career/sponsors";
@@ -188,6 +188,7 @@ export function advanceDay(w: World): Stop[] {
     w.day += 1;
     heal(w);
     expireOffers(w);
+    startSignedDeals(w);
     campInjuries(w, rng);
     bookingPass(w, rng);
     if (w.day % 3 === 0) fillGaps(w, rng);

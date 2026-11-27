@@ -9,9 +9,9 @@ import { DIVISIONS, ladderOf, type DivisionId } from "../data/divisions";
 import { PROMOTIONS, TIER_RANK } from "../data/promotions";
 import { ovrOf } from "../model/attributes";
 import type { Fighter, Gym, World } from "../model/types";
-import { addNews, fullName, gymMembers, isChampion, touch, withRng } from "../world/core";
+import { addNews, fullName, gymMembers, isChampion, rankOf, touch, withRng } from "../world/core";
 import { vacate } from "../world/titles";
-import { updateRankings } from "../world/rankings";
+import { activityScore, updateRankings } from "../world/rankings";
 import { notify } from "./inbox";
 import { ledger } from "./money";
 import { declineFight } from "./offers";
@@ -112,6 +112,10 @@ export function moveDivision(w: World, f: Fighter, to: DivisionId): string {
   if (chk.vacates) vacate(w, f, "moved");
   for (const o of w.career.fightOffers) if (o.fighter === f.id && o.status === "open") declineFight(w, o.id, true, "moved");
   f.div = to;
+  // Results at the new weight were kept as a second place there; now it is the fighter's own,
+  // and the place earned there is kept.
+  const earned = f.xw?.find((x) => x.promo === f.promo && x.div === to && x.score !== undefined && x.beat.length > x.lost);
+  if (f.xw) f.xw = f.xw.filter((x) => x.div !== to);
   const a = f.attrs;
   if (up) {
     a.strength = clamp(a.strength - 0.9, 1, 20);
@@ -126,9 +130,11 @@ export function moveDivision(w: World, f: Fighter, to: DivisionId): string {
     a.chin = clamp(a.chin - 0.2, 1, 20);
   }
   f.elo = Math.round(f.elo - 30);
+  if (earned?.score !== undefined) f.elo = Math.max(f.elo, Math.round(earned.score - activityScore(w, f)));
   touch(w);
   if (f.promo && PROMOTIONS[f.promo].rankSize) updateRankings(w, f.promo, [from, to]);
-  notify(w, { kind: "info", fighter: f.id, from: "Head coach", subject: `${up ? "Up" : "Down"} to ${DIVISIONS[to].name.toLowerCase()}`, body: `${fullName(f)} now fights at ${DIVISIONS[to].name.toLowerCase()} (${DIVISIONS[to].limit} lb).${chk.vacates ? " The belt at the old weight is vacated." : ""} The rankings start again: win here to climb.` });
+  const r = rankOf(w, f);
+  notify(w, { kind: "info", fighter: f.id, from: "Head coach", subject: `${up ? "Up" : "Down"} to ${DIVISIONS[to].name.toLowerCase()}`, body: `${fullName(f)} now fights at ${DIVISIONS[to].name.toLowerCase()} (${DIVISIONS[to].limit} lb).${chk.vacates ? " The belt at the old weight is vacated." : ""} ${r ? `The win here already counts: #${r} in the rankings.` : "The rankings start again: win here to climb."}` });
   if (f.pop > 25 || chk.vacates) addNews(w, { kind: "other", promo: f.promo ?? undefined, fighters: [f.id], text: `${fullName(f)} moves ${up ? "up" : "down"} to ${DIVISIONS[to].name.toLowerCase()}.` });
   return `Moved to ${DIVISIONS[to].name}.`;
 }

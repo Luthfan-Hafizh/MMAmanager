@@ -12,7 +12,7 @@ import { blocking } from "../../career/inbox";
 import { answer } from "../../career/actions";
 import { askForFight } from "../../career/offers";
 import { upcomingOf } from "../../world/calendar";
-import { fullName, isChampion, rankLabel, rankNumber, recordText } from "../../world/core";
+import { fullName, isChampion, otherRanks, rankLabel, rankNumber, recordText } from "../../world/core";
 import { changed, toast, useWorld } from "../../state/store";
 import { Link, go } from "../router";
 import { Bar, Empty, FighterLink, Flag, Form, Ovr, Panel, RankBadge, Spark } from "../components";
@@ -218,12 +218,16 @@ function FighterHome({ w, f }: { w: World; f: Fighter }) {
   const age = ageYears(f.birth, w.day);
   const rl = rankLabel(w, f);
   const r = f.amateur ? f.am : f.rec;
+  // Ranked at another weight too; the big number shows it when there's no rank at home.
+  const others = otherRanks(w, f);
+  const alt = !rl ? others[0] : undefined;
   return (
     <>
       <Band
         eyebrow={
           <>
             {rl === "C" ? <span className="tag gold">Champion</span> : rl ? <span className="tag red">{rl}</span> : null}
+            {others.map((x) => <span key={x.div} className="tag red">#{x.rank} {DIVISIONS[x.div].short}</span>)}
             <span>{DIVISIONS[f.div].name}</span>
             <span>{f.promo ? PROMOTIONS[f.promo].name : "Free agent"}</span>
           </>
@@ -232,8 +236,8 @@ function FighterHome({ w, f }: { w: World; f: Fighter }) {
         title={f.surname}
         word={f.surname}
         right={
-          <Mark gold={rl === "C"} label={rl === "C" ? `${PROMOTIONS[f.promo!].short} champion` : rl === "IC" ? "Interim champion" : rl ? `${DIVISIONS[f.div].name} rank` : "Overall rating"} sub={rl ? `Overall ${o} · ${legacyText(f.legacy ?? 0)}` : `${legacyText(f.legacy ?? 0)}${goatRank(w, f) ? ` · #${goatRank(w, f)} all-time` : ""}`}>
-            {rl === "C" ? "C" : rl || o}
+          <Mark gold={rl === "C"} label={rl === "C" ? `${PROMOTIONS[f.promo!].short} champion` : rl === "IC" ? "Interim champion" : rl ? `${DIVISIONS[f.div].name} rank` : alt ? `${DIVISIONS[alt.div].name} rank` : "Overall rating"} sub={rl || alt ? `Overall ${o} · ${legacyText(f.legacy ?? 0)}` : `${legacyText(f.legacy ?? 0)}${goatRank(w, f) ? ` · #${goatRank(w, f)} all-time` : ""}`}>
+            {rl === "C" ? "C" : rl || (alt ? `#${alt.rank}` : o)}
           </Mark>
         }
       >

@@ -11,7 +11,7 @@ import { ATTR_INFO, groupScore, ovr, ovrBand, styleOf } from "../../model/attrib
 import type { Bout, Fighter, World } from "../../model/types";
 import { methodText } from "../../engine/sim";
 import { beltNote, isBeltFight, stakeLabel } from "../../world/belts";
-import { boutsOf, isChampion, rankLabel, recordText, resultFor, amRecordText } from "../../world/core";
+import { boutsOf, isChampion, otherRanks, rankLabel, recordText, resultFor, amRecordText } from "../../world/core";
 import { potentialText, primeText } from "../../world/development";
 import { changed, toast, useWorld } from "../../state/store";
 import { retirePlayer } from "../../career/retire";
@@ -63,11 +63,15 @@ function Hero({ w, f, tabs }: { w: World; f: Fighter; tabs: React.ReactNode }) {
   const champ = isChampion(w, f);
   const finishRate = r.w ? Math.round(((r.koW + r.subW) / r.w) * 100) : null;
   const amFights = f.am.w + f.am.l + f.am.d;
+  // Ranked at another weight too, after a win there; the big number shows it when there's no rank at home.
+  const others = otherRanks(w, f);
+  const alt = !rank ? others[0] : undefined;
   return (
     <Band
       eyebrow={
         <>
           {rank === "C" ? <span className="tag gold">Champion</span> : rank === "IC" ? <span className="tag gold">Interim champion</span> : rank ? <span className="tag red">{rank} {div.short}</span> : null}
+          {others.map((x) => <span key={x.div} className="tag red" title={`Ranked at ${DIVISIONS[x.div].name.toLowerCase()} too, after a win there`}>#{x.rank} {DIVISIONS[x.div].short}</span>)}
           <span className="tag">{div.name}</span>
           <span className="tag">{f.status === "retired" ? "Retired" : f.promo ? PROMOTIONS[f.promo].short : "Free agent"}</span>
           {w.promos.ufc?.bmf?.holder === f.id && <span className="tag bmf">BMF</span>}
@@ -79,8 +83,8 @@ function Hero({ w, f, tabs }: { w: World; f: Fighter; tabs: React.ReactNode }) {
       title={f.nick ? `${f.first} ${f.surname}` : f.surname}
       word={f.surname}
       right={
-        <Mark gold={champ} label={rank === "C" ? "Champion" : rank === "IC" ? "Interim champion" : rank ? `${div.name} rank` : "Overall rating"} sub={`${rank ? `Overall ${o} · ` : ""}Legacy ${Math.round(f.legacy ?? 0)}${goatRank(w, f) ? ` · #${goatRank(w, f)} all-time` : ""}`}>
-          {rank === "C" ? "C" : rank || o}
+        <Mark gold={champ} label={rank === "C" ? "Champion" : rank === "IC" ? "Interim champion" : rank ? `${div.name} rank` : alt ? `${DIVISIONS[alt.div].name} rank` : "Overall rating"} sub={`${rank || alt ? `Overall ${o} · ` : ""}Legacy ${Math.round(f.legacy ?? 0)}${goatRank(w, f) ? ` · #${goatRank(w, f)} all-time` : ""}`}>
+          {rank === "C" ? "C" : rank || (alt ? `#${alt.rank}` : o)}
         </Mark>
       }
       tabs={tabs}

@@ -1424,3 +1424,22 @@ tr.click:focus-visible, .list-row[tabindex]:focus-visible { outline: 2px solid v
 .award.me { box-shadow: inset 3px 0 0 var(--red), var(--shadow); }
 .honours { list-style: none; margin: 0; padding: 0; display: grid; gap: 10px; }
 .honours b { font-stretch: 75%; font-weight: 800; }
+
+/* How to play */
+.help-toc { display: flex; flex-wrap: wrap; gap: 6px; margin-bottom: 18px; }
+.help-toc a { padding: 6px 10px; border: 1px solid var(--line); border-radius: var(--r); font-size: 12.5px; font-weight: 600; background: var(--sheet); }
+.help-toc a:hover { border-color: var(--ink-3); }
+.help-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 18px; }
+.help-part h2 { font-stretch: 62%; font-weight: 900; font-size: 30px; text-transform: uppercase; line-height: 1; margin: 2px 0 12px; }
+.help-part p { font-size: 14px; line-height: 1.55; margin: 0 0 10px; }
+.help-n { font-stretch: 62%; font-weight: 900; font-size: 13px; color: var(--red); letter-spacing: 0.1em; }
+@media (max-width: 860px) { .help-grid { grid-template-columns: 1fr; } }
+
+/* First weeks on Home, and the nudge to export */
+.guide-card { margin-bottom: 18px; border-left: 3px solid var(--red); }
+.guide-steps { margin: 10px 0 12px; padding-left: 20px; display: grid; gap: 6px; font-size: 14px; }
+.export-nudge { margin-bottom: 18px; }
+
+/* Backups on the title screen */
+.save-baks { flex-basis: 100%; display: grid; gap: 6px; padding: 8px 0 2px; }
+.save-bak { display: flex; justify-content: space-between; align-items: center; gap: 10px; font-size: 13px; }

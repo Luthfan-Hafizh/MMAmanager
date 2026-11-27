@@ -723,6 +723,8 @@ export interface Career {
   living: number;
   pitches: { fighter: string; day: number; ok: boolean }[];
   retiredAt?: number;
+  /** The game day the career was last exported to a file. */
+  lastExport?: number;
   achievements: { id: string; day: number; fighter: string }[];
   pendingUfcOffer?: string;
   retiredFighter?: string;

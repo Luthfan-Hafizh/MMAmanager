@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import { fmtDate } from "../../core/time";
-import { compatible, deleteSave, exportWorld, importFile, listSaves, loadWorld, type SaveMeta } from "../../state/persist";
-import { setBusy, setWorld, toast } from "../../state/store";
+import { compatible, deleteSave, exportWorld, importFile, listBackups, listSaves, loadBackup, loadWorld, type SaveMeta } from "../../state/persist";
+import { save, setBusy, setWorld, toast } from "../../state/store";
 import { Logo } from "../icons";
 import { go } from "../router";
 import { confirmBox } from "../components";
@@ -10,6 +10,29 @@ export function Title() {
   const [saves, setSaves] = useState<SaveMeta[] | null>(null);
   const file = useRef<HTMLInputElement>(null);
   const refresh = () => listSaves().then(setSaves);
+  const [bakFor, setBakFor] = useState<string | null>(null);
+  const [baks, setBaks] = useState<SaveMeta[]>([]);
+  const showBackups = async (id: string) => {
+    if (bakFor === id) return setBakFor(null);
+    setBaks(await listBackups(id));
+    setBakFor(id);
+  };
+  const restore = async (b: SaveMeta) => {
+    if (!(await confirmBox({ title: "Restore this backup?", body: `The career goes back to ${fmtDate(b.day)} (game date). Everything since is lost, unless you export the current save first.`, ok: "Restore", danger: true }))) return;
+    setBusy("Restoring the backup…");
+    try {
+      const w = await loadBackup(b.backupOf!, b.slot!);
+      if (!w) throw new Error("Backup not found.");
+      setWorld(w);
+      await save();
+      go("/home");
+      toast(`Restored to ${fmtDate(w.day)}.`, "good");
+    } catch (e) {
+      toast(String((e as Error).message), "bad");
+    } finally {
+      setBusy(null);
+    }
+  };
   useEffect(() => {
     void refresh();
   }, []);
@@ -86,8 +109,23 @@ export function Title() {
                   ) : (
                     <span className="badge bad">Old version</span>
                   )}
+                  <button className="btn sm" onClick={() => void showBackups(s.id)} aria-expanded={bakFor === s.id}>Backups</button>
                   <button className="btn sm" onClick={async () => { const w = await loadWorld(s.id); if (w) exportWorld(w); }}>Export</button>
                   <button className="btn sm danger" onClick={async () => { if (!(await confirmBox({ title: "Delete this career?", body: `The career of ${s.who} is deleted for good. Export it first to keep a copy.`, ok: "Delete", danger: true }))) return; await deleteSave(s.id); void refresh(); }}>Delete</button>
+                  {bakFor === s.id && (
+                    <div className="save-baks">
+                      {baks.length === 0 ? (
+                        <span className="small" style={{ color: "var(--band-ink-3)" }}>No backups yet: one is kept each month of game time, the last three.</span>
+                      ) : (
+                        baks.map((b) => (
+                          <div key={b.slot} className="save-bak">
+                            <span>{fmtDate(b.day)} <span style={{ color: "var(--band-ink-3)" }}>· saved {new Date(b.savedAt).toLocaleString("en-GB", { day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" })}</span></span>
+                            <button className="btn sm" onClick={() => void restore(b)}>Restore</button>
+                          </div>
+                        ))
+                      )}
+                    </div>
+                  )}
                 </div>
               ))
             )}

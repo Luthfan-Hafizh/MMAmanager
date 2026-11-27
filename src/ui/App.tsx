@@ -40,6 +40,7 @@ const Legacy = lazy(() => import("./pages/Legacy").then((m) => ({ default: m.Leg
 const Titles = lazy(() => import("./pages/Titles").then((m) => ({ default: m.Titles })));
 const Media = lazy(() => import("./pages/Media").then((m) => ({ default: m.Media })));
 const PressRoom = lazy(() => import("./pages/Media").then((m) => ({ default: m.PressRoom })));
+const Help = lazy(() => import("./pages/Help").then((m) => ({ default: m.Help })));
 
 /** While a page's code arrives (a moment, the first time it's opened). */
 function Loading() {
@@ -123,6 +124,8 @@ function pageFor(parts: string[]): PageDef {
       return { title: "Settings", eyebrow: "The game", el: <Settings /> };
     case "titles":
       return { title: "Title history", el: <Titles promo={p1} div={p2} />, custom: true };
+    case "help":
+      return { title: "How to play", el: <Help />, custom: true };
     case "legacy":
       return { title: "Legacy", el: <Legacy tab={p1} promo={p2} />, custom: true };
     case "agency":
@@ -296,6 +299,7 @@ function Shell() {
           {nav("/promotions", "Promotions")}
           {nav("/legacy", "Legacy")}
           <span className="sep" />
+          {nav("/help", "Guide")}
           {nav("/settings", "Settings")}
         </div>
       </nav>

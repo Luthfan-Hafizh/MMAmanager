@@ -3,6 +3,7 @@
 import type { World } from "../model/types";
 import { migrate, repair, OLDEST_SAVE, SAVE_VERSION } from "../world/create";
 import { loadRoster } from "./roster";
+import { ymd } from "../core/time";
 
 export interface SaveMeta {
   id: string;
@@ -13,6 +14,9 @@ export interface SaveMeta {
   savedAt: number;
   version: number;
   size: number;
+  /** A backup copy: the career it belongs to, and its slot. */
+  backupOf?: string;
+  slot?: number;
 }
 
 const DB = "mma-manager";
@@ -67,6 +71,12 @@ export function metaOf(w: World, size = 0): SaveMeta {
   };
 }
 
+// Backups: the first save of every month of game time also goes in one of three
+// rotating slots, so the last three months can be restored from the title screen.
+const BACKUPS = 3;
+const bakKey = (id: string, slot: number) => `${id}#bak#${slot}`;
+const backedUp = new Map<string, number>();
+
 export async function saveWorld(w: World): Promise<SaveMeta> {
   const json = JSON.stringify(w);
   const data = await gzip(json);
@@ -74,8 +84,41 @@ export async function saveWorld(w: World): Promise<SaveMeta> {
   const meta = metaOf(w, typeof data === "string" ? data.length : data.byteLength);
   await tx(db, STORE, "readwrite", (s) => s.put(data, w.id));
   await tx(db, META, "readwrite", (s) => s.put(meta, w.id));
+  const t = ymd(w.day);
+  const month = t.y * 12 + t.m;
+  if (backedUp.get(w.id) !== month) {
+    const slot = month % BACKUPS;
+    await tx(db, STORE, "readwrite", (s) => s.put(data, bakKey(w.id, slot)));
+    await tx(db, META, "readwrite", (s) => s.put({ ...meta, backupOf: w.id, slot }, bakKey(w.id, slot)));
+    backedUp.set(w.id, month);
+  }
   db.close();
   return meta;
+}
+
+/** A career's backups, newest game date first. */
+export async function listBackups(id: string): Promise<SaveMeta[]> {
+  try {
+    const db = await open();
+    const out: SaveMeta[] = [];
+    for (let k = 0; k < BACKUPS; k++) {
+      const m = await tx<SaveMeta | undefined>(db, META, "readonly", (s) => s.get(bakKey(id, k)) as IDBRequest<SaveMeta | undefined>);
+      if (m) out.push(m);
+    }
+    db.close();
+    return out.sort((a, b) => b.day - a.day);
+  } catch {
+    return [];
+  }
+}
+
+/** A backup, read back like a save. */
+export async function loadBackup(id: string, slot: number): Promise<World | null> {
+  const db = await open();
+  const data = await tx<Uint8Array | string | undefined>(db, STORE, "readonly", (s) => s.get(bakKey(id, slot)) as IDBRequest<Uint8Array | string | undefined>);
+  db.close();
+  if (!data) return null;
+  return upToDate(JSON.parse(await gunzip(data)) as World);
 }
 
 export async function listSaves(): Promise<SaveMeta[]> {
@@ -83,7 +126,7 @@ export async function listSaves(): Promise<SaveMeta[]> {
     const db = await open();
     const all = await tx<SaveMeta[]>(db, META, "readonly", (s) => s.getAll() as IDBRequest<SaveMeta[]>);
     db.close();
-    return all.sort((a, b) => b.savedAt - a.savedAt);
+    return all.filter((m) => !m.backupOf).sort((a, b) => b.savedAt - a.savedAt);
   } catch {
     return [];
   }
@@ -108,6 +151,10 @@ export async function deleteSave(id: string): Promise<void> {
   const db = await open();
   await tx(db, STORE, "readwrite", (s) => s.delete(id));
   await tx(db, META, "readwrite", (s) => s.delete(id));
+  for (let k = 0; k < BACKUPS; k++) {
+    await tx(db, STORE, "readwrite", (s) => s.delete(bakKey(id, k)));
+    await tx(db, META, "readwrite", (s) => s.delete(bakKey(id, k)));
+  }
   db.close();
 }
 
@@ -117,6 +164,7 @@ export function compatible(m: SaveMeta | World): boolean {
 }
 
 export function exportWorld(w: World): void {
+  w.career.lastExport = w.day;
   const blob = new Blob([JSON.stringify(w)], { type: "application/json" });
   const a = document.createElement("a");
   a.href = URL.createObjectURL(blob);

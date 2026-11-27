@@ -28,6 +28,7 @@ import { becomeManager, careerRecap } from "../../career/retire";
 import { moneyline } from "../../world/odds";
 import { FightOfferView, InjuryCard } from "../advice";
 import { isBeltFight, stakeLabel } from "../../world/belts";
+import { exportWorld } from "../../state/persist";
 
 export function Home() {
   const w = useWorld();
@@ -261,6 +262,7 @@ function FighterHome({ w, f }: { w: World; f: Fighter }) {
         </div>
       </Band>
       <div className="wrap page-body">
+        <HomeNotes w={w} />
         {decisions.length > 0 && (
           <div className="notice warn row" style={{ marginBottom: 20 }}>
             <b>{decisions.length} decision{decisions.length > 1 ? "s" : ""} waiting:</b> {decisions[0].subject}
@@ -371,6 +373,7 @@ function ManagerHome({ w }: { w: World }) {
         </div>
       </Band>
       <div className="wrap page-body">
+        <HomeNotes w={w} />
         {decisions.length > 0 && (
           <div className="notice warn row" style={{ marginBottom: 20 }}>
             <b>{decisions.length} decision{decisions.length > 1 ? "s" : ""} waiting:</b> {decisions[0].subject}
@@ -430,3 +433,58 @@ function ManagerHome({ w }: { w: World }) {
 }
 
 export { fullName };
+
+/** A new career: where to start. Later on: a nudge to keep a copy outside the browser. */
+function HomeNotes({ w }: { w: World }) {
+  const key = `mma.guide.${w.id}`;
+  const [hidden, setHidden] = useState(() => {
+    try {
+      return localStorage.getItem(key) === "1";
+    } catch {
+      return false;
+    }
+  });
+  const fresh = w.day - w.start < 60 && !hidden;
+  const remind = !fresh && w.day - w.start > 120 && w.day - (w.career.lastExport ?? w.start) > 240;
+  if (fresh) {
+    const hide = () => {
+      try {
+        localStorage.setItem(key, "1");
+      } catch {
+        /* private mode */
+      }
+      setHidden(true);
+    };
+    const manager = w.career.mode === "manager";
+    return (
+      <div className="panel guide-card">
+        <div className="panel-b">
+          <div className="spread">
+            <div className="label">Your first weeks</div>
+            <button className="btn ghost sm" onClick={hide}>Hide</button>
+          </div>
+          <ol className="guide-steps">
+            {manager ? (
+              <li><Link to="/scouting">Scout and pitch fighters</Link>: an agency is its clients.</li>
+            ) : (
+              <li><Link to="/training">Look over the training week</Link>: ten sessions, the intensity, a technique to drill.</li>
+            )}
+            <li><Link to="/inbox">Read the inbox</Link>: offers and decisions wait there.</li>
+            <li>When a fight is signed, <Link to="/fight">set the fight plan</Link>.</li>
+            <li>Press Continue (or Ctrl+Space) to move the week on.</li>
+          </ol>
+          <Link to="/help" className="textlink">How to play: the whole game in one page</Link>
+        </div>
+      </div>
+    );
+  }
+  if (!remind) return null;
+  return (
+    <div className="sn-strip calm export-nudge">
+      <b>Back up</b>
+      <span className="sn-why">This career hasn't been exported for a while. A copy outside the browser keeps it safe.</span>
+      <button className="btn sm primary" onClick={() => { exportWorld(w); changed(); }}>Export now</button>
+      <button className="btn ghost sm" onClick={() => { w.career.lastExport = w.day; changed(); }}>Later</button>
+    </div>
+  );
+}

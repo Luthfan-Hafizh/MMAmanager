@@ -26,6 +26,7 @@ import { Settings } from "../src/ui/pages/Settings";
 import { Agency, Scouting } from "../src/ui/pages/Agency";
 import { FightNight } from "../src/ui/pages/FightNight";
 import { Legacy } from "../src/ui/pages/Legacy";
+import { Help } from "../src/ui/pages/Help";
 import { AWARD_NAME, yearEndAwards } from "../src/world/awards";
 import { records } from "../src/world/legacy";
 import { Titles } from "../src/ui/pages/Titles";
@@ -131,6 +132,8 @@ function pages(w: World, label: string) {
   check("Settings", <Settings />);
   check("Fight night", <FightNight />);
   check("Legacy", <Legacy />);
+  check("Legacy awards", <Legacy tab="awards" />);
+  check("Guide", <Help />);
   check("Title history", <Titles promo="ufc" div="LW" />);
   check("Title history BMF", <Titles promo="ufc" div="bmf" />);
   check("Title history PFL", <Titles promo="pfl" />);

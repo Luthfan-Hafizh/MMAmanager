@@ -26,6 +26,7 @@ import { fmtDate } from "../core/time";
 import { money } from "../core/util";
 import { debutBand, waitingForTitle, type DebutBand } from "../career/standing";
 import { bookTryouts, tryoutHold } from "../career/tryout";
+import { heldByRtu, rtuReplacement } from "./roadtoufc";
 
 const DEFENCE_GAP: Record<string, number> = { major: 140, league: 125, regional: 105, local: 95, amateur: 80, tryout: 0 };
 
@@ -37,6 +38,8 @@ function restNeeded(f: Fighter, gap: number): number {
 
 export function readyFor(w: World, f: Fighter, ev: MMAEvent, opts: { shortNotice?: boolean } = {}): boolean {
   if (f.status !== "active" || f.booked) return false;
+  // In a Road to UFC bracket: nothing else until they're out.
+  if (heldByRtu(w, f)) return false;
   if (f.promo !== ev.promo && ev.promo !== "dwcs") return false;
   if (f.contract && f.contract.left <= 0 && PROMOTIONS[ev.promo].tier !== "amateur") return false;
   const clear = availableFrom(f);
@@ -220,6 +223,8 @@ function importance(w: World, b: Bout): number {
   s += (fa.pop + fb.pop) * 1.4;
   // Bad blood sells: a grudge match moves up the card.
   s += heatOf(w, fa.id, fb.id) * 5;
+  // Road to UFC's finals go on the prelims of the UFC card they're on.
+  if (b.rtu && b.promo === "ufc") s -= 400;
   if (b.status === "cancelled") s -= 5000;
   return s;
 }
@@ -236,10 +241,10 @@ export function orderCard(w: World, ev: MMAEvent): void {
     b.order = i;
     // Title fights and the BMF go five rounds wherever they sit on the card.
     const title = isBeltFight(b);
-    b.rounds = roundsFor(p, title, i === 0 && b.status !== "cancelled");
+    b.rounds = roundsFor(p, title, i === 0 && b.status !== "cancelled" && !(b.rtu && b.promo === "ufc"));
   });
   if (ev.promo === "ufc" && ev.kind === "fightnight") {
-    const main = list.find((b) => b.status !== "cancelled");
+    const main = list.find((b) => b.status !== "cancelled" && !b.rtu);
     ev.name = main ? `UFC Fight Night: ${w.fighters[main.a].surname} vs. ${w.fighters[main.b].surname}` : "UFC Fight Night";
   }
 }
@@ -409,6 +414,11 @@ export function buildCard(w: World, rng: Rng, ev: MMAEvent): void {
     orderCard(w, ev);
     return;
   }
+  // Road to UFC's nights hold the bracket fights only (world/roadtoufc.ts).
+  if (ev.promo === "rtu") {
+    orderCard(w, ev);
+    return;
+  }
   const size = ev.kind === "numbered" ? 13 : p.cardSize;
   // Offers to the player's fighters first (on poor terms with the matchmaker, not on every card).
   for (const id of w.career.fighters) {
@@ -527,7 +537,7 @@ function buildDwcs(w: World, rng: Rng, ev: MMAEvent): void {
 // ---------- the player's fighters ----------
 
 export function wantsOffer(w: World, f: Fighter, ev: MMAEvent): boolean {
-  if (f.booked) return false;
+  if (f.booked || heldByRtu(w, f)) return false;
   if (w.career.fightOffers.some((o) => o.fighter === f.id && o.status === "open")) return false;
   if (!readyFor(w, f, ev)) return false;
   const fc = w.career.fc[f.id];
@@ -832,6 +842,31 @@ export function withdraw(w: World, rng: Rng, b: Bout, outId: string, why: string
   const big = p.tier === "major" || p.tier === "league";
   const titleFight = b.kind === "title" || b.kind === "interim" || b.kind === "vacant";
   const champOut = titleFight && w.promos[ev.promo].champs[b.div] === outId;
+  // A Road to UFC fight: the bracket's next alternate steps in; with none, the other fighter goes through.
+  if (b.rtu) {
+    const alt = days >= 3 ? rtuReplacement(w, b, outId) : null;
+    if (alt) {
+      if (b.a === outId) b.a = alt.id;
+      else b.b = alt.id;
+      b.replaced = outId;
+      b.sub = alt.id;
+      b.notice = days;
+      b.shortNotice = true;
+      alt.booked = b.id;
+      setOdds(w, b);
+      if (stay.ctrl) {
+        offerFight(w, rng, ev, stay, alt, b.kind, true, b, { notice: days, stay: true, replaced: outId });
+        return;
+      }
+      if (!opts.quiet) addNews(w, { kind: "booking", promo: ev.promo, fighters: [outId, alt.id, stayId], text: `${fullName(out)} is out of ${ev.name} (${why}). The alternate, ${fullName(alt)}, steps in against ${fullName(stay)}.` });
+      orderCard(w, ev);
+      return;
+    }
+    b.replaced = outId;
+    cancelBout(w, b, `${fullName(out)} withdrew (${why})`);
+    if (stay.ctrl) callOff(w, b, stay, `${fullName(out)} has withdrawn (${why}) and no alternate could step in: ${fullName(stay)} goes through to the next round.`, days);
+    return;
+  }
   // The phone rings for one of the player's fighters.
   if (!stay.ctrl && !champOut && callPlayer(w, rng, ev, b, outId, stay, days)) {
     if (!opts.quiet && (big || p.tier === "regional")) addNews(w, { kind: "booking", promo: ev.promo, fighters: [outId], text: `${fullName(out)} is out of ${ev.name} (${why}).` });
@@ -936,7 +971,7 @@ export function fillGaps(w: World, rng: Rng): void {
     const days = ev.day - w.day;
     if (days < 7) continue;
     if (days > PROMOTIONS[ev.promo].lead) break;
-    if (ev.promo === "dwcs") continue;
+    if (ev.promo === "dwcs" || ev.promo === "rtu") continue;
     const size = ev.kind === "numbered" ? 13 : PROMOTIONS[ev.promo].cardSize;
     const live = ev.bouts.filter((b) => w.bouts[b].status !== "cancelled").length;
     if (live < size - 1 && rng.chance(0.35)) {

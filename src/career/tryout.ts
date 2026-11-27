@@ -16,6 +16,7 @@ import { metRecently, offerFight } from "../world/matchmaking";
 import { tryoutProspect } from "../world/market";
 import { closeMessages, notify } from "./inbox";
 import { acceptFight } from "./offers";
+import { heldByRtu } from "../world/roadtoufc";
 
 /** The season a Contender Series week belongs to (2017 was the first). */
 export function seasonOf(ev: MMAEvent): number {
@@ -41,7 +42,7 @@ export function openWeeks(w: World): MMAEvent[] {
  * at the level the UFC looks for, and the record (a belt, a run, or a clean one).
  */
 export function tryoutReady(w: World, f: Fighter, week: MMAEvent): string | null {
-  if (!f.promo || f.status !== "active") return null;
+  if (!f.promo || f.status !== "active" || heldByRtu(w, f)) return null;
   const tier = PROMOTIONS[f.promo].tier;
   if (tier !== "regional" && tier !== "local") return null;
   if (f.tags?.includes("ufc-alum")) return null;

@@ -5,10 +5,11 @@
 import type { Rng } from "../core/rng";
 import { hashString } from "../core/rng";
 import { nextDow, ymd, dayOf } from "../core/time";
-import { PROMOTIONS, PROMO_IDS, VENUES, type PromoId } from "../data/promotions";
+import { PROMOTIONS, PROMO_IDS, VENUES, type PromoId, RTU_DIVS } from "../data/promotions";
 import { countryOf } from "../data/countries";
 import type { MMAEvent, World } from "../model/types";
 import { nextId } from "./core";
+import { type DivisionId } from "../data/divisions";
 
 const HORIZON = 200;
 
@@ -54,6 +55,10 @@ export function ensureSchedule(w: World, rng: Rng): void {
     if (!ps) continue;
     if (id === "dwcs") {
       added = scheduleDwcs(w, rng) || added;
+      continue;
+    }
+    if (id === "rtu") {
+      added = scheduleRtu(w) || added;
       continue;
     }
     let guard = 0;
@@ -142,6 +147,38 @@ function scheduleDwcs(w: World, rng: Rng): boolean {
   return added;
 }
 
+/** Road to UFC: the opening round over a Friday and Saturday from mid-May, the semifinals on a Saturday from late August, both in Shanghai. */
+function scheduleRtu(w: World): boolean {
+  const ps = w.promos.rtu;
+  if (!ps) return false;
+  const y = ymd(w.day).y;
+  let added = false;
+  for (const year of [y, y + 1]) {
+    const key = `season:${year}`;
+    if (ps.cityCount[key]) continue;
+    const first = nextDow(dayOf(year, 4, 15), 4);
+    // Too late for this year's field: the next season it is.
+    if (first < w.day + 60) {
+      ps.cityCount[key] = 1;
+      continue;
+    }
+    if (first > w.day + HORIZON) continue;
+    ps.cityCount[key] = 1;
+    const season = year - 2021;
+    const semis = nextDow(dayOf(year, 7, 20), 5);
+    const nights: [number, number, DivisionId[], string][] = [
+      [first, 0, RTU_DIVS.slice(0, 2), "Opening Round, Night 1"],
+      [first + 1, 0, RTU_DIVS.slice(2, 4), "Opening Round, Night 2"],
+      [semis, 1, RTU_DIVS, "Semifinals"],
+    ];
+    for (const [day, round, divs, label] of nights) {
+      addEvent(w, { promo: "rtu", name: `Road to UFC Season ${season}: ${label}`, day, city: "Shanghai", country: "CN", venue: "UFC Performance Institute Shanghai", kind: "tournament", number: season, rtu: { year, round, divs } });
+      added = true;
+    }
+  }
+  return added;
+}
+
 export function eventsOn(w: World, day: number): MMAEvent[] {
   const out: MMAEvent[] = [];
   for (const id of w.upcoming) {
@@ -186,6 +223,6 @@ export function cardSection(ev: MMAEvent, index: number): "Main card" | "Prelims
     if (index < 9) return "Prelims";
     return "Early prelims";
   }
-  const main = ev.kind === "fightnight" ? 6 : ev.kind === "tryout" ? n : 5;
+  const main = ev.kind === "fightnight" ? 6 : ev.kind === "tryout" || ev.kind === "tournament" ? n : 5;
   return index < main ? "Main card" : "Prelims";
 }

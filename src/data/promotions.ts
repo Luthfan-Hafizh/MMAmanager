@@ -12,6 +12,7 @@ export type PromoId =
   | "ufc"
   | "pfl"
   | "dwcs"
+  | "rtu"
   | "lfa"
   | "jungle"
   | "cw"
@@ -92,6 +93,11 @@ export const PROMOTIONS: Record<PromoId, PromoDef> = {
     eventsPerYear: 10, cardSize: 5, lead: 42, gap: 0, divisions: ALL, rosterPerDiv: 0, rankSize: 0, roundSec: 300,
     showLow: 5000, showHigh: 5000, firstNumber: 11, naming: "series", cities: ["Las Vegas, US"], day: 1, color: "#7a8597",
   }),
+  rtu: D({
+    id: "rtu", name: "Road to UFC", short: "Road to UFC", tier: "tryout", region: "global", prestige: 55,
+    eventsPerYear: 3, cardSize: 8, lead: 42, gap: 0, divisions: ["FLY", "BW", "FW", "LW"], rosterPerDiv: 0, rankSize: 0, roundSec: 300,
+    showLow: 6000, showHigh: 6000, naming: "series", cities: ["Shanghai, CN"], day: 4, color: "#b91c1c",
+  }),
   // Regional
   lfa: D({ id: "lfa", name: "Legacy Fighting Alliance", short: "LFA", tier: "regional", region: "na", prestige: 46, eventsPerYear: 22, cardSize: 10, lead: 49, gap: 84, divisions: BIG, rosterPerDiv: 13, rankSize: 10, roundSec: 300, showLow: 2000, showHigh: 12000, firstNumber: 246, naming: "numbered", cities: ["Sioux Falls, US", "Minneapolis, US", "Phoenix, US", "Houston, US", "Shawnee, US", "Commerce, US", "Charlotte, US", "Denver, US", "Prior Lake, US", "Belo Horizonte, BR"], day: 4, color: "#3b82f6" }),
   jungle: D({ id: "jungle", name: "Jungle Fight", short: "Jungle Fight", tier: "regional", region: "sa", prestige: 36, eventsPerYear: 10, cardSize: 10, lead: 49, gap: 84, divisions: BIG, rosterPerDiv: 13, rankSize: 10, roundSec: 300, showLow: 1500, showHigh: 8000, firstNumber: 136, naming: "numbered", cities: ["São Paulo, BR", "Rio de Janeiro, BR", "Curitiba, BR", "Belém, BR", "Manaus, BR", "Lima, PE", "Buenos Aires, AR"], day: 5, color: "#22c55e" }),
@@ -122,6 +128,9 @@ export const PROMOTIONS: Record<PromoId, PromoDef> = {
 };
 
 export const PROMO_IDS = Object.keys(PROMOTIONS) as PromoId[];
+
+/** Road to UFC's brackets (world/roadtoufc.ts). */
+export const RTU_DIVS: DivisionId[] = ["FLY", "BW", "FW", "LW"];
 
 /**
  * The UFC's month-to-month signings fill each division to 96% of its real size

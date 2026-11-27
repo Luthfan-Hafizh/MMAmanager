@@ -291,6 +291,15 @@ export function tryoutProspect(w: World, rng: Rng, d: DivisionId): Fighter {
   return newcomer(w, rng, promoFor(region, "regional")!.id, d, o, age, true);
 }
 
+/** A prospect from Asia or Oceania for Road to UFC, when the shows the game runs are short of them at the weight. */
+export function asiaProspect(w: World, rng: Rng, d: DivisionId, only?: RegionId): Fighter {
+  const region: RegionId = only ?? (rng.chance(0.8) ? "ea" : "oc");
+  const promo = [promoFor(region, "regional"), promoFor(region, "local"), promoFor("ea", "regional")].find((p) => p?.divisions.includes(d)) ?? promoFor("ea", "regional")!;
+  const o = clamp(rng.normal(64, 2.4), 59, 70);
+  const age = Math.round(clamp(rng.normal(25, 2.2), 21, 30));
+  return newcomer(w, rng, promo.id, d, o, age, true);
+}
+
 /** Promotions fill their divisions from the level below and from free agents. */
 function signings(w: World, rng: Rng): void {
   const order: PromoId[] = ["ufc", "pfl", ...PROMO_IDS.filter((id) => PROMOTIONS[id].tier === "regional"), ...PROMO_IDS.filter((id) => PROMOTIONS[id].tier === "local")];

@@ -78,6 +78,7 @@ function Hero({ w, f, tabs }: { w: World; f: Fighter; tabs: React.ReactNode }) {
           {w.promos.ufc?.bmf?.holder === f.id && <span className="tag bmf">BMF</span>}
           {f.ctrl && <span className="tag red">Your fighter</span>}
           {f.tags?.includes("dwcs") && <span className="tag">Contender Series</span>}
+          {f.tags?.includes("rtu") && <span className="tag">Road to UFC winner</span>}
         </>
       }
       first={<>{f.nick ? `"${f.nick}"` : f.first}</>}

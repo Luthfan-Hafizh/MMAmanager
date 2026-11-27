@@ -7,8 +7,10 @@ import { ovr } from "../../model/attributes";
 import { upcomingOf } from "../../world/calendar";
 import { promoRoster, recordText } from "../../world/core";
 import { useWorld } from "../../state/store";
+import { latestBrackets, rtuSeason } from "../../world/roadtoufc";
+import type { RtuBracket, World } from "../../model/types";
 import { go, Link } from "../router";
-import { Empty, FighterLink, Ovr, Panel, rowLink } from "../components";
+import { Empty, FighterLink, Ovr, Panel, rowLink, ScrollRow } from "../components";
 
 export function Promotions() {
   const w = useWorld();
@@ -51,6 +53,9 @@ export function PromotionPage({ id }: { id: string }) {
   return (
     <div className="grid">
       <div className="c8">
+        {p.id === "rtu" ? (
+          <RtuBrackets w={w} />
+        ) : (
         <Panel title="Champions" flush>
           <table className="tbl">
             <thead><tr><th>Division</th><th>Champion</th><th className="r">Record</th><th className="c">Ovr</th><th className="r">Roster</th></tr></thead>
@@ -71,6 +76,7 @@ export function PromotionPage({ id }: { id: string }) {
             </tbody>
           </table>
         </Panel>
+        )}
       </div>
       <div className="c4 stack">
         <Panel title="About">
@@ -78,8 +84,8 @@ export function PromotionPage({ id }: { id: string }) {
             <dt>Level</dt><dd>{TIER_NAME[p.tier]}</dd>
             <dt>Region</dt><dd>{p.region === "global" ? "Worldwide" : REGIONS[p.region].name}</dd>
             <dt>Events a year</dt><dd>{p.eventsPerYear}</dd>
-            <dt>Purses</dt><dd>{p.showLow ? `${money(p.showLow)} to ${money(p.showHigh)}` : "None"}</dd>
-            <dt>Rounds</dt><dd>{p.roundSec === 180 ? "3 × 3 min" : "3 × 5 min, titles 5 × 5"}</dd>
+            <dt>Purses</dt><dd>{!p.showLow ? "None" : p.showLow === p.showHigh ? `${money(p.showLow)}, and the same to win` : `${money(p.showLow)} to ${money(p.showHigh)}`}</dd>
+            <dt>Rounds</dt><dd>{p.roundSec === 180 ? "3 × 3 min" : p.tier === "tryout" ? "3 × 5 min" : "3 × 5 min, titles 5 × 5"}</dd>
             {p.rankSize > 0 && <><dt>Rankings</dt><dd>Top {p.rankSize}{p.divisions.some((d) => rankSizeOf(p.id, d) < p.rankSize) ? `, top ${Math.min(...p.divisions.map((d) => rankSizeOf(p.id, d)))} in the smaller divisions` : ""}</dd></>}
           </dl>
           <div className="row" style={{ marginTop: 10 }}>
@@ -97,5 +103,61 @@ export function PromotionPage({ id }: { id: string }) {
         </Panel>
       </div>
     </div>
+  );
+}
+
+/** Road to UFC's brackets this season: the opening round, the semifinals, the final, the winner. */
+function RtuBrackets({ w }: { w: World }) {
+  const list = latestBrackets(w);
+  if (!list.length) {
+    return (
+      <Panel title="Road to UFC">
+        <Empty title="No brackets yet">The field is named about three months before the opening round in May: four brackets of eight from Asia and Oceania.</Empty>
+      </Panel>
+    );
+  }
+  const year = list[0].year;
+  const round = (t: RtuBracket, r: number) => {
+    const slots = t.slots[r];
+    if (!slots) return <span className="dim">-</span>;
+    const next = t.slots[r + 1];
+    const out = [];
+    for (let p = 0; p < slots.length / 2; p++) {
+      const won = next?.[p];
+      const who = (id: string | null) =>
+        id ? (
+          <span className={won ? (won === id ? "br-w" : "br-l") : undefined}>
+            <FighterLink w={w} id={id} short />
+          </span>
+        ) : (
+          <span className="dim">TBA</span>
+        );
+      out.push(
+        <div key={p} className="br-pair">
+          {who(slots[2 * p])} <span className="dim">v</span> {who(slots[2 * p + 1])}
+        </div>,
+      );
+    }
+    return out;
+  };
+  return (
+    <Panel title={`Road to UFC Season ${rtuSeason(year)}`} hint={list.every((t) => t.done) ? "The winners have UFC contracts" : "Three wins to a UFC contract"} flush>
+      <ScrollRow className="br-wrap" label="The brackets">
+        <table className="tbl bracket">
+          <thead><tr><th>Division</th><th>Opening round</th><th>Semifinals</th><th>Final</th><th>Winner</th></tr></thead>
+          <tbody>
+            {list.map((t) => (
+              <tr key={t.id}>
+                <td><b>{DIVISIONS[t.div].name}</b></td>
+                <td>{round(t, 0)}</td>
+                <td>{round(t, 1)}</td>
+                <td>{round(t, 2)}</td>
+                <td>{t.winner ? <FighterLink w={w} id={t.winner} /> : <span className="dim">-</span>}</td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </ScrollRow>
+    </Panel>
   );
 }

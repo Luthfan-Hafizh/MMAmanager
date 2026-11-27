@@ -183,6 +183,8 @@ function freeGymName(taken: Set<string>, name: string, city: string, seed: numbe
 
 /** Fixes for every save on load, whatever its version. */
 export function repair(w: World): World {
+  // Promotions added since the save was made (Road to UFC).
+  for (const id of PROMO_IDS) if (!w.promos[id]) w.promos[id] = blankPromo(id);
   tidyGyms(w);
   // Finished bouts used to keep "awaiting: false".
   for (const b of Object.values(w.bouts)) if (b.awaiting === false) delete b.awaiting;

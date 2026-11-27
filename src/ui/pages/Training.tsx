@@ -9,7 +9,7 @@ import { Rng } from "../../core/rng";
 import { MASTERY_NAMES, TECHNIQUES, TECH_IDS, type TechId } from "../../data/techniques";
 import { changed, useWorld, toast } from "../../state/store";
 import { go } from "../router";
-import { confirmBox, Empty, FighterLink, Panel, Seg } from "../components";
+import { confirmBox, Empty, FighterLink, Panel, ScrollRow, Seg } from "../components";
 import { fullName } from "../../world/core";
 import { GymPanel, WeightPanel } from "./Moves";
 import { STAFF_ROLES, STAFF_TIERS, wageOf, hireStaff, fireStaff, coachFor } from "../../career/staff";
@@ -86,7 +86,7 @@ export function Training({ id }: { id?: string }) {
             </select>
           }
         >
-          <div className="week">
+          <ScrollRow className="week" label="The training week">
             <div />
             {["Mon", "Tue", "Wed", "Thu", "Fri"].map((d) => <div key={d} className="hd">{d}</div>)}
             {[0, 1].map((half) => (
@@ -106,7 +106,7 @@ export function Training({ id }: { id?: string }) {
                 })}
               </Fragment>
             ))}
-          </div>
+          </ScrollRow>
           {fc.dayJob && <p className="small warn" style={{ marginTop: 10 }}>The day job takes Thursday and Friday: those sessions are lost.</p>}
           <hr className="sep" />
           <div className="row">

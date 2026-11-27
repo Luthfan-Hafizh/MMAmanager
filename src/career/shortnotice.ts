@@ -16,6 +16,7 @@ import type { Bout, Fighter, MMAEvent, World } from "../model/types";
 import { rankOf } from "../world/core";
 import { callFactor, passedOn, rapport } from "./promoter";
 import { tryoutHold } from "./tryout";
+import { heldByRtu } from "../world/roadtoufc";
 
 /** The weight a bout is contracted at. */
 export function boutLimit(b: Pick<Bout, "div" | "limit">): number {
@@ -86,8 +87,8 @@ export function findCall(w: World, ev: MMAEvent, b: Bout, stay: Fighter, days: n
     if (!f || !fc || f.status !== "active" || !fc.shortNotice || f.booked || id === stay.id) continue;
     if (w.career.fightOffers.some((o) => o.fighter === id && o.status === "open")) continue;
     if (fc.lastCall !== undefined && w.day - fc.lastCall < 21) continue;
-    // A Contender Series week accepted: no calls around it.
-    if (tryoutHold(w, f, ev.day)) continue;
+    // A Contender Series week accepted, or a Road to UFC bracket: no calls around it.
+    if (tryoutHold(w, f, ev.day) || heldByRtu(w, f)) continue;
     if ((f.injury && f.injury.until > ev.day - 2) || f.susp > ev.day) continue;
     // An amateur turns pro by choice, never on a phone call.
     if (f.amateur || (f.promo && PROMOTIONS[f.promo].tier === "amateur")) continue;

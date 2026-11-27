@@ -1491,3 +1491,11 @@ tr.click:focus-visible, .list-row[tabindex]:focus-visible { outline: 2px solid v
 .invest-row .input { width: 170px; max-width: 100%; }
 .own-gym-name { font-size: 32px; margin-bottom: 4px; overflow-wrap: anywhere; }
 .co-buyout { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 12px; margin-top: 14px; }
+
+/* Road to UFC brackets */
+.br-wrap { overflow-x: auto; }
+.bracket { min-width: 640px; }
+.bracket td { vertical-align: top; }
+.br-pair { white-space: nowrap; padding: 2px 0; font-size: 13px; }
+.br-w .nm { font-weight: 700; }
+.br-l { opacity: 0.5; }

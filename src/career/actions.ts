@@ -11,6 +11,7 @@ import { answerScale } from "./weighin";
 import { answerLife } from "./life";
 import type { DeclineReason } from "./promoter";
 import { answerTryout } from "./tryout";
+import { answerRtu } from "../world/roadtoufc";
 
 export function answer(w: World, msgId: string, action: string): string {
   const m = w.inbox.find((x) => x.id === msgId);
@@ -22,6 +23,8 @@ export function answer(w: World, msgId: string, action: string): string {
     text = action === "accept" ? acceptFight(w, m.ref) : declineFight(w, m.ref, false, action.startsWith("decline:") ? (action.slice(8) as DeclineReason) : undefined);
   } else if (action.startsWith("tryout:")) {
     text = answerTryout(w, m, action);
+  } else if (action.startsWith("rtu:")) {
+    text = answerRtu(w, m, action);
   } else if (m.kind === "contract" && m.ref) {
     if (action === "sign") text = withRng(w, (rng) => signContract(w, rng, m.ref!));
     else if (action === "reject") text = rejectContract(w, m.ref);

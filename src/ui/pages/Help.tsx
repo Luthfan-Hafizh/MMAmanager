@@ -35,6 +35,8 @@ const PARTS: Part[] = [
     title: "The road to a title",
     lines: [
       "Most careers start on an IMMAF amateur circuit, turn pro on a local show, and move up to the region's promotion, with rankings and a belt. From there: a Contender Series invitation, a direct UFC signing for a champion with a run of defences, or the PFL.",
+      "Prospects from Asia and Oceania can be invited to Road to UFC: four brackets of eight every year, the opening round in May and the semifinals in August in Shanghai, the final on a UFC card, and a UFC contract for each winner. In a bracket, there are no other fights until you're out.",
+      "Retired fighters sometimes come back: a few a year, older for the time away.",
       "The matchmaker offers fights; turning them down has reasons and costs a little goodwill. When someone pulls out late the phone may ring with a short-notice call: less camp, more money, and the matchmaker remembers who said yes.",
       ["Call out a name or talk about a fight on ", "Media", "/media"],
     ],
@@ -44,6 +46,7 @@ const PARTS: Part[] = [
     title: "Camp and fight week",
     lines: [
       ["A signed fight starts the camp. Set the fight plan (the style, the instructions, a plan B) on ", "Next fight", "/fight"],
+      "Bring in partners who fight like the opponent (his striking, or his wrestling and grappling): what they copy is no surprise on the night. The coaches say which, from the game plan they expect.",
       "Fight week brings media day and, for big fights, a press conference: what you say changes the hype, the rivalry and a little of the preparation. Miss weight at the scale and you lose part of the purse; a champion who misses is stripped.",
     ],
   },
@@ -63,8 +66,8 @@ const PARTS: Part[] = [
       "A contract is a number of fights at a show and a win purse. Out of every purse come the gym's cut, the manager's, licence fees, travel and tax; the UFC adds bonuses and fight-week pay.",
       ["Deals, renewals, rival offers and your manager's advice are on ", "Contracts", "/contracts"],
       "A champion from a bigger stage is promised a title fight on arrival, and the UFC approaches fighters before their contracts run out.",
-      "Champions, top-five contenders and the names that sell can ask for clauses at the table: a rematch if the belt is lost, points of the pay-per-view. With the money in the bank, a contract can be bought out to sign elsewhere, or to start a deal already signed for later.",
-      ["Spare money can go into investments, or into a gym of your own with no cut from the purses, on ", "Money", "/finances"],
+      "Champions, top-five contenders and the names that sell can ask for clauses at the table: a rematch if the belt is lost, points of the pay-per-view, a deal without the champion's clause (which otherwise keeps a champion on a fight at a time when the deal is done), and at the PFL a UFC out clause. With the money in the bank, a contract can be bought out to sign elsewhere, or to start a deal already signed for later.",
+      ["Spare money can go into investments, or into a gym of your own with no cut from the purses (its members pay more the more famous you are; sell it whenever you like), on ", "Money", "/finances"],
     ],
   },
   {
@@ -81,6 +84,7 @@ const PARTS: Part[] = [
     title: "Manager mode",
     lines: [
       "Run an agency instead of one fighter: scout fighters at every level, pitch to sign them, negotiate their deals and take your cut of their purses. Reputation, your cut and the stable you already have decide who says yes.",
+      "A retired fighter can open an agency in the same world; a gym of their own comes along, and the clients train there with no gym cut.",
     ],
   },
   {

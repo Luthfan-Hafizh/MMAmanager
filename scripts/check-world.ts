@@ -15,6 +15,7 @@ import { isBeltFight } from "../src/world/belts";
 import { simulate } from "../src/engine/sim";
 import { Rng } from "../src/core/rng";
 import { packNow, unpack } from "../src/state/codec";
+import { heldByRtu } from "../src/world/roadtoufc";
 
 const quick = process.argv.includes("--quick");
 const years = quick ? 1 : Number(process.argv.find((a: string) => /^\d+$/.test(a)) ?? 3);
@@ -173,6 +174,36 @@ for (const id of w.career.fighters) {
 }
 const news = w.news.slice(0, 6).map((n) => `    ${fmtDate(n.day)}: ${n.text}`);
 console.log(news.join("\n"));
+// Road to UFC: four brackets of eight a season, each round fought, the finals on a UFC card,
+// the winners signed by the UFC, and nobody in a bracket booked for anything else.
+{
+  const brackets = w.rtu ?? [];
+  const seasons = [...new Set(brackets.map((t) => t.year))];
+  const inTwo = new Set<string>();
+  for (const y of seasons) {
+    const seen = new Set<string>();
+    const list = brackets.filter((t) => t.year === y);
+    if (list.length !== 4) errors.push(`Road to UFC ${y} has ${list.length} brackets`);
+    for (const t of list) {
+      const field = t.slots[0].filter(Boolean) as string[];
+      if (new Set(field).size !== 8) errors.push(`Road to UFC ${t.id} opened with ${new Set(field).size} fighters`);
+      for (const id of field) {
+        if (seen.has(id)) inTwo.add(id);
+        seen.add(id);
+      }
+      if (t.done && t.winner && w.fighters[t.winner]?.promo !== "ufc" && w.fighters[t.winner]?.status === "active" && !w.fighters[t.winner]?.ctrl) errors.push(`Road to UFC ${t.id}: the winner ${w.fighters[t.winner].surname} isn't in the UFC`);
+      if (t.slots.length >= 3 && t.made[2] && t.evs[2] && w.events[t.evs[2]]?.promo !== "ufc") errors.push(`Road to UFC ${t.id}: the final isn't on a UFC card`);
+    }
+  }
+  if (inTwo.size) errors.push(`${inTwo.size} fighters in two Road to UFC brackets at once`);
+  const heldElsewhere = Object.values(w.fighters).filter((f) => f.booked && heldByRtu(w, f) && w.bouts[f.booked]?.status === "booked" && !w.bouts[f.booked].rtu && w.bouts[f.booked].day > w.day + 7);
+  if (heldElsewhere.length) errors.push(`${heldElsewhere.length} fighters in a Road to UFC bracket booked for another fight (${heldElsewhere[0].surname})`);
+  const done = brackets.filter((t) => t.done).length;
+  const rounds = brackets.reduce((a, t) => a + t.slots.length - 1, 0);
+  if (span >= 0.95 && !brackets.some((t) => t.slots.length >= 3)) errors.push("a year in and no Road to UFC bracket has reached its final");
+  console.log(`Road to UFC: ${seasons.length} season(s), ${brackets.length} brackets, ${rounds} rounds fought, ${done} won${done ? ` (${brackets.filter((t) => t.done && t.winner).map((t) => `${w.fighters[t.winner!].surname} ${t.div}`).join(", ")})` : ""}`);
+}
+
 // The world mustn't drift: chins wearing faster than power, styles mastered ever deeper, or
 // knockouts creeping up year on year (34% to 40% over ten years before the aging and the
 // style learning were rebalanced).

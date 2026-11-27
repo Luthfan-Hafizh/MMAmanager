@@ -28,13 +28,15 @@ import { PROMOTIONS, PROMO_IDS, roundsFor, type PromoId } from "../data/promotio
 import type { Bout, BoutKind, BmfState, Fighter, MMAEvent, World } from "../model/types";
 import { addNews, fullName, rankOf, rosterOf } from "./core";
 import { notify } from "../career/inbox";
+import { rtuLabel } from "./roadtoufc";
 
 export const isTitleKind = (k: Bout["kind"]) => k === "title" || k === "interim" || k === "vacant";
 export const isBeltFight = (b: Pick<Bout, "kind">) => isTitleKind(b.kind) || b.kind === "bmf";
 
 /** What is at stake in a bout, in a few words (null for an ordinary fight). */
-export function stakeLabel(b: Pick<Bout, "kind" | "stake" | "div">, long = false): string | null {
+export function stakeLabel(b: Pick<Bout, "kind" | "stake" | "div" | "rtu">, long = false): string | null {
   const div = long ? `${DIVISIONS[b.div].name} ` : "";
+  if (b.rtu) return rtuLabel(b.rtu);
   if (b.kind === "bmf") return b.stake === "bmf-defence" ? "BMF title defence" : "BMF title";
   if (b.kind === "title") return b.stake === "unify" ? (long ? `${div}title unification` : "Unification") : long ? `${div}title fight` : "Title fight";
   if (b.kind === "interim") return b.stake === "interim-defence" ? "Interim title defence" : long ? `Interim ${div.toLowerCase()}title` : "Interim title";

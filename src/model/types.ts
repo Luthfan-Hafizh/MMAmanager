@@ -320,6 +320,8 @@ export interface Bout {
   pending?: string;
   /** Held for the player to watch or simulate on fight night. */
   awaiting?: boolean;
+  /** A Road to UFC fight: the bracket, the round, the pair. */
+  rtu?: { id: string; round: number; slot: number };
   /** What each fighter said on media day. */
   media?: { a?: string; b?: string };
   /** How each fighter played the face-off at the weigh-ins. */
@@ -334,7 +336,7 @@ export interface Bout {
   story?: StoryKind;
 }
 
-export type EventKind = "numbered" | "fightnight" | "standard" | "tryout" | "amateur";
+export type EventKind = "numbered" | "fightnight" | "standard" | "tryout" | "amateur" | "tournament";
 
 export interface MMAEvent {
   id: string;
@@ -348,6 +350,29 @@ export interface MMAEvent {
   number?: number;
   bouts: string[];
   status: "planned" | "booked" | "done";
+  /** A Road to UFC night: the season's year, the round (0 the opening round), the brackets fought. */
+  rtu?: { year: number; round: number; divs: DivisionId[] };
+}
+
+/** A Road to UFC bracket of eight (world/roadtoufc.ts). */
+export interface RtuBracket {
+  id: string;
+  year: number;
+  div: DivisionId;
+  /** Round by round, in bracket order: slots 0-1, 2-3, 4-5 and 6-7 meet in the opening round; the last list is the winner. */
+  slots: (string | null)[][];
+  /** Fighters standing by for a withdrawal. */
+  alts: string[];
+  /** The night each round is fought on. */
+  evs: (string | null)[];
+  /** Rounds whose fights are made. */
+  made: boolean[];
+  /** Who went through from each fight, "round:pair". */
+  adv: Record<string, string | null>;
+  winner?: string;
+  done?: boolean;
+  /** Bumped on every change (the held-fighters cache follows it). */
+  v: number;
 }
 
 export interface PromoState {
@@ -678,6 +703,8 @@ export interface FighterCareer {
   next?: SignedNext;
   /** The Contender Series: this season's invitation, the answer, and the week. */
   tryout?: { season: number; day: number; yes?: boolean; ev?: string; done?: boolean };
+  /** A Road to UFC invitation: the bracket, the day asked, the answer. */
+  rtu?: { id: string; day: number; yes?: boolean };
   /** Took a supplement nobody checked: a drug test until this day may come back positive. */
   tainted?: number;
   /** The fighter's own coaches and nutritionist: quality by role. */
@@ -817,6 +844,8 @@ export interface World {
   awards: Award[];
   /** Open and recent storylines between the world's fighters. */
   stories?: Story[];
+  /** Road to UFC's brackets, this season's and the last two. */
+  rtu?: RtuBracket[];
   /** Fighters whose state changed since the indexes were built. */
   stamp: number;
   /** Bumped when rosters change (touchRoster): the roster index follows it. */

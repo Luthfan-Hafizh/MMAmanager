@@ -27,6 +27,7 @@ import { handleBmf, isBeltFight, refreshDivision } from "./belts";
 import { notify } from "../career/inbox";
 import { arrivalTitleShot, promiseTitle } from "../career/standing";
 import { drain, type Steps } from "../core/steps";
+import { rtuResults } from "./roadtoufc";
 
 export { ringRust } from "./core";
 
@@ -625,6 +626,7 @@ export function finishEvent(w: World, rng: Rng, ev: MMAEvent): void {
   // Pay the player's fighters now the bonuses are known.
   for (const b of done) if (isControlled(w, b.a) || isControlled(w, b.b)) payControlled(w, b);
   if (ev.promo === "dwcs") dwcsContracts(w, rng, ev);
+  rtuResults(w, rng, ev);
   markDone(w, ev);
   const p = PROMOTIONS[ev.promo];
   if (p.rankSize) {

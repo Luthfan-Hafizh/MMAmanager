@@ -42,6 +42,7 @@ import { pruneReports } from "../world/report";
 import { INJURY } from "../data/injuries";
 import { FIGHT_STYLES, masteryName } from "../data/fightstyles";
 import { drain, type Steps } from "../core/steps";
+import { rtuDaily } from "../world/roadtoufc";
 
 export interface Stop {
   kind: "decision" | "fight" | "week" | "message" | "retired";
@@ -227,6 +228,7 @@ export function* advanceDaySteps(w: World): Steps<Stop[]> {
     startSignedDeals(w);
     campInjuries(w, rng);
     bookingPass(w, rng);
+    rtuDaily(w, rng);
     if (w.day % 3 === 0) fillGaps(w, rng);
     fightWeekDaily(w, rng);
     pressDaily(w, rng);

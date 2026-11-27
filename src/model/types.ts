@@ -395,6 +395,9 @@ export interface Gym {
   headCoach: string;
   fee: number;
   real?: boolean;
+  /** A gym the player opened (career/business.ts): the owner's fighter id, and its size. */
+  owner?: string;
+  ownTier?: number;
 }
 
 export type NewsKind = "result" | "title" | "signing" | "release" | "retire" | "injury" | "ranking" | "upset" | "bonus" | "booking" | "other";
@@ -557,7 +560,7 @@ export interface LedgerEntry {
   day: number;
   amount: number;
   what: string;
-  cat: "purse" | "bonus" | "sponsor" | "commission" | "camp" | "gym" | "living" | "tax" | "manager" | "fees" | "fine" | "other" | "salary" | "travel";
+  cat: "purse" | "bonus" | "sponsor" | "commission" | "camp" | "gym" | "living" | "tax" | "manager" | "fees" | "fine" | "other" | "salary" | "travel" | "invest";
   fighter?: string;
 }
 
@@ -748,6 +751,8 @@ export interface Career {
   retiredAt?: number;
   /** The game day the career was last exported to a file. */
   lastExport?: number;
+  /** Money in the markets (career/business.ts): the balance, what went in, last month's move. */
+  invest?: { balance: number; paidIn: number; last: number };
   achievements: { id: string; day: number; fighter: string }[];
   pendingUfcOffer?: string;
   retiredFighter?: string;

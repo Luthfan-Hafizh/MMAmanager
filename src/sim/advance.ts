@@ -4,6 +4,7 @@
 import { staffWeekly } from "../career/staff";
 import { testingMonthly } from "../world/testing";
 import { storiesMonthly } from "../world/stories";
+import { gymMonthly, investMonthly } from "../career/business";
 import { awardsMonthly } from "../world/awards";
 import { Rng, hashString, mix } from "../core/rng";
 import { isFirstOfMonth, isMonday, fmtDate } from "../core/time";
@@ -139,6 +140,8 @@ function monthly(w: World, rng: Rng): void {
   awardsMonthly(w);
   testingMonthly(w, rng);
   storiesMonthly(w, rng);
+  gymMonthly(w);
+  investMonthly(w, rng);
   stripMonthly(w);
   bmfMonthly(w);
   pruneReports(w);

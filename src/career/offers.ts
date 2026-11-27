@@ -592,7 +592,7 @@ export function signContract(w: World, rng: Rng, offerId: string): string {
  * Out of contract with nothing signed: the last deal is remembered for the
  * market, and a belt held at the promotion left is vacated.
  */
-function toFreeAgency(w: World, f: Fighter): void {
+export function toFreeAgency(w: World, f: Fighter): void {
   const fc = w.career.fc[f.id];
   if (fc && f.contract && PROMOTIONS[f.contract.promo].tier !== "amateur") fc.lastDeal = { promo: f.contract.promo, show: f.contract.show, win: f.contract.win, ended: w.day };
   if (f.promo) {

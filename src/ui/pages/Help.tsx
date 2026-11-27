@@ -63,6 +63,8 @@ const PARTS: Part[] = [
       "A contract is a number of fights at a show and a win purse. Out of every purse come the gym's cut, the manager's, licence fees, travel and tax; the UFC adds bonuses and fight-week pay.",
       ["Deals, renewals, rival offers and your manager's advice are on ", "Contracts", "/contracts"],
       "A champion from a bigger stage is promised a title fight on arrival, and the UFC approaches fighters before their contracts run out.",
+      "Champions, top-five contenders and the names that sell can ask for clauses at the table: a rematch if the belt is lost, points of the pay-per-view. With the money in the bank, a contract can be bought out to sign elsewhere, or to start a deal already signed for later.",
+      ["Spare money can go into investments, or into a gym of your own with no cut from the purses, on ", "Money", "/finances"],
     ],
   },
   {

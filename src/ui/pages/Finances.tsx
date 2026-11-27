@@ -1,16 +1,18 @@
 import { useMemo, useState } from "react";
 import { fmtDate, MONTHS } from "../../core/time";
 import { money } from "../../core/util";
-import type { LedgerEntry } from "../../model/types";
+import type { LedgerEntry, World } from "../../model/types";
 import { runwayMonths } from "../../career/money";
 import { sponsorIncomeFor } from "../../career/sponsors";
 import { fullName } from "../../world/core";
-import { useWorld } from "../../state/store";
-import { Empty, Panel, Seg } from "../components";
+import { useWorld, changed, toast } from "../../state/store";
+import { Empty, Panel, Seg, confirmBox } from "../components";
+import { invest, withdrawInvestment, ownGymOf, OWN_GYMS, openGym, upgradeGym, cantOpen, gymPlace } from "../../career/business";
 
 const CAT_NAMES: Record<LedgerEntry["cat"], string> = {
   purse: "Purses", bonus: "Bonuses", sponsor: "Sponsors", commission: "Commission", camp: "Fight camps", gym: "Gym and coaches", living: "Living costs",
   tax: "Tax", manager: "Manager", fees: "Fees and medicals", fine: "Fines", other: "Other", salary: "Wages and office", travel: "Travel",
+  invest: "Investments",
 };
 
 export function Finances() {
@@ -29,6 +31,7 @@ export function Finances() {
   const months = c.monthly.slice(-18);
   const maxBal = Math.max(1, ...months.map((m) => Math.abs(m.bal)), Math.abs(c.money));
   const runway = runwayMonths(w);
+  const gymSide = c.mode === "fighter" && w.fighters[c.fighters[0]]?.status === "active";
   return (
     <div className="grid">
       <div className="c12">
@@ -64,6 +67,8 @@ export function Finances() {
           )}
         </Panel>
       </div>
+      <div className={gymSide ? "c6" : "c12"}><InvestPanel w={w} /></div>
+      {gymSide && <div className="c6"><OwnGymPanel w={w} /></div>}
       <div className="c12">
         <Panel title="Transactions" flush>
           {entries.length === 0 ? (
@@ -115,5 +120,90 @@ function BalanceChart({ months, max }: { months: { m: string; inc: number; out: 
       ))}
       <text x={pad} y={14} fontSize="11" fill="var(--ink-3)">{money(max)}</text>
     </svg>
+  );
+}
+
+/** Money in the markets: about 6% a year over the long run, and down some months. */
+function InvestPanel({ w }: { w: World }) {
+  const inv = w.career.invest;
+  const [amount, setAmount] = useState(25000);
+  const bal = inv?.balance ?? 0;
+  const gain = inv ? inv.balance - inv.paidIn : 0;
+  const last = inv?.last ?? 0;
+  const tone = (v: number) => (v < 0 ? "bad" : v > 0 ? "good" : "");
+  return (
+    <Panel title="Investments" hint="About 6% a year over the long run, and some months it falls">
+      <div className="stat-tiles">
+        <div className="tile"><div className="k">Invested</div><div className="v">{money(bal)}</div></div>
+        <div className="tile"><div className="k">Gain so far</div><div className={`v ${tone(gain)}`}>{money(gain, { sign: true })}</div></div>
+        <div className="tile"><div className="k">Last month</div><div className={`v ${tone(last)}`}>{money(last, { sign: true })}</div></div>
+      </div>
+      <div className="invest-row">
+        <input className="input" type="number" min={0} step={5000} value={amount} onChange={(e) => setAmount(Math.max(0, Number(e.target.value) || 0))} aria-label="Amount to put in or take out" />
+        <button className="btn" onClick={() => { toast(invest(w, amount), "good"); changed(); }} disabled={amount <= 0 || w.career.money < amount}>Put in</button>
+        <button className="btn ghost" onClick={() => { toast(withdrawInvestment(w, amount)); changed(); }} disabled={amount <= 0 || bal <= 0}>Take out</button>
+        {bal > 0 && <button className="btn ghost" onClick={() => { toast(withdrawInvestment(w, bal)); changed(); }}>Take it all out</button>}
+      </div>
+      <p className="tiny dim" style={{ marginTop: 8 }}>An overdraft is covered from here on the first of the month.</p>
+    </Panel>
+  );
+}
+
+/** A gym of your own: no gym cut, no membership, and a room that grows with the career. */
+function OwnGymPanel({ w }: { w: World }) {
+  const f = w.fighters[w.career.fighters[0]];
+  const [name, setName] = useState(() => (f ? `${f.surname} Fight Team` : ""));
+  if (!f) return null;
+  const g = ownGymOf(w, f);
+  if (g) {
+    const t = OWN_GYMS[g.ownTier ?? 0];
+    const up = OWN_GYMS[(g.ownTier ?? 0) + 1];
+    const upCost = up ? up.cost - t.cost : 0;
+    const away = f.gym !== g.id;
+    return (
+      <Panel title="Your gym" hint={`${money(t.run - t.income)} a month to run`}>
+        <div className="dx own-gym-name">{g.name}</div>
+        <div className="small dim">{t.name} in {g.city} · head coach {g.headCoach}</div>
+        <div className="stat-tiles" style={{ marginTop: 12 }}>
+          <div className="tile"><div className="k">Coaches</div><div className="v">{t.q}</div></div>
+          <div className="tile"><div className="k">Facilities</div><div className="v">{g.facilities}</div></div>
+          <div className="tile"><div className="k">Purse cut</div><div className="v">None</div></div>
+        </div>
+        {away && <p className="small" style={{ marginTop: 10 }}>{f.surname} trains somewhere else for now; Moves takes them back.</p>}
+        {up ? (
+          <div className="invest-row">
+            <button className="btn" disabled={w.career.money < upCost} onClick={() => void confirmBox({ title: `Make it ${up.name.toLowerCase()}?`, body: `Coaches at ${up.q}, facilities ${up.fac}, and ${money(up.run - up.income)} a month to run. It costs ${money(upCost)}.`, ok: `Upgrade for ${money(upCost)}` }).then((yes) => { if (yes) { toast(upgradeGym(w, f), "good"); changed(); } })}>
+              Upgrade to {up.name.toLowerCase()} ({money(upCost)})
+            </button>
+          </div>
+        ) : (
+          <p className="tiny dim" style={{ marginTop: 10 }}>As good as a gym gets.</p>
+        )}
+      </Panel>
+    );
+  }
+  const general = cantOpen(w, f, 0, name);
+  return (
+    <Panel title="A gym of your own" hint="No gym cut and no membership">
+      <label className="field">Name<input className="input" value={name} maxLength={40} onChange={(e) => setName(e.target.value)} /></label>
+      <table className="tbl compact" style={{ marginTop: 10 }}>
+        <tbody>
+          {OWN_GYMS.map((t) => {
+            const no = cantOpen(w, f, t.tier, name);
+            return (
+              <tr key={t.tier}>
+                <td><b>{t.name}</b><div className="tiny dim">Coaches {t.q}, facilities {t.fac} · {money(t.run - t.income)} a month to run</div></td>
+                <td className="r">
+                  <button className="btn sm" disabled={!!no} title={no ?? undefined} onClick={() => void confirmBox({ title: `Open ${name.trim()}?`, body: `${t.name} in ${gymPlace(w, f).city}: coaches at ${t.q}, facilities ${t.fac}. It costs ${money(t.cost)} to open and ${money(t.run - t.income)} a month to run, and ${f.surname} trains there from now on with no gym cut from the purses.`, ok: `Open for ${money(t.cost)}` }).then((yes) => { if (yes) { toast(openGym(w, f, t.tier, name), "good"); changed(); } })}>
+                    {money(t.cost)}
+                  </button>
+                </td>
+              </tr>
+            );
+          })}
+        </tbody>
+      </table>
+      {general && !general.startsWith("That takes") && <p className="tiny dim" style={{ marginTop: 8 }}>{general}</p>}
+    </Panel>
   );
 }

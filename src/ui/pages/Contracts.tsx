@@ -8,12 +8,13 @@ import { marketPay, perFight } from "../../career/standing";
 import { adviseContract, managerNegotiate } from "../../career/advisor";
 import { AdviceCard } from "../advice";
 import { TeamPanel } from "../team";
-import { fullName, withRng } from "../../world/core";
+import { fullName, withRng, isChampion, isInterim } from "../../world/core";
 import { changed, toast, useWorld } from "../../state/store";
-import { Bar, Empty, Panel, PromoBadge } from "../components";
+import { Bar, Empty, Panel, PromoBadge, confirmBox } from "../components";
 import { rapport, rapportLabel, rapportTone } from "../../career/promoter";
 import type { PromoId } from "../../data/promotions";
 import { FighterSwitch } from "./Training";
+import { buyoutCost, buyOut, cantBuyOut } from "../../career/business";
 
 export function Contracts({ id }: { id?: string }) {
   const w = useWorld();
@@ -44,6 +45,7 @@ export function Contracts({ id }: { id?: string }) {
                   <dt>Raise with each win</dt><dd>{money(c.escal)}</dd>
                   <dt>Runs until</dt><dd>{fmtDate(c.end)}</dd>
                   <dt>Champion's clause</dt><dd>{c.champClause ? "Yes" : "No"}</dd>
+                  {(c.rematch || !!c.ppv) && <><dt>Clauses</dt><dd>{[c.rematch ? "Rematch" : "", c.ppv ? `${c.ppv} point${c.ppv === 1 ? "" : "s"} of the pay-per-view` : ""].filter(Boolean).join(", ")}</dd></>}
                   <dt>Exclusive</dt><dd>{f.promo === "ufc" ? "Binding until it is done" : exclusiveDeal(f.promo) ? "Binding; the UFC can talk to you in the last fight or the last four months" : "The UFC, the PFL and the Contender Series can call"}</dd>
                 </>
               )}
@@ -54,6 +56,7 @@ export function Contracts({ id }: { id?: string }) {
               {last ? ` Your last deal (${PROMOTIONS[last.promo].short}, ${money(last.show)}${last.win ? ` + ${money(last.win)}` : " flat"}) is what promotions price you from for two years.` : ""}
             </Empty>
           )}
+          {w.career.mode === "fighter" && <BuyoutRow w={w} f={f} />}
           {next && (
             <div className="co-next">
               <span className="label">Signed next</span>
@@ -222,5 +225,33 @@ function MatchmakerPanel({ w, f }: { w: World; f: Fighter }) {
         </ul>
       )}
     </Panel>
+  );
+}
+
+/** Paying to leave the deal now: a free agent, or straight into the deal signed for later. */
+function BuyoutRow({ w, f }: { w: World; f: Fighter }) {
+  const cost = buyoutCost(f);
+  if (cost === null || !f.promo) return null;
+  const next = w.career.fc[f.id]?.next;
+  const short = PROMOTIONS[f.promo].short;
+  const no = cantBuyOut(w, f);
+  const belt = isChampion(w, f) || isInterim(w, f);
+  const go = () =>
+    void confirmBox({
+      title: `Buy out the ${short} contract?`,
+      body: `${money(cost)} to leave now${next ? ` and start the ${PROMOTIONS[next.promo].short} deal today` : " and sign anywhere"}.${belt ? " The title is vacated." : ""} The ${short} won't forget it.`,
+      ok: `Buy out for ${money(cost)}`,
+      danger: true,
+    }).then((yes) => {
+      if (yes) {
+        toast(buyOut(w, f));
+        changed();
+      }
+    });
+  return (
+    <div className="co-buyout">
+      <button className="btn sm danger" onClick={go} disabled={!!no}>Buy out the contract ({money(cost)})</button>
+      <span className="tiny dim">{no ?? (next ? `Starts the ${PROMOTIONS[next.promo].short} deal now.` : "Most of what the fights left would pay.")}</span>
+    </div>
   );
 }

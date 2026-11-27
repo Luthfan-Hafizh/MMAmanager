@@ -146,7 +146,7 @@ export function tidyGyms(w: World): void {
   // Made-up gyms that share a name (two "Kazan Muay Thai" in Kazan, a second "Manchester Top Team").
   const taken = new Set<string>();
   for (const g of Object.values(w.gyms).sort((a, b) => Number(!!b.real) - Number(!!a.real))) {
-    if (taken.has(g.name.toLowerCase()) && !g.real) g.name = freeGymName(taken, g.name, g.city, hashString(g.id));
+    if (taken.has(g.name.toLowerCase()) && !g.real && !g.owner) g.name = freeGymName(taken, g.name, g.city, hashString(g.id));
     taken.add(g.name.toLowerCase());
   }
   if (moved) touch(w);
@@ -319,14 +319,14 @@ function makeGym(w: World, rng: Rng, country: string, rep: number): Gym {
 }
 
 function gymsIn(w: World, country: string): Gym[] {
-  return Object.values(w.gyms).filter((g) => g.country === country);
+  return Object.values(w.gyms).filter((g) => g.country === country && !g.owner);
 }
 
 export function pickGym(w: World, rng: Rng, country: string, level: number): Gym {
   let list = gymsIn(w, country);
   if (!list.length) {
     const region = countryOf(country).region;
-    list = Object.values(w.gyms).filter((g) => countryOf(g.country).region === region);
+    list = Object.values(w.gyms).filter((g) => countryOf(g.country).region === region && !g.owner);
   }
   if (!list.length) return makeGym(w, rng, country, 40);
   // Better fighters end up in better rooms.

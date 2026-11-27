@@ -1485,3 +1485,9 @@ tr.click:focus-visible, .list-row[tabindex]:focus-visible { outline: 2px solid v
 .co-clauses select { width: auto; margin-left: 8px; }
 .staff td { vertical-align: middle; }
 .staff select { width: auto; min-width: 180px; }
+
+/* Investments, your own gym, the buyout */
+.invest-row { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; margin-top: 12px; }
+.invest-row .input { width: 170px; max-width: 100%; }
+.own-gym-name { font-size: 32px; margin-bottom: 4px; overflow-wrap: anywhere; }
+.co-buyout { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 12px; margin-top: 14px; }

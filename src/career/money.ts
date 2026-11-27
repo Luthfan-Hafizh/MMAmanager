@@ -157,7 +157,8 @@ export function monthlyMoney(w: World): void {
       if (fc?.dayJob) ledger(w, { amount: 2100, what: "Day job", cat: "salary", fighter: id });
       const f = w.fighters[id];
       const tier = f?.promo ? PROMOTIONS[f.promo].tier : "local";
-      const dues = tier === "amateur" ? 160 : tier === "local" ? 220 : tier === "regional" ? 320 : 0;
+      const own = !!f && w.gyms[f.gym]?.owner === f.id;
+      const dues = own ? 0 : tier === "amateur" ? 160 : tier === "local" ? 220 : tier === "regional" ? 320 : 0;
       if (dues) ledger(w, { amount: -dues, what: "Gym membership", cat: "gym", fighter: id });
     }
   } else {

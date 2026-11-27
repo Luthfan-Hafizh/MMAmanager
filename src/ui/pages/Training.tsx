@@ -9,14 +9,14 @@ import { Rng } from "../../core/rng";
 import { MASTERY_NAMES, TECHNIQUES, TECH_IDS, type TechId } from "../../data/techniques";
 import { changed, useWorld } from "../../state/store";
 import { go } from "../router";
-import { Empty, FighterLink, Panel, Seg } from "../components";
+import { confirmBox, Empty, FighterLink, Panel, Seg } from "../components";
 import { fullName } from "../../world/core";
 import { GymPanel, WeightPanel } from "./Moves";
 
 export function FighterSwitch({ w, id, base }: { w: World; id: string; base: string }) {
   if (w.career.fighters.length <= 1) return null;
   return (
-    <select className="input" value={id} onChange={(e) => go(`${base}/${e.target.value}`)}>
+    <select className="input" aria-label="Fighter" value={id} onChange={(e) => go(`${base}/${e.target.value}`)}>
       {w.career.fighters.map((x) => (
         <option key={x} value={x}>{fullName(w.fighters[x])}</option>
       ))}
@@ -78,7 +78,7 @@ export function Training({ id }: { id?: string }) {
           title="The week"
           hint="Ten sessions, Monday to Friday"
           acts={
-            <select className="input" value={TEMPLATES.some((t) => t.id === fc.plan.template) ? fc.plan.template : ""} onChange={(e) => e.target.value && setTemplate(e.target.value)}>
+            <select className="input" aria-label="Training week template" value={TEMPLATES.some((t) => t.id === fc.plan.template) ? fc.plan.template : ""} onChange={(e) => e.target.value && setTemplate(e.target.value)}>
               <option value="">Custom week</option>
               {TEMPLATES.map((t) => <option key={t.id} value={t.id}>{t.name}</option>)}
             </select>
@@ -96,7 +96,7 @@ export function Training({ id }: { id?: string }) {
                   const off = fc.dayJob && i >= 6;
                   return (
                     <div className="slot" key={i} title={SLOT_NAMES[i]}>
-                      <select value={s} disabled={off} onChange={(e) => setSlot(i, e.target.value as SessionId)} style={{ borderTopColor: off ? "var(--line)" : SESSIONS[s].color, opacity: off ? 0.45 : 1 }}>
+                      <select aria-label={`${SLOT_NAMES[i]} session`} value={s} disabled={off} onChange={(e) => setSlot(i, e.target.value as SessionId)} style={{ borderTopColor: off ? "var(--line)" : SESSIONS[s].color, opacity: off ? 0.45 : 1 }}>
                         {SESSION_IDS.map((x) => <option key={x} value={x}>{SESSIONS[x].name}</option>)}
                       </select>
                     </div>
@@ -166,7 +166,7 @@ export function Training({ id }: { id?: string }) {
           )}
         </Panel>
         <Panel title="Technique to drill">
-          <select className="input" style={{ width: "100%" }} value={fc.plan.drill ?? ""} onChange={(e) => { fc.plan = { ...fc.plan, drill: (e.target.value || null) as TechId | null }; changed(); }}>
+          <select className="input" aria-label="Technique to drill" style={{ width: "100%" }} value={fc.plan.drill ?? ""} onChange={(e) => { fc.plan = { ...fc.plan, drill: (e.target.value || null) as TechId | null }; changed(); }}>
             <option value="">Nothing in particular</option>
             {drillable.map((t) => (
               <option key={t} value={t}>{TECHNIQUES[t].name} ({MASTERY_NAMES[f.tech[t] ?? 0].toLowerCase()})</option>
@@ -205,13 +205,13 @@ function StyleCoaching({ w, f, fc }: { w: World; f: Fighter; fc: FighterCareer }
     fc.plan = { ...fc.plan, style: k === "off" ? null : k === "strike" ? st.s : st.g };
     changed();
   };
-  const choose = (id: StyleId) => {
+  const choose = async (id: StyleId) => {
     const sd = FIGHT_STYLES[id];
     const back = st.known?.[id];
     const start = back ?? Math.round(Math.max(6, Math.min(30, 6 + styleFit(f.attrs, id) * 0.22)));
     const cur = sd.kind === "strike" ? st.s : st.g;
     const curM = sd.kind === "strike" ? st.sm : st.gm;
-    if (!confirm(`Switch to ${sd.name}? ${back !== undefined ? `${f.surname} goes back to it at ${Math.round(back)}.` : `${f.surname} starts it at ${start}.`} ${FIGHT_STYLES[cur].name} (${Math.round(curM)}) is kept, in case you come back to it.`)) return;
+    if (!(await confirmBox({ title: `Switch to ${sd.name}?`, body: `${back !== undefined ? `${f.surname} goes back to it at ${Math.round(back)}.` : `${f.surname} starts it at ${start}.`} ${FIGHT_STYLES[cur].name} (${Math.round(curM)}) is kept, in case you come back to it.`, ok: "Switch" }))) return;
     switchStyle(f, id);
     if (fc.plan.style && FIGHT_STYLES[fc.plan.style].kind === sd.kind) fc.plan = { ...fc.plan, style: id };
     setPicking(null);

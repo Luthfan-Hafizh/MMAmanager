@@ -249,7 +249,7 @@ export function Table<R>({ cols, rows, rowKey, onRow, highlight, initial, compac
         </thead>
         <tbody>
           {shown.map((r) => (
-            <tr key={rowKey(r)} className={`${onRow ? "click" : ""} ${highlight?.(r) ? "me" : ""}`} onClick={onRow ? () => onRow(r) : undefined}>
+            <tr key={rowKey(r)} className={`${onRow ? "click" : ""} ${highlight?.(r) ? "me" : ""}`} {...(onRow ? rowLink(() => onRow(r)) : {})}>
               {cols.map((c) => (
                 <td key={c.key} className={c.align ?? ""}>
                   {c.render(r)}
@@ -394,4 +394,67 @@ export function Facts({ facts }: { facts: Fact[] }) {
       ))}
     </dl>
   );
+}
+
+// ---------- confirmation in the game's own dialog (not the browser's pop-up) ----------
+
+interface Ask {
+  title: string;
+  body: ReactNode;
+  ok: string;
+  cancel?: string;
+  danger?: boolean;
+}
+let asking: (Ask & { resolve: (yes: boolean) => void }) | null = null;
+const askSubs = new Set<() => void>();
+
+/** Ask before something that can't be taken back. Resolves true on the confirming button. */
+export function confirmBox(a: Ask): Promise<boolean> {
+  asking?.resolve(false);
+  return new Promise((resolve) => {
+    asking = { ...a, resolve };
+    for (const f of askSubs) f();
+  });
+}
+
+/** Mounted once in the app: shows the question confirmBox asks. */
+export function ConfirmHost() {
+  const [, force] = useState(0);
+  useEffect(() => {
+    const f = () => force((x) => x + 1);
+    askSubs.add(f);
+    return () => {
+      askSubs.delete(f);
+    };
+  }, []);
+  if (!asking) return null;
+  const a = asking;
+  const done = (yes: boolean) => {
+    asking = null;
+    for (const f of askSubs) f();
+    a.resolve(yes);
+  };
+  return (
+    <Modal title={a.title} onClose={() => done(false)}>
+      <div className="confirm-body">{a.body}</div>
+      <div className="row confirm-acts">
+        <button className="btn" onClick={() => done(false)}>{a.cancel ?? "Cancel"}</button>
+        <button className={`btn ${a.danger ? "danger" : "primary"}`} onClick={() => done(true)} autoFocus>{a.ok}</button>
+      </div>
+    </Modal>
+  );
+}
+
+/** A table row or list row that opens something: by click, or Enter and Space from the keyboard. */
+export function rowLink(open: () => void) {
+  return {
+    onClick: open,
+    tabIndex: 0,
+    onKeyDown: (e: { key: string; preventDefault: () => void }) => {
+      if (e.key === "Enter" || e.key === " ") {
+        e.preventDefault();
+        open();
+      }
+    },
+  };
 }

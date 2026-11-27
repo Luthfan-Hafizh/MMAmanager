@@ -43,16 +43,16 @@ export function Fighters() {
     <div className="stack">
       <div className="row">
         <input className="input" placeholder="Search a name" value={q} onChange={(e) => setQ(e.target.value)} style={{ minWidth: 220 }} />
-        <select className="input" value={div} onChange={(e) => setDiv(e.target.value as DivisionId | "all")}>
+        <select className="input" aria-label="Weight class" value={div} onChange={(e) => setDiv(e.target.value as DivisionId | "all")}>
           <option value="all">All weight classes</option>
           {DIVISION_IDS.map((d) => <option key={d} value={d}>{DIVISIONS[d].name}</option>)}
         </select>
-        <select className="input" value={promo} onChange={(e) => setPromo(e.target.value as PromoId | "all" | "free")}>
+        <select className="input" aria-label="Promotion" value={promo} onChange={(e) => setPromo(e.target.value as PromoId | "all" | "free")}>
           <option value="all">All promotions</option>
           <option value="free">Free agents</option>
           {PROMO_IDS.map((p) => <option key={p} value={p}>{PROMOTIONS[p].name}</option>)}
         </select>
-        <select className="input" value={region} onChange={(e) => setRegion(e.target.value as RegionId | "all")}>
+        <select className="input" aria-label="Region" value={region} onChange={(e) => setRegion(e.target.value as RegionId | "all")}>
           <option value="all">All regions</option>
           {Object.values(REGIONS).map((r) => <option key={r.id} value={r.id}>{r.name}</option>)}
         </select>

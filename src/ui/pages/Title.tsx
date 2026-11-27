@@ -4,6 +4,7 @@ import { compatible, deleteSave, exportWorld, importFile, listSaves, loadWorld, 
 import { setBusy, setWorld, toast } from "../../state/store";
 import { Logo } from "../icons";
 import { go } from "../router";
+import { confirmBox } from "../components";
 
 export function Title() {
   const [saves, setSaves] = useState<SaveMeta[] | null>(null);
@@ -86,7 +87,7 @@ export function Title() {
                     <span className="badge bad">Old version</span>
                   )}
                   <button className="btn sm" onClick={async () => { const w = await loadWorld(s.id); if (w) exportWorld(w); }}>Export</button>
-                  <button className="btn sm danger" onClick={async () => { if (!confirm(`Delete the career of ${s.who}? This cannot be undone.`)) return; await deleteSave(s.id); void refresh(); }}>Delete</button>
+                  <button className="btn sm danger" onClick={async () => { if (!(await confirmBox({ title: "Delete this career?", body: `The career of ${s.who} is deleted for good. Export it first to keep a copy.`, ok: "Delete", danger: true }))) return; await deleteSave(s.id); void refresh(); }}>Delete</button>
                 </div>
               ))
             )}

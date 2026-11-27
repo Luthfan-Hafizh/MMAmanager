@@ -9,6 +9,7 @@ import type { Fighter, World } from "../model/types";
 import { adviserOf, ask, QUESTIONS } from "../career/advisor";
 import { fireManager, hireManager, valueOf } from "../career/offers";
 import { changed, toast } from "../state/store";
+import { confirmBox } from "./components";
 
 const STYLE_TEXT = { bold: "Likes a gamble", careful: "Protects the record", steady: "Plays it straight" } as const;
 
@@ -60,7 +61,7 @@ export function TeamPanel({ w, f }: { w: World; f: Fighter }) {
                   <span>{STYLE_TEXT[m.style ?? "steady"]}</span>
                 </div>
               </div>
-              <button className="btn ghost sm team-part" onClick={() => { if (confirm(`Part ways with ${m.person ?? m.name}? You keep the commission, but lose the negotiating and the sponsors.`)) { fireManager(w, f); changed(); } }}>Part ways</button>
+              <button className="btn ghost sm team-part" onClick={() => { void confirmBox({ title: `Part ways with ${m.person ?? m.name}?`, body: `You keep the commission, but lose the negotiating and the sponsors.`, ok: "Part ways", danger: true }).then((yes) => { if (yes) { fireManager(w, f); changed(); } }); }}>Part ways</button>
               <div className="team-meter">
                 <span>At the table</span>
                 <div className="bar thin"><i style={{ width: `${m.quality}%` }} /></div>

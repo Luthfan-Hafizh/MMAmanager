@@ -151,7 +151,7 @@ function P4P({ w, promo }: { w: World; promo: PromoId }) {
           <div className="rk-champ" style={{ minHeight: 220 }}>
             <div>
               <div className="div">Pound-for-pound #1</div>
-              <Link to={`/fighter/${first.id}`} className="cn" style={{ display: "block", fontSize: 34 }}>{first.first} {first.surname}</Link>
+              <Link to={`/fighter/${first.id}`} className="cn p4p-name" style={{ display: "block" }}>{first.first} {first.surname}</Link>
               <div className="cr">{DIVISIONS[first.div].name} · {recordText(first)}</div>
             </div>
             <span className="belt" aria-hidden="true" style={{ fontSize: 150 }}>1</span>

@@ -8,7 +8,7 @@ import { PROMOTIONS } from "../../data/promotions";
 import { rankLabel } from "../../world/core";
 import { changed, toast } from "../../state/store";
 import { Link } from "../router";
-import { Flag, Modal, Panel, Seg } from "../components";
+import { confirmBox, Flag, Modal, Panel, Seg } from "../components";
 
 export function GymPanel({ w, f }: { w: World; f: Fighter }) {
   const [open, setOpen] = useState(false);
@@ -108,10 +108,10 @@ export function WeightPanel({ w, f }: { w: World; f: Fighter }) {
   const target = fc?.walkTarget ?? f.walk;
   const nb = neighbourDivisions(f.div);
   const cut = ((f.walk - d.limit) / f.walk) * 100;
-  const move = (to: typeof f.div) => {
+  const move = async (to: typeof f.div) => {
     const chk = canMove(w, f, to);
     if (!chk.ok) return toast(chk.why, "bad");
-    if (chk.vacates && !confirm("Moving divisions vacates your title. Go ahead?")) return;
+    if (chk.vacates && !(await confirmBox({ title: "Give up the belt?", body: `Moving to ${DIVISIONS[to].name.toLowerCase()} vacates the ${DIVISIONS[f.div].name.toLowerCase()} title.`, ok: "Move and vacate", danger: true }))) return;
     toast(moveDivision(w, f, to), "good");
     changed();
   };
@@ -132,8 +132,8 @@ export function WeightPanel({ w, f }: { w: World; f: Fighter }) {
       </div>
       <p className="tiny dim">Bulking adds about 1.5 lb a month and a little strength; slimming down takes off about 2.5 lb a month. A lighter walking weight makes the cut easier, and makes moving down possible.</p>
       <div className="row" style={{ marginTop: 8 }}>
-        {nb.down && <button className="btn sm" onClick={() => move(nb.down!)} title={canMove(w, f, nb.down).why}>Down to {DIVISIONS[nb.down].name.replace("Women's ", "")}</button>}
-        {nb.up && <button className="btn sm" onClick={() => move(nb.up!)} title={canMove(w, f, nb.up).why}>Up to {DIVISIONS[nb.up].name.replace("Women's ", "")}</button>}
+        {nb.down && <button className="btn sm" onClick={() => void move(nb.down!)} title={canMove(w, f, nb.down).why}>Down to {DIVISIONS[nb.down].name.replace("Women's ", "")}</button>}
+        {nb.up && <button className="btn sm" onClick={() => void move(nb.up!)} title={canMove(w, f, nb.up).why}>Up to {DIVISIONS[nb.up].name.replace("Women's ", "")}</button>}
       </div>
       {nb.down && !canMove(w, f, nb.down).ok && <p className="tiny warn" style={{ marginTop: 6 }}>{canMove(w, f, nb.down).why}</p>}
     </Panel>

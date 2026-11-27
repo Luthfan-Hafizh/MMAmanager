@@ -8,7 +8,7 @@ import { upcomingOf } from "../../world/calendar";
 import { promoRoster, recordText } from "../../world/core";
 import { useWorld } from "../../state/store";
 import { go, Link } from "../router";
-import { Empty, FighterLink, Ovr, Panel } from "../components";
+import { Empty, FighterLink, Ovr, Panel, rowLink } from "../components";
 
 export function Promotions() {
   const w = useWorld();
@@ -24,7 +24,7 @@ export function Promotions() {
                 const d = PROMOTIONS[p];
                 const next = upcomingOf(w, p, 1)[0];
                 return (
-                  <tr key={p} className="click" onClick={() => go(`/promotions/${p}`)}>
+                  <tr key={p} className="click" {...rowLink(() => go(`/promotions/${p}`))}>
                     <td><span className="row tight"><span className="promo-dot" style={{ background: d.color }} /><b>{d.name}</b> <span className="dim">{d.short}</span></span></td>
                     <td>{d.region === "global" ? "Worldwide" : REGIONS[d.region].name}</td>
                     <td className="r">{d.eventsPerYear}</td>
@@ -89,7 +89,7 @@ export function PromotionPage({ id }: { id: string }) {
         </Panel>
         <Panel title="Next events" flush>
           {events.map((e) => (
-            <div key={e.id} className="list-row" onClick={() => go(`/event/${e.id}`)} style={{ cursor: "pointer" }}>
+            <div key={e.id} className="list-row" {...rowLink(() => go(`/event/${e.id}`))} style={{ cursor: "pointer" }}>
               <div><b className="disp up">{e.name}</b><div className="tiny dim">{fmtDate(e.day, { dow: true })} · {e.city}</div></div>
             </div>
           ))}

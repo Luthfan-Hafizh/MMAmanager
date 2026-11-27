@@ -13,6 +13,7 @@ import { underWay } from "../state/live";
 import { Icons, Logo } from "./icons";
 import { go, Link, useRoute } from "./router";
 import { Band } from "./art";
+import { ConfirmHost } from "./components";
 import { Title } from "./pages/Title";
 import { Home } from "./pages/Home";
 
@@ -61,6 +62,7 @@ export function App() {
   return (
     <>
       {body}
+      <ConfirmHost />
       {busy && (
         <div className="busy" role="status">
           <div>

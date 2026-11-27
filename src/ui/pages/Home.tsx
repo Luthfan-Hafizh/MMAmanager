@@ -15,7 +15,7 @@ import { upcomingOf } from "../../world/calendar";
 import { fullName, isChampion, otherRanks, rankLabel, rankNumber, recordText } from "../../world/core";
 import { changed, toast, useWorld } from "../../state/store";
 import { Link, go } from "../router";
-import { Bar, Empty, FighterLink, Flag, Form, Ovr, Panel, RankBadge, Spark } from "../components";
+import { Bar, Empty, FighterLink, Flag, Form, Ovr, Panel, RankBadge, Spark, rowLink } from "../components";
 import { Band, Mark } from "../art";
 import { goatRank, legacyText } from "../../world/legacy";
 import { prepText, campPrep } from "../../career/camp";
@@ -393,7 +393,7 @@ function ManagerHome({ w }: { w: World }) {
                         const b = f.booked ? w.bouts[f.booked] : null;
                         const offer = w.career.fightOffers.find((o) => o.fighter === f.id && o.status === "open");
                         return (
-                          <tr key={f.id} className="click" onClick={() => go(`/fighter/${f.id}`)}>
+                          <tr key={f.id} className="click" {...rowLink(() => go(`/fighter/${f.id}`))}>
                             <td><span className="row tight"><RankBadge w={w} f={f} /><FighterLink w={w} id={f.id} /></span><div className="tiny dim">{DIVISIONS[f.div].name}</div></td>
                             <td>{f.promo ? PROMOTIONS[f.promo].short : "Free agent"}</td>
                             <td className="r">{f.amateur ? `${f.am.w}-${f.am.l} am` : recordText(f)}</td>

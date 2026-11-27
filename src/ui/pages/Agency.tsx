@@ -9,7 +9,7 @@ import { fullName, rankLabel, recordText, withRng } from "../../world/core";
 import { outlookRoom, potentialText } from "../../world/development";
 import { changed, toast, useWorld } from "../../state/store";
 import { go } from "../router";
-import { Empty, FighterLink, Form, Modal, Ovr, Panel, PromoBadge, Table, type Col } from "../components";
+import { Empty, FighterLink, Form, Modal, Ovr, Panel, PromoBadge, Table, type Col, confirmBox } from "../components";
 
 export function Agency() {
   const w = useWorld();
@@ -25,7 +25,7 @@ export function Agency() {
     { key: "f", label: "Form", render: (f) => <Form w={w} f={f} /> },
     { key: "n2", label: "Next", render: (f) => (f.booked && w.bouts[f.booked] && !w.bouts[f.booked].pending ? `vs ${w.fighters[w.bouts[f.booked].a === f.id ? w.bouts[f.booked].b : w.bouts[f.booked].a].surname}, ${weeksText(w.bouts[f.booked].day - w.day)}` : "-") },
     { key: "o", label: "Ovr", render: (f) => <Ovr v={ovr(f.attrs)} sm />, align: "c", sort: (f) => ovr(f.attrs) },
-    { key: "x", label: "", render: (f) => <button className="btn sm danger" onClick={(e) => { e.stopPropagation(); if (confirm(`Release ${fullName(f)} from the agency?`)) { dropClient(w, f); changed(); } }}>Release</button> },
+    { key: "x", label: "", render: (f) => <button className="btn sm danger" onClick={(e) => { e.stopPropagation(); void confirmBox({ title: "Release the client?", body: `${fullName(f)} leaves the agency: no more commission from the purses, and the contract the agency negotiated stays with the fighter.`, ok: "Release", danger: true }).then((yes) => { if (yes) { dropClient(w, f); changed(); } }); }}>Release</button> },
   ];
   return (
     <div className="grid">

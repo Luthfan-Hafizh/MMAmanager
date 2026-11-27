@@ -203,7 +203,7 @@ p { margin: 0 0 10px; text-wrap: pretty; }
 }
 .band .wrap { padding-top: 34px; padding-bottom: 34px; }
 .band .eyebrow { font-stretch: 75%; font-weight: 700; font-size: 12.5px; letter-spacing: 0.16em; text-transform: uppercase; color: var(--red-2); margin-bottom: 10px; display: flex; gap: 10px; flex-wrap: wrap; align-items: center; }
-.band h1 { font-stretch: 62%; font-weight: 900; text-transform: uppercase; font-size: clamp(44px, 7vw, 92px); line-height: 0.86; letter-spacing: -0.005em; }
+.band h1 { font-stretch: 62%; font-weight: 900; text-transform: uppercase; font-size: clamp(38px, 7vw, 92px); line-height: 0.86; letter-spacing: -0.005em; text-wrap: balance; }
 .band h1 .first { display: block; font-size: 0.42em; font-weight: 700; letter-spacing: 0.02em; color: var(--band-ink-2); line-height: 1.05; margin-bottom: 2px; }
 .band .sub { color: var(--band-ink-2); margin-top: 12px; font-size: 15px; max-width: 62ch; }
 .band .muted { color: var(--band-ink-2); }
@@ -1407,3 +1407,14 @@ a.badge { text-decoration: none; }
 .save-who { flex: 1 1 180px; min-width: 0; }
 .title-facts b { white-space: nowrap; }
 @media (max-width: 520px) { .title-facts div:nth-child(3) { grid-column: 1 / -1; } }
+
+/* The game's own confirm dialog */
+.confirm-body { font-size: 14px; line-height: 1.5; }
+.confirm-acts { margin-top: 18px; justify-content: flex-end; }
+
+/* Rows that open something are reachable from the keyboard: show where focus is */
+tr.click:focus-visible, .list-row[tabindex]:focus-visible { outline: 2px solid var(--red); outline-offset: -2px; }
+
+/* The pound-for-pound #1 fits a phone */
+.p4p-name { font-size: clamp(26px, 7vw, 34px) !important; text-wrap: balance; }
+.rk-champ .cn { text-wrap: balance; }

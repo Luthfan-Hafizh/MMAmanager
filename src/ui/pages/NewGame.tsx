@@ -16,7 +16,7 @@ import { loadRoster, newGame, setBusy, setWorld, toast } from "../../state/store
 import { saveWorld } from "../../state/persist";
 import { clamp, heightText } from "../../core/util";
 import { go } from "../router";
-import { Flag, Ovr, Panel, Seg } from "../components";
+import { Flag, Ovr, Panel, Seg, rowLink } from "../components";
 import { Logo } from "../icons";
 import { fullName, recordText } from "../../world/core";
 import { FIGHT_STYLES, stylesForArt, type GrappleStyle, type StrikeStyle, type StyleId } from "../../data/fightstyles";
@@ -537,7 +537,7 @@ function RealPicker({ roster, seed, value, onPick, onBack, onNext }: { roster: R
           </thead>
           <tbody>
             {rows.slice(0, 300).map(({ rf, f, rank }) => (
-              <tr key={rf.id} className={`click${value === rf.id ? " me" : ""}`} onClick={() => onPick(rf.id)}>
+              <tr key={rf.id} className={`click${value === rf.id ? " me" : ""}`} {...rowLink(() => onPick(rf.id))}>
                 <td>{rank === 0 ? <span className="rank c">C</span> : rank ? <span className="rank">{rank}</span> : <span className="dim">-</span>}</td>
                 <td><span className="row tight"><Flag code={rf.c} /> <b>{rf.n}</b>{rf.k && <span className="dim small">"{rf.k}"</span>}</span></td>
                 <td>{DIVISIONS[rf.d].name}</td>
@@ -564,7 +564,7 @@ function ClientPicker({ w, picks, setPicks }: { w: World; picks: string[]; setPi
       </thead>
       <tbody>
         {list.map((f) => (
-          <tr key={f.id} className={`click${picks.includes(f.id) ? " me" : ""}`} onClick={() => toggle(f.id)}>
+          <tr key={f.id} className={`click${picks.includes(f.id) ? " me" : ""}`} {...rowLink(() => toggle(f.id))}>
             <td>{picks.includes(f.id) ? "✔" : ""}</td>
             <td><span className="row tight"><Flag code={f.country} /> <b>{fullName(f)}</b></span></td>
             <td>{f.promo ? PROMOTIONS[f.promo].short : ""}</td>

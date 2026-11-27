@@ -16,7 +16,7 @@ import { potentialText, primeText } from "../../world/development";
 import { changed, toast, useWorld } from "../../state/store";
 import { retirePlayer } from "../../career/retire";
 import { go, Link } from "../router";
-import { AttrGrid, Empty, FighterLink, Flag, Form, Panel, Stars, Tabs } from "../components";
+import { AttrGrid, Empty, FighterLink, Flag, Form, Panel, Stars, Tabs, confirmBox } from "../components";
 import { Band, BodyTarget, Donut, Mark } from "../art";
 import { goatRank, legacyText } from "../../world/legacy";
 import { headToHead } from "../../world/odds";
@@ -187,7 +187,7 @@ function Overview({ w, f }: { w: World; f: Fighter }) {
         {f.ctrl && w.career.mode === "fighter" && f.status === "active" && (
           <Panel title="The end">
             <p className="small muted">Retire whenever you choose. The team will say when they think it's time; nobody makes you stop.</p>
-            <button className="btn danger sm" onClick={() => { if (confirm(`Retire ${f.first} ${f.surname}? This ends the fighting career.`)) { toast(retirePlayer(w, f)); changed(); go("/home"); } }}>Retire from MMA</button>
+            <button className="btn danger sm" onClick={() => { void confirmBox({ title: "Retire from MMA?", body: `This ends ${f.first} ${f.surname}'s fighting career. It can't be undone.`, ok: "Retire", danger: true }).then((yes) => { if (yes) { toast(retirePlayer(w, f)); changed(); go("/home"); } }); }}>Retire from MMA</button>
           </Panel>
         )}
         {nextB && nextB.status === "booked" && !nextB.pending && (

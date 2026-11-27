@@ -7,7 +7,7 @@ import { clamp } from "../core/util";
 import { ageAt, ymd } from "../core/time";
 import { countryOf, REGION_IDS, type RegionId } from "../data/countries";
 import { DIVISIONS, DIVISION_IDS, type DivisionId } from "../data/divisions";
-import { PROMOTIONS, PROMO_IDS, TIER_RANK, promoFor, type PromoId } from "../data/promotions";
+import { PROMOTIONS, PROMO_IDS, TIER_RANK, promoFor, rosterTarget, type PromoId } from "../data/promotions";
 import { ovrOf } from "../model/attributes";
 import type { Fighter, FightRecord, World } from "../model/types";
 import { addNews, freeAgents, fullName, isChampion, nextId, rankOf, rosterOf, stageFights, touch } from "./core";
@@ -113,20 +113,6 @@ export function monthlyMarket(w: World, rng: Rng): void {
   touch(w);
 }
 
-/**
- * The UFC's month-to-month signings fill each division to 96% of its real size
- * (641 of 668), leaving room for the Contender Series contracts handed out every
- * autumn whatever the room: the roster rises with them and settles back through
- * the year, at about 620-660.
- */
-const UFC_FILL = 0.96;
-
-function rosterTarget(promo: PromoId, d: DivisionId): number {
-  const p = PROMOTIONS[promo];
-  if (promo === "ufc") return Math.round(DIVISIONS[d].ufc * UFC_FILL);
-  if (promo === "pfl") return DIVISIONS[d].sex === "F" ? 14 : 22;
-  return Math.round(p.rosterPerDiv * (DIVISIONS[d].sex === "F" ? 0.6 : 1));
-}
 
 function candidateScore(w: World, f: Fighter): number {
   // Scouts look at the record as well as the tape.
@@ -275,8 +261,24 @@ function signings(w: World, rng: Rng): void {
           addNews(w, { kind: "signing", promo, fighters: [f.id], text: `${p.short} signs ${fullName(f)} (${f.rec.w}-${f.rec.l}${f.rec.d ? `-${f.rec.d}` : ""})${old ? ` from ${PROMOTIONS[old].short}` : ""}.` });
         }
       }
+      // A regional division never runs dry (its rankings with it): with nobody to sign
+      // from its local show or free agency, someone from a show the game doesn't run.
+      if (p.tier === "regional") {
+        while (need > 0 && rosterOf(w, promo, d).length < want - 1) {
+          fromTheScene(w, rng, promo, d);
+          need--;
+        }
+      }
     }
   }
+}
+
+/** A fighter at the promotion's usual level from a show the game doesn't run. */
+function fromTheScene(w: World, rng: Rng, promo: PromoId, d: DivisionId): Fighter {
+  const [mean, sd] = levelOf(promo)!;
+  const o = clamp(rng.normal(mean, sd), 48, UFC_LEVEL + 3);
+  const age = Math.round(clamp(rng.normal(27, 3.6), 21, 34));
+  return newcomer(w, rng, promo, d, o, age, false);
 }
 
 function candidatesFor(w: World, promo: PromoId, d: DivisionId): Fighter[] {

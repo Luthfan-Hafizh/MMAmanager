@@ -239,6 +239,37 @@ export interface CornerCall {
   ok: boolean;
 }
 
+/** What the corner does with the minute between rounds. */
+export type CornerFocus = "recover" | "cut" | "tactics" | "head";
+
+/** An input from outside the fight: a call answered, a shout, a plan change, the minute in the corner. */
+export type TapeOp =
+  | ["act", 0 | 1, Shout | null, { key: string; text: string; label: string; by: CornerCall["by"] } | null]
+  | ["shout", 0 | 1, Shout]
+  | ["clear", 0 | 1, ShoutGroup]
+  | ["plan", 0 | 1, FightPlan]
+  | ["corner", 0 | 1, CornerFocus]
+  | ["next"]
+  | ["advice", 0 | 1, number]
+  | ["feedback", 0 | 1]
+  | ["call", CornerCall];
+
+/** One input and the exchange it came after. */
+export interface TapeEntry {
+  n: number;
+  op: TapeOp;
+}
+
+/**
+ * A watched fight on tape: every input, with the exchange it came after, and how
+ * many exchanges have been fought. The fight is seeded, so playing the tape back
+ * (`FightSim.replay`) rebuilds it exactly: same punches, same clock, same lines.
+ */
+export interface Tape {
+  steps: number;
+  ops: TapeEntry[];
+}
+
 const AGGRESSIVE = new Set<Shout>(["push", "finish", "power", "pressure", "takedown", "gnp", "head"]);
 /** Calls a fighter acts on in the very next exchange. */
 const IMMEDIATE = new Set<Shout>(["finish", "power", "push", "pressure", "takedown", "clinch", "circle", "getup", "gnp", "subs"]);
@@ -307,6 +338,12 @@ export class FightSim {
   calls: CornerCall[] = [];
   private checks: { i: 0 | 1; sh: Shout; at: number; base: Record<string, number>; done?: boolean }[] = [];
   private aiReactAt: [number, number] = [-9999, -9999];
+  /** Exchanges fought: the clock a tape runs on. */
+  steps = 0;
+  /** A watched fight records every input from outside it, so it can be rebuilt exactly. Null: not recorded. */
+  tape: TapeEntry[] | null = null;
+  /** Inside an exchange: the other corner's calls are part of the fight, not inputs. */
+  private inside = 0;
 
   constructor(input: FightInput) {
     this.input = input;
@@ -458,6 +495,14 @@ export class FightSim {
   /** One exchange. Returns the seconds it took. */
   step(): number {
     if (this.over || this.between) return 0;
+    this.steps++;
+    this.inside++;
+    const dt = this.exchange();
+    this.inside--;
+    return dt;
+  }
+
+  private exchange(): number {
     let dt: number;
     const urgent = this.s.find((x) => x.now);
     const forced = urgent ? this.immediate(urgent) : null;
@@ -490,9 +535,106 @@ export class FightSim {
     return this.outcome();
   }
 
+  // ---------- a watched fight: on tape, rebuilt from it, finished without the player ----------
+
+  private rec(op: TapeOp) {
+    if (this.tape && !this.inside) this.tape.push({ n: this.steps, op });
+  }
+
+  /** The tape so far (null when the fight isn't recorded). */
+  tapeOf(): Tape | null {
+    return this.tape ? { steps: this.steps, ops: this.tape } : null;
+  }
+
+  /** Rebuild a watched fight from its tape: the same exchanges, every input at the moment it came. Recording goes on from there. */
+  static replay(input: FightInput, tape: Tape): FightSim {
+    const sim = new FightSim(input);
+    for (const e of tape.ops) {
+      sim.runTo(e.n);
+      sim.apply(e.op);
+    }
+    sim.runTo(tape.steps);
+    sim.tape = tape.ops.slice();
+    return sim;
+  }
+
+  private runTo(n: number) {
+    let g = 0;
+    while (this.steps < n && !this.over && !this.between && g++ < 50000) this.step();
+  }
+
+  private apply(op: TapeOp) {
+    switch (op[0]) {
+      case "act":
+        this.act(op[1], op[2], op[3] ?? undefined);
+        break;
+      case "shout":
+        this.shout(op[1], op[2]);
+        break;
+      case "clear":
+        this.clearShout(op[1], op[2]);
+        break;
+      case "plan":
+        this.setPlan(op[1], op[2]);
+        break;
+      case "corner":
+        this.corner(op[1], op[2]);
+        break;
+      case "next":
+        this.nextRound();
+        break;
+      case "advice":
+        this.liveAdvice(op[1], op[2]);
+        break;
+      case "feedback":
+        this.cornerFeedback(op[1]);
+        break;
+      case "call":
+        this.noteCall(op[1]);
+        break;
+    }
+  }
+
+  /** A call answered by shouting it from the corner: what was called, and whether it was heard. */
+  noteCall(c: CornerCall) {
+    this.rec(["call", c]);
+    this.calls.push(c);
+  }
+
+  /** Answer a corner call. The fighter acts on it; a manager shouts it, and it may go unheard. */
+  answer(i: 0 | 1, adv: LiveAdvice, k: number, by: CornerCall["by"], asFighter: boolean): boolean {
+    const op = adv.options[k];
+    if (asFighter) return this.act(i, op.shout, { key: adv.key, text: adv.text, label: op.label, by });
+    const ok = op.shout ? this.shout(i, op.shout) : true;
+    this.noteCall({ i, r: this.round, t: Math.round(this.t), key: adv.key, text: adv.text, choice: op.label, by, shout: op.shout, ok });
+    return ok;
+  }
+
+  /**
+   * The rest of a watched fight, played out at once: side `i` answers the corner's calls
+   * on instinct (or does what the corner says), and the corner spends each minute on the
+   * breathing. Recorded like the rest of the fight.
+   */
+  playOut(i: 0 | 1, quality: number, follow: boolean, asFighter: boolean): FightOutcome {
+    let g = 0;
+    while (!this.over && g++ < 20000) {
+      if (this.between) {
+        this.corner(i, "recover");
+        this.nextRound();
+        continue;
+      }
+      this.step();
+      const adv = this.liveAdvice(i, quality);
+      if (adv) this.answer(i, adv, follow ? 0 : adv.instinct, follow ? "corner" : "instinct", asFighter);
+      this.cornerFeedback(i);
+    }
+    return this.outcome();
+  }
+
   /** Corner time: AI corners adjust, then the next round starts. */
   nextRound() {
     if (!this.between || this.over) return;
+    this.rec(["next"]);
     for (const s of this.s) {
       // Shouts were for that round; a new round starts from the plan.
       s.shouts = {};
@@ -518,6 +660,7 @@ export class FightSim {
   }
 
   setPlan(i: 0 | 1, plan: FightPlan) {
+    this.rec(["plan", i, { ...plan }]);
     const s = this.s[i];
     s.base = plan;
     s.plan = applyShouts(plan, s.shouts);
@@ -526,6 +669,7 @@ export class FightSim {
 
   /** A shout from the corner, followed or not depending on discipline and damage. */
   shout(i: 0 | 1, sh: Shout): boolean {
+    this.rec(["shout", i, sh]);
     const s = this.s[i];
     const def = SHOUT_BY_ID[sh];
     const listen = 0.45 + 0.45 * s.n.discipline - (s.stun > 0 ? 0.25 : 0) - (1 - s.head / 100) * 0.2;
@@ -547,6 +691,7 @@ export class FightSim {
   clearShout(i: 0 | 1, g: ShoutGroup) {
     const s = this.s[i];
     if (!s.shouts[g]) return;
+    this.rec(["clear", i, g]);
     const next = { ...s.shouts };
     delete next[g];
     s.shouts = next;
@@ -594,7 +739,8 @@ export class FightSim {
   }
 
   /** Between rounds the corner gives water, works the cut, and fixes the plan. */
-  corner(i: 0 | 1, focus: "recover" | "cut" | "tactics" | "head") {
+  corner(i: 0 | 1, focus: CornerFocus) {
+    this.rec(["corner", i, focus]);
     const s = this.s[i];
     if (focus === "recover") s.sta = clamp(s.sta + 6 + 6 * s.n.recovery, 0, s.cap);
     if (focus === "cut" && s.cut > 0) s.cut = Math.max(0, s.cut - (this.rng.chance(0.55) ? 1 : 0));
@@ -687,6 +833,13 @@ export class FightSim {
    * Uses no randomness: asking never changes the fight.
    */
   liveAdvice(i: 0 | 1, quality = 0.6): LiveAdvice | null {
+    const a = this.advise(i, quality);
+    // A call given starts its cooldown: that's a change to the fight, so it goes on the tape.
+    if (a) this.rec(["advice", i, quality]);
+    return a;
+  }
+
+  private advise(i: 0 | 1, quality: number): LiveAdvice | null {
     if (this.over || this.between) return null;
     const me = this.s[i];
     const o = this.other(me);
@@ -816,6 +969,7 @@ export class FightSim {
    * a shout that may go unheard). Dazed, the body may not answer.
    */
   act(i: 0 | 1, sh: Shout | null, call?: { key: string; text: string; label: string; by: CornerCall["by"] }): boolean {
+    this.rec(["act", i, sh, call ? { ...call } : null]);
     const s = this.s[i];
     const o = this.other(s);
     const him = o.f.sex === "F" ? "her" : "him";
@@ -895,6 +1049,14 @@ export class FightSim {
 
   /** Twenty-odd seconds after a call was acted on, the corner says whether it's working. */
   cornerFeedback(i: 0 | 1): { text: string; good: boolean } | null {
+    const done = () => this.checks.reduce((a, c) => a + (c.done ? 1 : 0), 0);
+    const before = this.tape ? done() : 0;
+    const out = this.feedback(i);
+    if (this.tape && done() !== before) this.rec(["feedback", i]);
+    return out;
+  }
+
+  private feedback(i: 0 | 1): { text: string; good: boolean } | null {
     const now = this.clockAll();
     const me = this.s[i];
     const o = this.other(me);
@@ -2101,7 +2263,8 @@ export class FightSim {
     const tB = sum(B);
     tA.ctrl = Math.round(tA.ctrl);
     tB.ctrl = Math.round(tB.ctrl);
-    for (const s of this.s) for (const r of s.rs) r.ctrl = Math.round(r.ctrl);
+    // Whole seconds of control in the record; the fight itself is left as it is (reading the result changes nothing).
+    const whole = (r: RoundStat): RoundStat => ({ ...r, ctrl: Math.round(r.ctrl) });
     const cards: [number, number][] | undefined = this.cards.length
       ? [0, 1, 2].map((j) => {
           let a = 0;
@@ -2142,7 +2305,7 @@ export class FightSim {
       rcards,
       verdict,
       stats: [tA, tB],
-      rounds: A.rs.map((r, k) => [r, B.rs[k]] as [RoundStat, RoundStat]),
+      rounds: A.rs.map((r, k) => [whole(r), whole(B.rs[k])] as [RoundStat, RoundStat]),
       log: this.logOn ? this.log : undefined,
       perf: [perf(0), perf(1)],
       sides: this.s,

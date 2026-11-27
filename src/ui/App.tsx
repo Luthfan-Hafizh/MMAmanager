@@ -9,6 +9,7 @@ import { PROMOTIONS, type PromoId } from "../data/promotions";
 import { blocking, unread } from "../career/inbox";
 import { fightNight } from "../sim/advance";
 import { continueGame, getState, useStore, useVersion } from "../state/store";
+import { underWay } from "../state/live";
 import { Icons, Logo } from "./icons";
 import { go, Link, useRoute } from "./router";
 import { Band } from "./art";
@@ -140,10 +141,12 @@ function ContinueButton() {
     window.addEventListener("keydown", key);
     return () => window.removeEventListener("keydown", key);
   });
+  // A fight left mid-way waits on the fight-night screen, paused.
+  const waiting = fn ? fn.bouts.map((id) => w.bouts[id]).some((b) => (w.fighters[b.a]?.ctrl || w.fighters[b.b]?.ctrl) && underWay(w, b)) : false;
   if (fn)
     return (
       <button className="go fight" onClick={onClick}>
-        <span>Fight night<small>{fn.name}</small></span>
+        <span>Fight night<small>{waiting ? "Back to your fight" : fn.name}</small></span>
         <Icons.glove />
       </button>
     );

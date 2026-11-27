@@ -2,15 +2,15 @@ import { useEffect, useMemo, useReducer, useRef, useState } from "react";
 import { clock, fmtDate } from "../../core/time";
 import { DIVISIONS } from "../../data/divisions";
 import { PROMOTIONS } from "../../data/promotions";
-import type { Bout, FightLogLine, Fighter, RoundStat, World } from "../../model/types";
-import { FightSim, GPOS_NAME, methodText, type CornerCall, type FightOutcome, type LiveAdvice } from "../../engine/sim";
+import type { Bout, FightLogLine, Fighter, MMAEvent, RoundStat, World } from "../../model/types";
+import { FightSim, GPOS_NAME, methodText, type CornerCall, type CornerFocus, type FightOutcome, type LiveAdvice } from "../../engine/sim";
 import { clamp } from "../../core/util";
 import { applyShout, SHOUT_BY_ID, SHOUT_GROUPS, SHOUTS, type Shout, type ShoutGroup } from "../../engine/plan";
 import { cardSection } from "../../world/calendar";
-import { fightInputFor } from "../../world/results";
 import { fullName, recordText } from "../../world/core";
-import { boutRng, fightNight, openFightNight, quickSim, resolvePlayerBout } from "../../sim/advance";
+import { fightNight, openFightNight, quickSim, resolvePlayerBout } from "../../sim/advance";
 import { changed, save, toast, useWorld } from "../../state/store";
+import { dropLive, keepLive, liveFight, tidyLive, underWay } from "../../state/live";
 import { go, Link } from "../router";
 import { Bar, Empty, FighterLink, Panel, Seg } from "../components";
 import { Band } from "../art";
@@ -19,35 +19,58 @@ import { stakeLabel } from "../../world/belts";
 import { FightReport, StatTable } from "../report";
 import { roundSummary, totals } from "../../world/report";
 
+/** The player's fights on a card. */
+function mineOn(w: World, ev: MMAEvent): Bout[] {
+  return ev.bouts.map((id) => w.bouts[id]).filter((b) => b && (w.fighters[b.a]?.ctrl || w.fighters[b.b]?.ctrl));
+}
+
+/** Tonight's card, once the player's fights on it are in the books. */
+function doneTonight(w: World): MMAEvent | null {
+  for (const id of w.career.fighters) {
+    const f = w.fighters[id];
+    const last = f?.bouts[f.bouts.length - 1];
+    const b = last ? w.bouts[last] : null;
+    const ev = b ? w.events[b.ev] : null;
+    if (b && ev && b.status === "done" && b.day === w.day && ev.status === "done") return ev;
+  }
+  return null;
+}
+
+/** How good the head coach's eye is: it decides how sharp the corner's calls are. */
+function coachEye(w: World, b: Bout, mine: 0 | 1): number {
+  return clamp((w.gyms[w.fighters[mine === 0 ? b.a : b.b]?.gym]?.coaches.head ?? 55) / 100, 0.2, 1);
+}
+
 export function FightNight() {
   const w = useWorld();
   const ev = fightNight(w);
-  const [opened, setOpened] = useState(false);
-  const [live, setLive] = useState<Bout | null>(null);
-  const [finished, setFinished] = useState<string | null>(null);
+  // A fight already under way (the page was left, or the browser reloaded) opens where it was.
+  const [live, setLive] = useState<Bout | null>(() => (ev ? mineOn(w, ev).find((b) => underWay(w, b)) ?? null : null));
   useEffect(() => {
-    if (ev && !opened) {
-      const anyAwaiting = ev.bouts.some((id) => w.bouts[id].awaiting);
-      if (!anyAwaiting) openFightNight(w, ev);
-      setOpened(true);
+    tidyLive(w);
+    if (ev) {
+      openFightNight(w, ev);
       changed();
     }
   }, [ev?.id]);
+  /** Into the books, once, and saved; the fight's tape goes only when the save is safe. */
+  const commit = (b: Bout, out: FightOutcome) => {
+    if (!resolvePlayerBout(w, b, out)) return;
+    changed();
+    void save().then((ok) => {
+      if (ok) dropLive(w, b);
+    });
+  };
+  if (live) {
+    return (
+      <div className="wrap page-body">
+        <LiveFight w={w} b={live} onEnd={(out) => commit(live, out)} onDone={() => setLive(null)} />
+      </div>
+    );
+  }
   if (!ev) {
-    if (finished) {
-      const e = w.events[finished];
-      return (
-        <>
-          <Band eyebrow="Fight night" title="In the books" sub={`${e?.name} is over. The results, the bonuses and the new rankings are in.`} />
-          <div className="wrap page-body">
-            <div className="row">
-              <Link to={`/event/${finished}`} className="btn">See the results</Link>
-              <button className="btn primary" onClick={() => go("/home")}>Back to work</button>
-            </div>
-          </div>
-        </>
-      );
-    }
+    const today = doneTonight(w);
+    if (today) return <InTheBooks w={w} ev={today} />;
     return (
       <>
         <Band eyebrow="Fight night" title="No fight tonight" sub="Fight nights open here on the day of the event." />
@@ -56,23 +79,18 @@ export function FightNight() {
     );
   }
   const awaiting = ev.bouts.map((id) => w.bouts[id]).filter((b) => b.awaiting);
-  if (live) {
-    return (
-      <div className="wrap page-body">
-      <LiveFight
-        w={w}
-        b={live}
-        onDone={(out) => {
-          resolvePlayerBout(w, live, out);
-          setLive(null);
-          if (w.events[ev.id].status === "done") setFinished(ev.id);
-          void save();
-          changed();
-        }}
-      />
-      </div>
-    );
-  }
+  const simulate = (b: Bout) => {
+    const mine: 0 | 1 = w.fighters[b.a].ctrl ? 0 : 1;
+    let out: FightOutcome;
+    if (underWay(w, b)) {
+      // The fight that started goes on to the end. Nothing replaces it.
+      const sim = liveFight(w, b);
+      out = sim.over ? sim.outcome() : sim.playOut(mine, coachEye(w, b, mine), callModeNow() === "follow", w.career.mode === "fighter");
+      keepLive(w, b);
+    } else out = quickSim(w, b);
+    commit(b, out);
+    toast(`${out.winner ? fullName(w.fighters[out.winner === "a" ? b.a : b.b]) + " wins" : "Draw"}: ${methodText(out.method, out.detail)}`, "info");
+  };
   const done = ev.bouts.map((id) => w.bouts[id]).filter((b) => b.status === "done");
   return (
     <>
@@ -83,6 +101,7 @@ export function FightNight() {
         {awaiting.map((b) => {
           const a = w.fighters[b.a];
           const c = w.fighters[b.b];
+          const going = underWay(w, b);
           return (
             <Panel key={b.id} title={stakeLabel(b) && stakeLabel(b) !== "Title eliminator" ? stakeLabel(b)! : "Your fight"} className="accent">
               <div className="vs-card">
@@ -95,20 +114,16 @@ export function FightNight() {
                   Weigh-in: {a.surname} {b.weighIn.a.toFixed(1)} lb{b.weighIn.missA ? " (missed)" : ""}, {c.surname} {b.weighIn.b.toFixed(1)} lb{b.weighIn.missB ? " (missed)" : ""}. {b.rounds} rounds of {Math.round(b.roundSec / 60)} minutes{PROMOTIONS[b.promo].tier === "amateur" ? " (amateur rules)" : ""}, {DIVISIONS[b.div].name.toLowerCase()}{b.catchweight ? `, catchweight ${b.catchweight} lb` : ""}.
                 </p>
               )}
+              {going && (
+                <div className="sn-strip calm" style={{ marginTop: 10 }}>
+                  <b>{going.over ? "Over" : "Under way"}</b>
+                  <span className="sn-why">{going.over ? "The fight has ended: open it to see the result go in the books." : `Round ${going.round}, ${clock(Math.max(0, b.roundSec - going.t))} left. It picks up exactly where you left it.`}</span>
+                </div>
+              )}
               <div className="row" style={{ marginTop: 10 }}>
-                <button className="btn primary lg" onClick={() => setLive(b)}>Watch live</button>
-                <button
-                  className="btn"
-                  onClick={() => {
-                    const out = quickSim(w, b);
-                    resolvePlayerBout(w, b, out);
-                    toast(`${out.winner ? fullName(w.fighters[out.winner === "a" ? b.a : b.b]) + " wins" : "Draw"}: ${methodText(out.method, out.detail)}`, "info");
-                    if (w.events[ev.id].status === "done") setFinished(ev.id);
-                    void save();
-                    changed();
-                  }}
-                >
-                  Simulate
+                <button className="btn primary lg" onClick={() => setLive(b)}>{going ? "Back to the fight" : "Watch live"}</button>
+                <button className="btn" onClick={() => simulate(b)} title={going ? "Play out the rest of this fight at once, on instinct" : "Play the whole fight at once"}>
+                  {going ? "Simulate the rest" : "Simulate"}
                 </button>
               </div>
             </Panel>
@@ -134,6 +149,41 @@ export function FightNight() {
   );
 }
 
+/** Tonight's card is over: the player's results, as they went in the books. */
+function InTheBooks({ w, ev }: { w: World; ev: MMAEvent }) {
+  const mine = mineOn(w, ev).filter((b) => b.status === "done" && b.res);
+  return (
+    <>
+      <Band eyebrow="Fight night" title="In the books" sub={`${ev.name} is over. The results, the bonuses and the new rankings are in.`} />
+      <div className="wrap page-body">
+        <div className="stack">
+          {mine.map((b) => {
+            const r = b.res!;
+            const win = r.winner ? w.fighters[r.winner === "a" ? b.a : b.b] : null;
+            const lose = r.winner ? w.fighters[r.winner === "a" ? b.b : b.a] : null;
+            const stop = r.method !== "DEC" && r.method !== "DRAW";
+            return (
+              <Panel key={b.id} title={stakeLabel(b) && stakeLabel(b) !== "Title eliminator" ? stakeLabel(b)! : "Your fight"} className="gold">
+                <div className="big" style={{ fontSize: 30 }}>{win ? `${fullName(win)} wins` : "Draw"}</div>
+                <p className="muted" style={{ marginTop: 6 }}>
+                  {methodText(r.method, r.detail)}
+                  {stop ? `, round ${r.round} at ${clock(r.time)}` : ""}
+                  {lose ? `, over ${fullName(lose)}` : ""}
+                  {r.cards && !stop ? ` (${r.cards.map(([x, y]) => `${x}-${y}`).join(", ")})` : ""}.
+                </p>
+              </Panel>
+            );
+          })}
+          <div className="row">
+            <Link to={`/event/${ev.id}`} className="btn">See the results</Link>
+            <button className="btn primary" onClick={() => go("/home")}>Back to work</button>
+          </div>
+        </div>
+      </div>
+    </>
+  );
+}
+
 type Speed = "watch" | "quick" | "fast";
 const SPEEDS: { v: Speed; label: string }[] = [
   { v: "watch", label: "Watch" },
@@ -150,6 +200,14 @@ const CALL_MODES: { v: CallMode; label: string }[] = [
   { v: "follow", label: "Follow the corner" },
   { v: "instinct", label: "Instinct" },
 ];
+function callModeNow(): CallMode {
+  try {
+    const m = localStorage.getItem("mma.cornerCalls");
+    return m === "follow" || m === "instinct" ? m : "ask";
+  } catch {
+    return "ask";
+  }
+}
 interface CallCard extends LiveAdvice {
   id: number;
   ttl: number;
@@ -161,17 +219,16 @@ interface CallCard extends LiveAdvice {
 /** How long a call stays up, urgent and normal, in milliseconds. */
 const CALL_TTL: Record<Speed, [number, number]> = { watch: [7000, 11000], quick: [5000, 8000], fast: [2600, 3600] };
 
-function LiveFight({ w, b, onDone }: { w: World; b: Bout; onDone: (o: FightOutcome) => void }) {
+function LiveFight({ w, b, onEnd, onDone }: { w: World; b: Bout; onEnd: (o: FightOutcome) => void; onDone: () => void }) {
   const mine: 0 | 1 = w.fighters[b.a].ctrl ? 0 : 1;
-  const simRef = useRef<FightSim | null>(null);
-  if (!simRef.current) {
-    const rng = boutRng(w, b);
-    const input = fightInputFor(w, b, rng, rng.int(1, 2 ** 31 - 1), true);
-    input.aiCorner = mine === 0 ? [false, true] : [true, false];
-    simRef.current = new FightSim(input);
-  }
-  const sim = simRef.current;
+  // The fight under way if there is one (left for another page, or rebuilt after a reload), else the first bell.
+  const [sim] = useState(() => liveFight(w, b));
+  /** Back to a fight that had started: it waits, paused, until you're ready. */
+  const [resumed] = useState(() => sim.steps > 0 && !sim.over);
   const [, tick] = useReducer((x: number) => x + 1, 0);
+  // Every exchange and input is kept as it happens, and once more on the way out.
+  useEffect(() => keepLive(w, b));
+  useEffect(() => () => keepLive(w, b), []);
   const [speed, setSpeed] = useState<Speed>(() => {
     try {
       const s = localStorage.getItem("mma.fightSpeed");
@@ -180,10 +237,10 @@ function LiveFight({ w, b, onDone }: { w: World; b: Bout; onDone: (o: FightOutco
       return "watch";
     }
   });
-  const [paused, setPaused] = useState(false);
+  const [paused, setPaused] = useState(() => resumed && !sim.between);
   /** Skip to the bell: this round only. */
   const [skip, setSkip] = useState(false);
-  const [focus, setFocus] = useState<"recover" | "cut" | "tactics" | "head">("recover");
+  const [focus, setFocus] = useState<CornerFocus>("recover");
   const [used, setUsed] = useState<string[]>([]);
   const [sideTab, setSideTab] = useState<"moves" | "stats" | "read">("moves");
   const pick = (s: Speed) => {
@@ -197,7 +254,7 @@ function LiveFight({ w, b, onDone }: { w: World; b: Bout; onDone: (o: FightOutco
 
   // ---------- the corner's calls during a round ----------
   const fighterMode = w.career.mode === "fighter";
-  const coachQ = clamp((w.gyms[w.fighters[mine === 0 ? b.a : b.b]?.gym]?.coaches.head ?? 55) / 100, 0.2, 1);
+  const coachQ = coachEye(w, b, mine);
   const [callMode, setCallMode] = useState<CallMode>(() => {
     try {
       return (localStorage.getItem("mma.cornerCalls") as CallMode) || "ask";
@@ -225,13 +282,7 @@ function LiveFight({ w, b, onDone }: { w: World; b: Bout; onDone: (o: FightOutco
     setCards(list);
   };
   /** Acting on a call: as the fighter you just do it; as the manager you shout it and hope it's heard. */
-  const actOn = (adv: LiveAdvice, k: number, by: CornerCall["by"]): { ok: boolean; label: string } => {
-    const op = adv.options[k];
-    if (fighterMode) return { ok: sim.act(mine, op.shout, { key: adv.key, text: adv.text, label: op.label, by }), label: op.label };
-    const ok = op.shout ? sim.shout(mine, op.shout) : true;
-    sim.calls.push({ i: mine, r: sim.round, t: Math.round(sim.t), key: adv.key, text: adv.text, choice: op.label, by, shout: op.shout, ok });
-    return { ok, label: op.label };
-  };
+  const actOn = (adv: LiveAdvice, k: number, by: CornerCall["by"]): { ok: boolean; label: string } => ({ ok: sim.answer(mine, adv, k, by, fighterMode), label: adv.options[k].label });
   const addCard = (c: Omit<CallCard, "id">) => {
     const keep = cardsRef.current.filter((x) => x.state === "open" || x.left > 0);
     setCardList([{ ...c, id: cardId.current++ }, ...keep].slice(0, 3));
@@ -384,6 +435,10 @@ function LiveFight({ w, b, onDone }: { w: World; b: Bout; onDone: (o: FightOutco
   }, [speed, skip, paused, sim, sim.round, sim.between, sim.over]);
 
   const out = sim.over ? sim.outcome() : null;
+  // The result goes in the books the moment the fight ends, whatever is clicked next.
+  useEffect(() => {
+    if (out) onEnd(out);
+  }, [!!out]);
   const me = sim.s[mine];
   const opp = sim.s[1 - mine as 0 | 1];
   const posText =
@@ -429,6 +484,13 @@ function LiveFight({ w, b, onDone }: { w: World; b: Bout; onDone: (o: FightOutco
 
   return (
     <div className="stack">
+      {resumed && paused && !sim.over && !sim.between && (
+        <div className="sn-strip calm fn-resume" role="status">
+          <b>Paused</b>
+          <span className="sn-why">The fight waited for you: round {sim.round}, {clock(Math.max(0, sim.roundSec - sim.t))} left.</span>
+          <button className="btn sm primary" onClick={togglePause}>Resume the fight</button>
+        </div>
+      )}
       <section className="broadcast" aria-label="Live fight">
         <div className="scorebug">
           <FighterMeters sim={sim} i={0} />
@@ -459,7 +521,7 @@ function LiveFight({ w, b, onDone }: { w: World; b: Bout; onDone: (o: FightOutco
           <div className="fn-ctrl-g" role="group" aria-label="Fight speed">
             <Seg value={speed} onChange={pick} options={SPEEDS} />
             <button className="btn sm" onClick={() => setSkip(true)} disabled={sim.over || sim.between || skip} title="Run this round to the bell. The next round goes back to your speed.">Skip to the bell</button>
-            <button className="btn sm" onClick={togglePause} disabled={sim.over || sim.between}>{paused ? "Resume" : "Pause"}</button>
+            <button className={`btn sm${paused ? " primary" : ""}`} onClick={togglePause} disabled={sim.over || sim.between}>{paused ? "Resume" : "Pause"}</button>
           </div>
           <div className="fn-ctrl-g" role="group" aria-label="Corner calls">
             <span className="fn-ctrl-l">Corner calls</span>
@@ -578,7 +640,8 @@ function LiveFight({ w, b, onDone }: { w: World; b: Bout; onDone: (o: FightOutco
             {out.cards ? `. ${out.method === "DEC" || out.method === "DRAW" ? "Judges" : "Cards at the stoppage"}: ${out.cards.map(([x, y]) => `${x}-${y}`).join(", ")}` : ""}.
           </p>
           <div className="row" style={{ marginTop: 12 }}>
-            <button className="btn primary lg" onClick={() => onDone(out)}>Continue</button>
+            <button className="btn primary lg" onClick={onDone}>Continue</button>
+            <span className="small dim">The result is in the books.</span>
           </div>
         </Panel>
       )}

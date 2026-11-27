@@ -157,18 +157,28 @@ export function fightNight(w: World): MMAEvent | null {
   return null;
 }
 
-/** Start a fight night: the undercard is fought, the player's fights wait. */
+/** Start a fight night: the undercard is fought, the player's fights wait. Opening it again changes nothing. */
 export function openFightNight(w: World, ev: MMAEvent): Bout[] {
-  return withRng(w, (rng) => runEvent(w, rng, ev).awaiting);
+  const fresh = ev.status !== "done" && ev.bouts.some((id) => w.bouts[id].status === "booked" && !w.bouts[id].awaiting);
+  if (fresh) withRng(w, (rng) => runEvent(w, rng, ev));
+  return ev.bouts.map((id) => w.bouts[id]).filter((b) => b.awaiting);
 }
 
-export function resolvePlayerBout(w: World, b: Bout, out: FightOutcome): void {
+/**
+ * The player's fight goes in the books. Once: a fight already decided keeps its
+ * result, so no second simulation can replace the one that was watched.
+ */
+export function resolvePlayerBout(w: World, b: Bout, out: FightOutcome): boolean {
+  if (b.status !== "booked") return false;
+  const ev = w.events[b.ev];
+  // A fight picked up after a reload can end before the undercard has been run again.
+  if (ev && !b.awaiting) openFightNight(w, ev);
   withRng(w, (rng) => {
     applyResult(w, rng, b, out);
-    const ev = w.events[b.ev];
     if (ev && !ev.bouts.some((id) => w.bouts[id].awaiting)) finishEvent(w, rng, ev);
   });
   touch(w);
+  return true;
 }
 
 /** The fight's own random stream: the same bout always plays out the same way for the same plans. */

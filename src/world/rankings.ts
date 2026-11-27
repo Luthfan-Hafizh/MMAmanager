@@ -9,7 +9,7 @@
 
 import { clamp } from "../core/util";
 import { DIVISIONS, neighbourDivisions, type DivisionId } from "../data/divisions";
-import { PROMOTIONS, type PromoId } from "../data/promotions";
+import { PROMOTIONS, PROMO_IDS, rankSizeOf, type PromoId } from "../data/promotions";
 import type { Bout, Fighter, World } from "../model/types";
 import { addNews, fightsInPromo, fullName, rankNumber, rosterOf, stageFights } from "./core";
 import { notify } from "../career/inbox";
@@ -67,9 +67,8 @@ function kFactor(w: World, f: Fighter, b: Bout): number {
   return k;
 }
 
-/** Who can be ranked: on the roster, active, and has fought there (or was there when the world began). */
-function eligible(w: World, f: Fighter, promo: PromoId): boolean {
-  if (f.status !== "active") return false;
+/** Proven here: has fought on this stage (or was on the roster when the world began). */
+function provenHere(w: World, f: Fighter, promo: PromoId): boolean {
   if (f.promo === promo && f.joined <= w.start) return true;
   return fightsInPromo(w, f, promo) >= 1;
 }
@@ -129,10 +128,9 @@ export function updateRankings(w: World, promo: PromoId, divs?: DivisionId[]): v
   for (const d of divs ?? p.divisions) {
     const champ = ps.champs[d] ?? null;
     const interim = ps.interim[d] ?? null;
+    const pool = rosterOf(w, promo, d).filter((f) => f.id !== champ && f.id !== interim && f.status === "active");
     const scored = [
-      ...rosterOf(w, promo, d)
-        .filter((f) => f.id !== champ && f.id !== interim && eligible(w, f, promo))
-        .map((f) => ({ f, s: rankScore(w, f) })),
+      ...pool.filter((f) => provenHere(w, f, promo)).map((f) => ({ f, s: rankScore(w, f) })),
       // Fighters from the weights either side who beat someone here.
       ...crossWeighters(w, promo, d).filter((x) => x.f.id !== champ && x.f.id !== interim),
     ]
@@ -140,9 +138,15 @@ export function updateRankings(w: World, promo: PromoId, divs?: DivisionId[]): v
       .sort((x, y) => y.s - x.s);
     // The champion who just lost the belt is number one until fighting again.
     const back = justDethroned(w, promo, d);
-    const list = [...scored.filter((x) => back.has(x.f.id)), ...scored.filter((x) => !back.has(x.f.id))];
-    // Fifteen numbered places; an interim champion heads them without a number.
-    const ids = list.slice(0, p.rankSize).map((x) => x.f.id);
+    // New signings yet to fight here fill the places still open, below everyone
+    // who has (best record and rating first): a thin roster still ranks in full.
+    const fresh = pool
+      .filter((f) => !provenHere(w, f, promo))
+      .map((f) => ({ f, s: rankScore(w, f) }))
+      .sort((x, y) => y.s - x.s);
+    const list = [...scored.filter((x) => back.has(x.f.id)), ...scored.filter((x) => !back.has(x.f.id)), ...fresh];
+    // Ten or fifteen numbered places (five in a small division); an interim champion heads them without a number.
+    const ids = list.slice(0, rankSizeOf(promo, d)).map((x) => x.f.id);
     if (interim) ids.unshift(interim);
     const was = new Set(ps.ranks[d] ?? []);
     ps.prevRanks[d] = ps.ranks[d] ?? [];
@@ -178,6 +182,25 @@ export function updateRankings(w: World, promo: PromoId, divs?: DivisionId[]): v
     if (champ) {
       const f = w.fighters[champ];
       if (f && promo === "ufc") f.peakRank = 0;
+    }
+  }
+}
+
+/**
+ * Lists the rules no longer match (a save from before the open places were
+ * filled, or a division that now ranks five): ranked again, keeping the last
+ * movement, so the arrows still show the last month's moves.
+ */
+export function refitRankings(w: World): void {
+  for (const id of PROMO_IDS) {
+    if (!PROMOTIONS[id].rankSize) continue;
+    const ps = w.promos[id];
+    for (const d of PROMOTIONS[id].divisions) {
+      const want = rankSizeOf(id, d) + (ps.interim[d] ? 1 : 0);
+      if ((ps.ranks[d] ?? []).length === want) continue;
+      const prev = ps.prevRanks[d] ?? [];
+      updateRankings(w, id, [d]);
+      ps.prevRanks[d] = prev;
     }
   }
 }

@@ -87,28 +87,41 @@ export async function newGame(o: NewGameOptions): Promise<World> {
   return w;
 }
 
-let saving = false;
-let saveAgain = false;
-export async function save(): Promise<void> {
+let running: Promise<boolean> | null = null;
+let queued: Promise<boolean> | null = null;
+
+async function saveNow(): Promise<boolean> {
   const w = state.world;
-  if (!w) return;
-  if (saving) {
-    saveAgain = true;
-    return;
-  }
-  saving = true;
+  if (!w) return false;
   try {
     await saveWorld(w);
+    return true;
   } catch (e) {
     console.error(e);
     toast("Saving failed. Export the career from Settings to be safe.", "bad");
-  } finally {
-    saving = false;
-    if (saveAgain) {
-      saveAgain = false;
-      void save();
-    }
+    return false;
   }
+}
+
+/**
+ * Save the career. Resolves once a save that includes every change made before
+ * the call is on disk (true), or failed (false). Calls during a save share one
+ * more save after it.
+ */
+export function save(): Promise<boolean> {
+  if (!running) {
+    running = saveNow().finally(() => {
+      running = null;
+    });
+    return running;
+  }
+  if (!queued) {
+    queued = running.then(() => {
+      queued = null;
+      return save();
+    });
+  }
+  return queued;
 }
 
 /** Continue: advance in small steps so the page stays responsive. */

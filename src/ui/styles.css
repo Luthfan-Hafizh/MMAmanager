@@ -545,7 +545,7 @@ input[type="checkbox"] { accent-color: var(--red); width: 16px; height: 16px; }
 
 /* rankings grid */
 .rk-grid { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 18px; }
-.rk-col { background: var(--sheet); border-radius: var(--r); box-shadow: var(--shadow); overflow: hidden; }
+.rk-col { background: var(--sheet); border-radius: var(--r); box-shadow: var(--shadow); overflow: hidden; display: flex; flex-direction: column; }
 .rk-champ { background: var(--band); color: var(--band-ink); padding: 16px 16px 14px; display: grid; grid-template-columns: 1fr auto; align-items: end; min-height: 128px; position: relative; isolation: isolate; overflow: hidden; }
 .rk-champ .belt { font-stretch: 62%; font-weight: 900; font-size: 76px; line-height: 0.78; color: transparent; -webkit-text-stroke: 1.5px var(--gold); }
 
@@ -553,7 +553,14 @@ input[type="checkbox"] { accent-color: var(--red); width: 16px; height: 16px; }
 .rk-champ .div { font-stretch: 75%; font-weight: 800; font-size: 11px; letter-spacing: 0.14em; text-transform: uppercase; color: var(--red-2); }
 .rk-champ .cn { font-stretch: 62%; font-weight: 900; font-size: 24px; line-height: 0.95; text-transform: uppercase; margin: 6px 0 4px; }
 .rk-champ .cr { font-size: 11.5px; color: var(--band-ink-3); }
-.rk-list { padding: 4px 0; }
+.rk-champ .rk-top { margin-left: 8px; padding: 1px 6px; border: 1px solid var(--band-line); border-radius: 2px; color: var(--band-ink-2); letter-spacing: 0.08em; }
+.rk-champ .rk-next { display: block; margin-top: 8px; font-size: 11.5px; color: var(--band-ink-2); }
+.rk-champ .rk-next b { color: var(--gold); font-stretch: 75%; font-weight: 800; letter-spacing: 0.08em; text-transform: uppercase; margin-right: 4px; }
+.rk-champ .rk-next:hover { color: var(--band-ink); }
+.rk-list { padding: 4px 0; flex: 1 0 auto; }
+.rk-list.div-list a { grid-template-columns: 26px minmax(0, 1fr) auto 30px; }
+.rk-list .rk-rec { font-size: 11.5px; color: var(--ink-3); font-variant-numeric: tabular-nums; }
+.rk-list.div-list .mv { text-align: right; }
 .rk-list a, .rk-list .rk-item { display: grid; grid-template-columns: 26px 1fr auto; gap: 8px; align-items: center; padding: 6px 16px; font-size: 13px; transition: background 0.12s; }
 .rk-list a:hover { background: var(--sheet-2); }
 .rk-list .n { font-stretch: 62%; font-weight: 900; font-size: 15px; color: var(--ink-3); }
@@ -911,7 +918,7 @@ div.field { display: flex; flex-direction: column; gap: 6px; }
 .badge.bmf { background: #0f0f0f; color: var(--gold); border-color: #0f0f0f; letter-spacing: 0.1em; }
 .wc.bmf-t { color: var(--gold); }
 .rk-interim { display: flex; flex-wrap: wrap; align-items: baseline; gap: 6px 10px; padding: 8px 16px; background: var(--gold-soft); border-bottom: 1px solid var(--line); font-size: 13.5px; }
-.rk-col > .rk-hist { display: block; padding: 10px 16px; border-top: 1px solid var(--line); font-stretch: 75%; font-weight: 700; font-size: 11.5px; letter-spacing: 0.1em; text-transform: uppercase; color: var(--red); border-bottom: 1px solid var(--line); }
+.rk-col > .rk-hist { display: block; padding: 10px 16px; border-top: 1px solid var(--line); font-stretch: 75%; font-weight: 700; font-size: 11.5px; letter-spacing: 0.1em; text-transform: uppercase; color: var(--red); }
 .rk-col > .rk-hist:hover { background: var(--sheet-2); }
 .bmf-card { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 12px 16px; background: #0f0f0f; color: #f3efe6; border-bottom: 1px solid var(--line); text-decoration: none; position: relative; overflow: hidden; }
 .bmf-card .label { color: var(--gold); }

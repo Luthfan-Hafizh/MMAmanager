@@ -4,7 +4,7 @@
 // approximate, for flavour.
 
 import type { RegionId } from "./countries";
-import type { DivisionId } from "./divisions";
+import { DIVISIONS, type DivisionId } from "./divisions";
 
 export type Tier = "amateur" | "local" | "regional" | "tryout" | "league" | "major";
 
@@ -98,9 +98,9 @@ export const PROMOTIONS: Record<PromoId, PromoDef> = {
   cw: D({ id: "cw", name: "Cage Warriors", short: "Cage Warriors", tier: "regional", region: "we", prestige: 46, eventsPerYear: 18, cardSize: 10, lead: 49, gap: 84, divisions: BIG, rosterPerDiv: 13, rankSize: 10, roundSec: 300, showLow: 2000, showHigh: 12000, firstNumber: 201, naming: "numbered", cities: ["London, GB-ENG", "Manchester, GB-ENG", "Glasgow, GB-SCT", "Dublin, IE", "Belfast, GB-NIR", "Newport, GB-WLS", "Rome, IT", "Copenhagen, DK", "Paris, FR", "Liverpool, GB-ENG"], day: 5, color: "#ef4444" }),
   ksw: D({ id: "ksw", name: "KSW", short: "KSW", tier: "regional", region: "ee", prestige: 50, eventsPerYear: 11, cardSize: 10, lead: 49, gap: 98, divisions: MID, rosterPerDiv: 13, rankSize: 10, roundSec: 300, showLow: 3000, showHigh: 40000, firstNumber: 116, naming: "numbered", cities: ["Warsaw, PL", "Gdańsk, PL", "Łódź, PL", "Kraków, PL", "Gliwice, PL", "Szczecin, PL", "Liberec, CZ", "Paris, FR", "Zagreb, HR"], day: 5, color: "#eab308" }),
   pancrase: D({ id: "pancrase", name: "Pancrase", short: "Pancrase", tier: "regional", region: "ea", prestige: 36, eventsPerYear: 10, cardSize: 10, lead: 49, gap: 84, divisions: MID, rosterPerDiv: 13, rankSize: 10, roundSec: 300, showLow: 1500, showHigh: 9000, firstNumber: 361, naming: "numbered", cities: ["Tokyo, JP", "Tokyo, JP", "Osaka, JP", "Yokohama, JP", "Seoul, KR", "Shanghai, CN", "Manila, PH", "Ulaanbaatar, MN"], day: 6, color: "#a855f7" }),
-  efc: D({ id: "efc", name: "Extreme Fighting Championship", short: "EFC", tier: "regional", region: "af", prestige: 32, eventsPerYear: 8, cardSize: 10, lead: 49, gap: 91, divisions: MID, rosterPerDiv: 11, rankSize: 10, roundSec: 300, showLow: 1200, showHigh: 7000, firstNumber: 128, naming: "numbered", cities: ["Johannesburg, ZA", "Cape Town, ZA", "Durban, ZA", "Pretoria, ZA", "Lagos, NG", "Kinshasa, CD"], day: 5, color: "#f97316" }),
-  brave: D({ id: "brave", name: "Brave Combat Federation", short: "Brave CF", tier: "regional", region: "wa", prestige: 40, eventsPerYear: 10, cardSize: 10, lead: 49, gap: 91, divisions: MID, rosterPerDiv: 11, rankSize: 10, roundSec: 300, showLow: 2000, showHigh: 15000, firstNumber: 101, naming: "numbered", cities: ["Manama, BH", "Isa Town, BH", "Riyadh, SA", "Abu Dhabi, AE", "Amman, JO", "Istanbul, TR", "Mumbai, IN", "Almaty, KZ"], day: 5, color: "#14b8a6" }),
-  eternal: D({ id: "eternal", name: "Eternal MMA", short: "Eternal MMA", tier: "regional", region: "oc", prestige: 32, eventsPerYear: 10, cardSize: 10, lead: 49, gap: 84, divisions: MID, rosterPerDiv: 11, rankSize: 10, roundSec: 300, showLow: 1200, showHigh: 7000, firstNumber: 96, naming: "numbered", cities: ["Gold Coast, AU", "Brisbane, AU", "Sydney, AU", "Perth, AU", "Melbourne, AU", "Auckland, NZ", "Adelaide, AU"], day: 5, color: "#06b6d4" }),
+  efc: D({ id: "efc", name: "Extreme Fighting Championship", short: "EFC", tier: "regional", region: "af", prestige: 32, eventsPerYear: 8, cardSize: 10, lead: 49, gap: 91, divisions: MID, rosterPerDiv: 13, rankSize: 10, roundSec: 300, showLow: 1200, showHigh: 7000, firstNumber: 128, naming: "numbered", cities: ["Johannesburg, ZA", "Cape Town, ZA", "Durban, ZA", "Pretoria, ZA", "Lagos, NG", "Kinshasa, CD"], day: 5, color: "#f97316" }),
+  brave: D({ id: "brave", name: "Brave Combat Federation", short: "Brave CF", tier: "regional", region: "wa", prestige: 40, eventsPerYear: 10, cardSize: 10, lead: 49, gap: 91, divisions: MID, rosterPerDiv: 13, rankSize: 10, roundSec: 300, showLow: 2000, showHigh: 15000, firstNumber: 101, naming: "numbered", cities: ["Manama, BH", "Isa Town, BH", "Riyadh, SA", "Abu Dhabi, AE", "Amman, JO", "Istanbul, TR", "Mumbai, IN", "Almaty, KZ"], day: 5, color: "#14b8a6" }),
+  eternal: D({ id: "eternal", name: "Eternal MMA", short: "Eternal MMA", tier: "regional", region: "oc", prestige: 32, eventsPerYear: 10, cardSize: 10, lead: 49, gap: 84, divisions: MID, rosterPerDiv: 13, rankSize: 10, roundSec: 300, showLow: 1200, showHigh: 7000, firstNumber: 96, naming: "numbered", cities: ["Gold Coast, AU", "Brisbane, AU", "Sydney, AU", "Perth, AU", "Melbourne, AU", "Auckland, NZ", "Adelaide, AU"], day: 5, color: "#06b6d4" }),
   // Local
   cffc: D({ id: "cffc", name: "Cage Fury FC", short: "CFFC", tier: "local", region: "na", prestige: 20, eventsPerYear: 12, cardSize: 9, lead: 35, gap: 63, divisions: MID, rosterPerDiv: 13, rankSize: 0, roundSec: 300, showLow: 600, showHigh: 4000, firstNumber: 146, naming: "numbered", cities: ["Philadelphia, US", "Atlantic City, US", "Newark, US", "Lancaster, US", "Hollywood, US", "Bensalem, US"], day: 5, color: "#64748b" }),
   "shooto-br": D({ id: "shooto-br", name: "Shooto Brasil", short: "Shooto Brasil", tier: "local", region: "sa", prestige: 16, eventsPerYear: 10, cardSize: 9, lead: 35, gap: 63, divisions: MID, rosterPerDiv: 13, rankSize: 0, roundSec: 300, showLow: 400, showHigh: 2500, firstNumber: 131, naming: "numbered", cities: ["Rio de Janeiro, BR", "Niterói, BR", "São Paulo, BR", "Brasília, BR", "Fortaleza, BR"], day: 5, color: "#64748b" }),
@@ -122,6 +122,33 @@ export const PROMOTIONS: Record<PromoId, PromoDef> = {
 };
 
 export const PROMO_IDS = Object.keys(PROMOTIONS) as PromoId[];
+
+/**
+ * The UFC's month-to-month signings fill each division to 96% of its real size
+ * (641 of 668), leaving room for the Contender Series contracts handed out every
+ * autumn whatever the room: the roster rises with them and settles back through
+ * the year, at about 620-660.
+ */
+export const UFC_FILL = 0.96;
+
+/** How many fighters a promotion keeps at a weight. */
+export function rosterTarget(promo: PromoId, d: DivisionId): number {
+  const p = PROMOTIONS[promo];
+  if (promo === "ufc") return Math.round(DIVISIONS[d].ufc * UFC_FILL);
+  if (promo === "pfl") return DIVISIONS[d].sex === "F" ? 14 : 22;
+  return Math.round(p.rosterPerDiv * (DIVISIONS[d].sex === "F" ? 0.6 : 1));
+}
+
+/**
+ * The places in a division's rankings: the promotion's number, as deep as the
+ * division can fill with a few fighters to spare (the champion, new arrivals). A
+ * regional women's division of eight ranks a top five; everywhere else the full list.
+ */
+export function rankSizeOf(promo: PromoId, d: DivisionId): number {
+  const p = PROMOTIONS[promo];
+  if (!p.rankSize) return 0;
+  return Math.min(p.rankSize, Math.max(5, rosterTarget(promo, d) - 3));
+}
 
 export const TIER_RANK: Record<Tier, number> = { amateur: 0, local: 1, regional: 2, tryout: 3, league: 4, major: 5 };
 

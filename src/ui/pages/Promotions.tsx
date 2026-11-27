@@ -2,7 +2,7 @@ import { fmtDate } from "../../core/time";
 import { money } from "../../core/util";
 import { REGIONS } from "../../data/countries";
 import { DIVISIONS } from "../../data/divisions";
-import { PROMOTIONS, PROMO_IDS, TIER_NAME, type PromoId } from "../../data/promotions";
+import { PROMOTIONS, PROMO_IDS, TIER_NAME, rankSizeOf, type PromoId } from "../../data/promotions";
 import { ovr } from "../../model/attributes";
 import { upcomingOf } from "../../world/calendar";
 import { promoRoster, recordText } from "../../world/core";
@@ -80,7 +80,7 @@ export function PromotionPage({ id }: { id: string }) {
             <dt>Events a year</dt><dd>{p.eventsPerYear}</dd>
             <dt>Purses</dt><dd>{p.showLow ? `${money(p.showLow)} to ${money(p.showHigh)}` : "None"}</dd>
             <dt>Rounds</dt><dd>{p.roundSec === 180 ? "3 × 3 min" : "3 × 5 min, titles 5 × 5"}</dd>
-            {p.rankSize > 0 && <><dt>Rankings</dt><dd>Top {p.rankSize}</dd></>}
+            {p.rankSize > 0 && <><dt>Rankings</dt><dd>Top {p.rankSize}{p.divisions.some((d) => rankSizeOf(p.id, d) < p.rankSize) ? `, top ${Math.min(...p.divisions.map((d) => rankSizeOf(p.id, d)))} in the smaller divisions` : ""}</dd></>}
           </dl>
           <div className="row" style={{ marginTop: 10 }}>
             {p.rankSize > 0 && <Link to={`/rankings/${p.id}`} className="btn sm">Rankings</Link>}

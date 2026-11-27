@@ -29,7 +29,8 @@ import { Legacy } from "../src/ui/pages/Legacy";
 import { Titles } from "../src/ui/pages/Titles";
 import { BoutPreview } from "../src/ui/pages/Events";
 import { FightReport, reportOf } from "../src/ui/report";
-import { FightSim, simulate } from "../src/engine/sim";
+import { FightSim, methodText, simulate } from "../src/engine/sim";
+import { dropLive, forgetLiveFights, keepLive, liveFight, tidyLive } from "../src/state/live";
 import { retirePlayer } from "../src/career/retire";
 import { becomeManager } from "../src/career/retire";
 import { careerInterest, declineFight, expireOffers, hireManager, makeContractOffer, rejectContract, signContract, startSignedDeals } from "../src/career/offers";
@@ -52,7 +53,9 @@ import { callOut, calloutChoices, talkableFights, talkFight } from "../src/caree
 import { heatOf } from "../src/career/rivals";
 import { answerQuestion, finishSession, preQuestions, startSession } from "../src/career/media";
 import { rankThen } from "../src/ui/pages/Events";
-import { PROMOTIONS } from "../src/data/promotions";
+import { PROMOTIONS, PROMO_IDS, rankSizeOf, type PromoId } from "../src/data/promotions";
+import type { DivisionId } from "../src/data/divisions";
+import { fightsInPromo, rosterOf } from "../src/world/core";
 import type { Bout } from "../src/model/types";
 import { scaleDay } from "../src/career/weighin";
 import { forceLife, LIFE_IDS } from "../src/career/life";
@@ -1091,6 +1094,157 @@ pages(tw, "Retired fighter turned manager");
       else console.log(`Gyms: ${Object.values(w.gyms).filter((g) => g.real).length} real gyms, no name twice; City Kickboxing once (${gymMembers(w, kb.id).length} fighters, training partners ${mates.slice(0, 3).join(", ")}); an old save's second listing and a made-up twin were merged and renamed on load`);
     }
   }
+}
+
+// Watching a fight: a fight left mid-way (another page, or a reload) picks up at the same
+// exchange, a fight that ended before the save is the same fight on the way back, the result
+// goes in the books once, and no second simulation can replace it (a TKO stayed a TKO).
+{
+  const fail = (what: string) => { failures++; console.log(`  FAIL ${what}`); };
+  const disk = new Map<string, string>();
+  const was = g.localStorage;
+  g.localStorage = { getItem: (k: string) => disk.get(k) ?? null, setItem: (k: string, v: string) => void disk.set(k, String(v)), removeItem: (k: string) => void disk.delete(k) };
+  const lw = createWorld(roster, { name: "UI", seed: 93, mode: "fighter", difficulty: "normal", takeover: "ufc-ilia-topuria" });
+  let ev: MMAEvent | null = null;
+  for (let k = 0; k < 300 && !(ev = fightNight(lw)); k++) {
+    const r = advance(lw, 7);
+    if (r.stop?.kind === "decision") autoAnswer(lw);
+  }
+  if (!ev) fail("no fight night came for the live-fight check");
+  else {
+    setWorld(lw);
+    openFightNight(lw, ev);
+    const b = ev.bouts.map((id) => lw.bouts[id]).find((x) => x.awaiting)!;
+    const mine: 0 | 1 = lw.fighters[b.a].ctrl ? 0 : 1;
+    // Someone at the screen: answers most calls (some the corner's way, some not), lets the rest
+    // go, shouts now and then, and changes the plan and the corner's minute between rounds.
+    const drive = (s: FightSim, seed: number, stop: (s: FightSim) => boolean) => {
+      const r = new Rng(seed);
+      let n = 0;
+      while (!s.over && !stop(s) && n++ < 20000) {
+        if (s.between) {
+          s.corner(mine, r.chance(0.5) ? "recover" : "head");
+          if (r.chance(0.6)) s.setPlan(mine, { ...s.s[mine].base, tempo: Math.max(-2, Math.min(2, s.s[mine].base.tempo + (r.chance(0.5) ? 1 : -1))) });
+          s.nextRound();
+          continue;
+        }
+        s.step();
+        const adv = s.liveAdvice(mine, 0.7);
+        if (adv && r.chance(0.75)) s.answer(mine, adv, r.int(0, adv.options.length - 1), r.chance(0.8) ? "you" : "instinct", true);
+        if (r.chance(0.015)) s.act(mine, r.chance(0.5) ? "push" : "jab");
+        if (r.chance(0.01)) s.clearShout(mine, "pace");
+        s.cornerFeedback(mine);
+      }
+    };
+    const snap = (s: FightSim) => JSON.stringify({ steps: s.steps, round: s.round, t: s.t, pos: s.pos, between: s.between, over: s.over, log: s.log, cards: s.cards, calls: s.calls, side: s.s.map((x) => [x.sta, x.head, x.body, x.legs, x.stun, x.cut, x.read, x.shouts, x.plan, x.rs]) });
+    const res = (o: { winner: string | null; method: string; detail: string; round: number; time: number; log?: unknown[] }) => `${o.winner} ${o.method} ${o.detail} R${o.round} ${o.time}s, ${o.log?.length} lines`;
+    // A fight still going in round 2 (some end in the first minute; the choices change that).
+    let A = liveFight(lw, b);
+    for (let seed = 11; seed < 90; seed++) {
+      dropLive(lw, b);
+      A = liveFight(lw, b);
+      drive(A, seed, (s) => s.round >= 2 && s.t > 100);
+      if (!A.over) break;
+    }
+    keepLive(lw, b);
+    const tapeKb = Math.round([...disk.values()].join("").length / 102.4) / 10;
+    // A reload: memory is gone, the tape on disk rebuilds the fight.
+    forgetLiveFights();
+    const B = liveFight(lw, b);
+    const html = renderToString(<FightNight />).replace(/<!-- -->/g, "");
+    // "Simulate the rest" from that point, twice from the tape: one result.
+    const kept = JSON.parse(disk.get(`mma.live.${lw.id}`) ?? "{}")[b.id];
+    const fresh = () => FightSim.replay({ ...kept.input, a: lw.fighters[b.a], b: lw.fighters[b.b] }, kept.tape);
+    const oc = fresh().playOut(mine, 0.7, false, true);
+    const od = fresh().playOut(mine, 0.7, false, true);
+    if (A.over) fail("every try at the live fight ended before round 2");
+    else if (B === A || snap(B) !== snap(A)) fail(`a reload mid-fight didn't rebuild the same fight (step ${A.steps} vs ${B.steps}, ${A.log.length} vs ${B.log.length} lines)`);
+    else if (!html.includes("Resume the fight") || !html.includes("waited for you")) fail("the fight-night screen didn't open the fight under way, paused");
+    else if (res(oc) !== res(od)) fail(`simulating the rest of a fight under way gave two results: ${res(oc)} / ${res(od)}`);
+    else {
+      drive(A, 12, () => false);
+      drive(B, 12, () => false);
+      const oa = A.outcome();
+      const ob = B.outcome();
+      // The fight ends, and the page reloads before the save: the same fight, over.
+      keepLive(lw, b);
+      forgetLiveFights();
+      const E = liveFight(lw, b);
+      const sameEnd = E.over ? res(E.outcome()) : "not over";
+      if (res(oa) !== res(ob)) fail(`the fight picked up after a reload ended differently: ${res(oa)} / ${res(ob)}`);
+      else if (sameEnd !== res(ob)) fail(`a finished fight rebuilt from its tape isn't the same: ${res(ob)} / ${sameEnd}`);
+      else {
+        const first = resolvePlayerBout(lw, b, ob);
+        const again = resolvePlayerBout(lw, b, quickSim(lw, b));
+        const kept = b.res ? `${b.res.method} R${b.res.round} ${b.res.time}` : "none";
+        tidyLive(lw);
+        const tapeKept = disk.size > 0;
+        dropLive(lw, b);
+        // Back from the menu: the card is in the books with the fight that was watched.
+        forgetLiveFights();
+        const back = renderToString(<FightNight />).replace(/<!-- -->/g, "").replace(/&#x27;/g, "'").replace(/&amp;/g, "&");
+        if (!first || again) fail(`the fight went in the books ${first ? (again ? "twice" : "once") : "never"}`);
+        else if (kept !== `${ob.method} R${ob.round} ${ob.time}`) fail(`the result changed after it was in the books: ${kept} instead of ${ob.method} R${ob.round} ${ob.time}`);
+        else if (!tapeKept || disk.size) fail(`the tape ${tapeKept ? "outlived its save" : "went before the save"}`);
+        else if (fightNight(lw) || !back.includes("In the books") || !back.includes(methodText(ob.method, ob.detail))) fail("back on the fight-night page, the card isn't in the books with the watched result");
+        else console.log(`Live fight: left in round 2 and rebuilt from a ${tapeKb} KB tape at the same exchange (${B.steps} exchanges, ${B.log.length} lines); finished the same either way (${res(ob)}), in the books once, a second simulation refused`);
+      }
+    }
+  }
+  g.localStorage = was;
+}
+
+// Rankings: full lists. A division ranks its size (fifteen in the UFC, ten below it, a
+// top five in a regional women's division) whenever the roster has the fighters; new
+// signings fill the open places only below everyone who has fought there (marked as
+// debuts); and a save whose lists were left short is filled when it loads.
+{
+  const fail = (what: string) => { failures++; console.log(`  FAIL ${what}`); };
+  const w = fw;
+  setWorld(w);
+  const sizes = `${rankSizeOf("ufc", "LW")}/${rankSizeOf("pfl", "WFLY")}/${rankSizeOf("eternal", "WW")}/${rankSizeOf("eternal", "WSW")}`;
+  let short = 0;
+  let order = 0;
+  let fresh = 0;
+  let divs = 0;
+  let freshDiv: { promo: PromoId; d: DivisionId } | null = null;
+  for (const id of PROMO_IDS) {
+    if (!PROMOTIONS[id].rankSize) continue;
+    updateRankings(w, id);
+    const ps = w.promos[id];
+    for (const d of PROMOTIONS[id].divisions) {
+      divs++;
+      const pool = rosterOf(w, id, d).filter((f) => f.status === "active" && f.id !== ps.champs[d] && f.id !== ps.interim[d]);
+      const list = (ps.ranks[d] ?? []).filter((x) => x !== ps.interim[d]);
+      if (list.length < Math.min(rankSizeOf(id, d), pool.length)) short++;
+      let seen = false;
+      for (const x of list) {
+        const f = w.fighters[x];
+        const isNew = f.div === d && f.joined > w.start && fightsInPromo(w, f, id) === 0;
+        if (isNew) {
+          seen = true;
+          fresh++;
+          if (!freshDiv && id !== "ufc" && id !== "pfl") freshDiv = { promo: id, d };
+        } else if (seen) order++;
+      }
+    }
+  }
+  // A save from before: three places left open in a regional list; loading fills them, keeping the arrows.
+  const ps = w.promos.eternal;
+  const full = (ps.ranks.WW ?? []).slice();
+  ps.ranks.WW = full.slice(0, Math.max(0, full.length - 3));
+  const prev = (ps.prevRanks.WW ?? []).slice();
+  repair(w);
+  const refilled = (ps.ranks.WW ?? []).length;
+  const page = freshDiv ? renderToString(<Rankings promo={freshDiv.promo} div={freshDiv.d} />).replace(/<!-- -->/g, "") : "";
+  const women = renderToString(<Rankings promo="eternal" div="WSW" />).replace(/<!-- -->/g, "");
+  if (sizes !== "15/10/10/5") fail(`ranking sizes (UFC LW / PFL WFLY / Eternal WW / Eternal WSW) are ${sizes}, not 15/10/10/5`);
+  else if (short) fail(`${short} of ${divs} rankings are shorter than their roster allows`);
+  else if (order) fail(`${order} fighters who have fought here are ranked below a new signing yet to debut`);
+  else if (refilled !== full.length || JSON.stringify(ps.prevRanks.WW ?? []) !== JSON.stringify(prev)) fail(`loading didn't fill a short list (${refilled} of ${full.length}) or lost its arrows`);
+  else if (freshDiv && !page.includes(">Debut<")) fail("a new signing in an open place isn't marked as a debut on the rankings page");
+  else if (!women.includes("Top 5")) fail("a regional women's division doesn't say it ranks a top five");
+  else console.log(`Rankings: ${divs} divisions all as full as their rosters allow (sizes ${sizes}); ${fresh} new signings in open places, all below the fighters who have fought there; a short list from an old save refilled on load (${refilled})`);
 }
 
 const mw = createWorld(roster, { name: "UI", seed: 79, mode: "manager", difficulty: "normal", agency: "Check Management" });

@@ -1,9 +1,10 @@
 import { fmtDate } from "../../core/time";
 import { DIVISIONS, type DivisionId } from "../../data/divisions";
-import { PROMOTIONS, PROMO_IDS, type PromoId } from "../../data/promotions";
-import type { World } from "../../model/types";
+import { PROMOTIONS, PROMO_IDS, rankSizeOf, type PromoId } from "../../data/promotions";
+import type { Bout, World } from "../../model/types";
 import { rankMove } from "../../world/rankings";
-import { rankNumber, recordText } from "../../world/core";
+import { fightsInPromo, rankNumber, recordText } from "../../world/core";
+import { stakeLabel } from "../../world/belts";
 import { useWorld } from "../../state/store";
 import { go, Link } from "../router";
 import { Empty, ScrollRow } from "../components";
@@ -46,17 +47,35 @@ export function Rankings({ promo, div }: { promo?: string; div?: string }) {
   );
 }
 
+/** The next fight for this division's belt, if one is booked. */
+function nextBeltFight(w: World, promo: PromoId, d: DivisionId): Bout | null {
+  for (const id of w.upcoming) {
+    const ev = w.events[id];
+    if (!ev || ev.promo !== promo || ev.status === "done") continue;
+    for (const bid of ev.bouts) {
+      const b = w.bouts[bid];
+      if (b && b.div === d && b.status === "booked" && !b.pending && (b.kind === "title" || b.kind === "vacant" || b.kind === "interim")) return b;
+    }
+  }
+  return null;
+}
+
 function DivisionColumn({ w, promo, d }: { w: World; promo: PromoId; d: DivisionId }) {
   const ps = w.promos[promo];
   const champId = ps.champs[d];
   const champ = champId ? w.fighters[champId] : null;
   const ids = ps.ranks[d] ?? [];
   const reign = champId ? [...ps.reigns].reverse().find((r) => r.fighter === champId && r.div === d && r.lost === undefined) : undefined;
+  const size = rankSizeOf(promo, d);
+  const next = nextBeltFight(w, promo, d);
   return (
     <article className="rk-col">
       <div className="rk-champ">
         <div>
-          <div className="div">{DIVISIONS[d].name}</div>
+          <div className="div">
+            {DIVISIONS[d].name}
+            {size < PROMOTIONS[promo].rankSize && <span className="rk-top" title={`A smaller division: ranked to ${size}`}>Top {size}</span>}
+          </div>
           {champ ? (
             <>
               <Link to={`/fighter/${champ.id}`} className="cn" style={{ display: "block" }}>{champ.first} {champ.surname}</Link>
@@ -65,8 +84,13 @@ function DivisionColumn({ w, promo, d }: { w: World; promo: PromoId; d: Division
           ) : (
             <>
               <div className="cn">Vacant</div>
-              <div className="cr">The top two available will fight for it</div>
+              <div className="cr">{next ? "Booked for the belt:" : "The top two available will fight for it"}</div>
             </>
+          )}
+          {next && w.fighters[next.a] && w.fighters[next.b] && (
+            <Link to={`/event/${next.ev}`} className="rk-next" title={w.events[next.ev]?.name}>
+              <b>{next.kind === "title" ? "Next" : stakeLabel(next)}</b> {w.fighters[next.a].surname} vs {w.fighters[next.b].surname} · {fmtDate(next.day)}
+            </Link>
           )}
         </div>
         {champ && <span className="belt" aria-hidden="true">C</span>}
@@ -87,20 +111,24 @@ function DivisionColumn({ w, promo, d }: { w: World; promo: PromoId; d: Division
           <span className="bmf-mark" aria-hidden="true">BMF</span>
         </Link>
       )}
-      <div className="rk-list">
+      <div className="rk-list div-list">
         {ids.length === 0 && <Empty title="No rankings yet" />}
         {ids.map((id, i) => {
           const f = w.fighters[id];
           const mv = rankMove(w, promo, d, id);
           // Ranked here from another weight, after a win at this one.
           const from = f.div !== d ? f.div : null;
+          // Signed and yet to fight here: in an open place on record and rating until the debut.
+          const debut = !from && f.joined > w.start && fightsInPromo(w, f, promo) === 0;
           return (
             <Link key={id} to={`/fighter/${id}`} className={f.ctrl ? "me" : ""}>
               <span className="n">{ps.interim[d] === id ? "IC" : rankNumber(ids, ps.interim[d] ?? null, i)}</span>
               <span className="rk-name" style={{ fontWeight: f.ctrl ? 800 : 500 }}>
                 <span className="ellip">{f.first} {f.surname}</span>
                 {from && <span className="rk-x" title={`Fights at ${DIVISIONS[from].name.toLowerCase()}; ranked here too after a win at ${DIVISIONS[d].name.toLowerCase()}`}>{DIVISIONS[from].short}</span>}
+                {debut && <span className="rk-x" title={`Signed, yet to fight in the ${PROMOTIONS[promo].short}: ranked on record and rating in an open place, below everyone who has fought here`}>Debut</span>}
               </span>
+              <span className="rk-rec">{f.rec.w}-{f.rec.l}{f.rec.d ? `-${f.rec.d}` : ""}</span>
               <span className={`mv ${typeof mv === "number" ? (mv > 0 ? "good" : "bad") : "dim"}`}>{mv === "new" ? "NEW" : typeof mv === "number" && mv !== 0 ? (mv > 0 ? `▲${mv}` : `▼${-mv}`) : ""}</span>
             </Link>
           );

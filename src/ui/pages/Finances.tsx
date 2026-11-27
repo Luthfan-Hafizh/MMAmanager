@@ -7,7 +7,7 @@ import { sponsorIncomeFor } from "../../career/sponsors";
 import { fullName } from "../../world/core";
 import { useWorld, changed, toast } from "../../state/store";
 import { Empty, Panel, Seg, confirmBox } from "../components";
-import { invest, withdrawInvestment, ownGymOf, OWN_GYMS, openGym, upgradeGym, cantOpen, gymPlace } from "../../career/business";
+import { invest, withdrawInvestment, ownGymOf, OWN_GYMS, openGym, upgradeGym, cantOpen, gymPlace, playerGym, gymIncome, gymValue, sellGym } from "../../career/business";
 
 const CAT_NAMES: Record<LedgerEntry["cat"], string> = {
   purse: "Purses", bonus: "Bonuses", sponsor: "Sponsors", commission: "Commission", camp: "Fight camps", gym: "Gym and coaches", living: "Living costs",
@@ -31,7 +31,7 @@ export function Finances() {
   const months = c.monthly.slice(-18);
   const maxBal = Math.max(1, ...months.map((m) => Math.abs(m.bal)), Math.abs(c.money));
   const runway = runwayMonths(w);
-  const gymSide = c.mode === "fighter" && w.fighters[c.fighters[0]]?.status === "active";
+  const gymSide = (c.mode === "fighter" && w.fighters[c.fighters[0]]?.status === "active") || !!playerGym(w);
   return (
     <div className="grid">
       <div className="c12">
@@ -151,37 +151,60 @@ function InvestPanel({ w }: { w: World }) {
 
 /** A gym of your own: no gym cut, no membership, and a room that grows with the career. */
 function OwnGymPanel({ w }: { w: World }) {
-  const f = w.fighters[w.career.fighters[0]];
+  const f = w.career.mode === "fighter" ? w.fighters[w.career.fighters[0]] : undefined;
   const [name, setName] = useState(() => (f ? `${f.surname} Fight Team` : ""));
-  if (!f) return null;
-  const g = ownGymOf(w, f);
+  const g = playerGym(w);
   if (g) {
     const t = OWN_GYMS[g.ownTier ?? 0];
     const up = OWN_GYMS[(g.ownTier ?? 0) + 1];
     const upCost = up ? up.cost - t.cost : 0;
-    const away = f.gym !== g.id;
+    const income = gymIncome(w, g);
+    const net = income - t.run;
+    const agency = g.owner === "agency";
+    const here = agency ? w.career.fighters.filter((id) => w.fighters[id]?.gym === g.id).length : 0;
+    const value = gymValue(w, g);
+    const sell = () =>
+      void confirmBox({
+        title: `Sell ${g.name}?`,
+        body: `${money(value)} for it now. It carries on as a gym like any other under its new owners; ${agency ? "clients" : "you"} can still train there, paying the usual cut from the purses.`,
+        ok: `Sell for ${money(value)}`,
+        danger: true,
+      }).then((yes) => {
+        if (yes) {
+          toast(sellGym(w), "good");
+          changed();
+        }
+      });
     return (
-      <Panel title="Your gym" hint={`${money(t.run - t.income)} a month to run`}>
+      <Panel title={agency ? "The agency's gym" : "Your gym"} hint={net >= 0 ? `${money(net)} a month ahead` : `${money(-net)} a month to run`}>
         <div className="dx own-gym-name">{g.name}</div>
         <div className="small dim">{t.name} in {g.city} · head coach {g.headCoach}</div>
         <div className="stat-tiles" style={{ marginTop: 12 }}>
           <div className="tile"><div className="k">Coaches</div><div className="v">{t.q}</div></div>
           <div className="tile"><div className="k">Facilities</div><div className="v">{g.facilities}</div></div>
-          <div className="tile"><div className="k">Purse cut</div><div className="v">None</div></div>
+          <div className="tile"><div className="k">Members pay</div><div className="v">{money(income)}</div><div className="s">a month, against {money(t.run)} to run</div></div>
         </div>
-        {away && <p className="small" style={{ marginTop: 10 }}>{f.surname} trains somewhere else for now; Moves takes them back.</p>}
-        {up ? (
-          <div className="invest-row">
-            <button className="btn" disabled={w.career.money < upCost} onClick={() => void confirmBox({ title: `Make it ${up.name.toLowerCase()}?`, body: `Coaches at ${up.q}, facilities ${up.fac}, and ${money(up.run - up.income)} a month to run. It costs ${money(upCost)}.`, ok: `Upgrade for ${money(upCost)}` }).then((yes) => { if (yes) { toast(upgradeGym(w, f), "good"); changed(); } })}>
+        <p className="small dim" style={{ marginTop: 10 }}>
+          {agency
+            ? `No gym cut for clients who train here (${here} do). Members come for the name on the door and the fighters in the room.`
+            : f && f.gym !== g.id
+              ? `${f.surname} trains somewhere else for now; Moves takes them back.`
+              : "No cut from the purses. Members come for the name on the door: the more famous, the more they pay."}
+        </p>
+        <div className="invest-row">
+          {up ? (
+            <button className="btn" disabled={w.career.money < upCost} onClick={() => void confirmBox({ title: `Make it ${up.name.toLowerCase()}?`, body: `Coaches at ${up.q}, facilities ${up.fac}, and ${money(up.run)} a month to run. It costs ${money(upCost)}.`, ok: `Upgrade for ${money(upCost)}` }).then((yes) => { if (yes) { toast(upgradeGym(w), "good"); changed(); } })}>
               Upgrade to {up.name.toLowerCase()} ({money(upCost)})
             </button>
-          </div>
-        ) : (
-          <p className="tiny dim" style={{ marginTop: 10 }}>As good as a gym gets.</p>
-        )}
+          ) : (
+            <span className="tiny dim">As good as a gym gets.</span>
+          )}
+          <button className="btn ghost" onClick={sell}>Sell ({money(value)})</button>
+        </div>
       </Panel>
     );
   }
+  if (!f) return null;
   const general = cantOpen(w, f, 0, name);
   return (
     <Panel title="A gym of your own" hint="No gym cut and no membership">

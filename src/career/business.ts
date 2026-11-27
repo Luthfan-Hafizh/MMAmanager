@@ -13,6 +13,7 @@ import { notify } from "./inbox";
 import { ledger } from "./money";
 import { startSignedDeals, toFreeAgency } from "./offers";
 import { adjustRapport } from "./promoter";
+import { gymFee } from "./moves";
 
 // ---------- investments ----------
 
@@ -84,6 +85,64 @@ export const OWN_GYMS: OwnGymTier[] = [
 export function ownGymOf(w: World, f: Fighter): Gym | null {
   for (const g of Object.values(w.gyms)) if (g.owner === f.id) return g;
   return null;
+}
+
+/** The career's own gym: the fighter's, or the agency's once the fighter has opened one after retiring. */
+export function playerGym(w: World): Gym | null {
+  if (w.career.mode === "manager") {
+    for (const g of Object.values(w.gyms)) if (g.owner === "agency") return g;
+    return null;
+  }
+  for (const id of w.career.fighters) {
+    const f = w.fighters[id];
+    const g = f && f.status === "active" ? ownGymOf(w, f) : null;
+    if (g) return g;
+  }
+  return null;
+}
+
+/** The name on the door: the owner, or the retired fighter behind the agency. */
+function faceOf(w: World, g: Gym): Fighter | undefined {
+  return w.fighters[g.owner === "agency" ? w.career.retiredFighter ?? "" : g.owner ?? ""];
+}
+
+/**
+ * What the members pay in a month. A famous name on the door draws them in, a belt
+ * more so, and an agency's clients training there bring their own followings: a
+ * champion's elite academy pays its way, an unknown's small room doesn't.
+ */
+export function gymIncome(w: World, g: Gym): number {
+  const t = OWN_GYMS[g.ownTier ?? 0];
+  const face = faceOf(w, g);
+  const pull = 0.7 + (face?.pop ?? 0) / 120 + ((face?.reigns ?? 0) > 0 ? 0.25 : 0);
+  const clients = g.owner === "agency" ? w.career.fighters.filter((id) => w.fighters[id]?.gym === g.id).length : 0;
+  return Math.round((t.income * (pull + clients * 0.05)) / 100) * 100;
+}
+
+/** What the gym would fetch: a little over half of what went into it, more with a famous name on the door. */
+export function gymValue(w: World, g: Gym): number {
+  const paid = OWN_GYMS[g.ownTier ?? 0].cost;
+  return Math.round((paid * (0.55 + (faceOf(w, g)?.pop ?? 0) / 400)) / 1000) * 1000;
+}
+
+/** Sold: it carries on as a gym like any other under its new owners, and anyone training there stays, paying the usual cut. */
+export function sellGym(w: World): string {
+  const g = playerGym(w);
+  if (!g) return "";
+  const price = gymValue(w, g);
+  ledger(w, { amount: price, what: `Selling ${g.name}`, cat: "gym" });
+  delete g.owner;
+  delete g.ownTier;
+  g.fee = gymFee(g);
+  touch(w);
+  return `${g.name} is sold for ${money(price)}.`;
+}
+
+/** Opening an agency after retiring: the gym comes along, and the clients can train there. */
+export function gymToAgency(w: World): void {
+  const id = w.career.retiredFighter;
+  if (!id) return;
+  for (const g of Object.values(w.gyms)) if (g.owner === id) g.owner = "agency";
 }
 
 function applyTier(g: Gym, t: OwnGymTier): void {
@@ -158,29 +217,26 @@ export function openGym(w: World, f: Fighter, tier: number, name: string): strin
 }
 
 /** A bigger room: better coaches and facilities, for the difference. */
-export function upgradeGym(w: World, f: Fighter): string {
-  const g = ownGymOf(w, f);
+export function upgradeGym(w: World): string {
+  const g = playerGym(w);
   if (!g) return "";
   const t = OWN_GYMS[(g.ownTier ?? 0) + 1];
   if (!t) return "It's as good as it gets.";
   const cost = t.cost - OWN_GYMS[g.ownTier ?? 0].cost;
   if (w.career.money < cost) return `That takes ${money(cost)} in the bank.`;
-  ledger(w, { amount: -cost, what: `${g.name}: ${t.name.toLowerCase()}`, cat: "gym", fighter: f.id });
+  ledger(w, { amount: -cost, what: `${g.name}: ${t.name.toLowerCase()}`, cat: "gym" });
   applyTier(g, t);
   touch(w);
   return `${g.name} is ${t.name.toLowerCase()} now.`;
 }
 
-/** The first of the month: wages and rent, less the memberships. */
+/** The first of the month: wages and rent, less what the members pay. */
 export function gymMonthly(w: World): void {
-  if (w.career.mode !== "fighter") return;
-  for (const id of w.career.fighters) {
-    const f = w.fighters[id];
-    const g = f ? ownGymOf(w, f) : null;
-    if (!g) continue;
-    const t = OWN_GYMS[g.ownTier ?? 0];
-    ledger(w, { amount: t.income - t.run, what: `${g.name}: wages and rent, less memberships`, cat: "gym", fighter: id });
-  }
+  const g = playerGym(w);
+  if (!g) return;
+  const t = OWN_GYMS[g.ownTier ?? 0];
+  const income = gymIncome(w, g);
+  ledger(w, { amount: income - t.run, what: `${g.name}: wages and rent, less ${money(income)} from the members`, cat: "gym" });
 }
 
 // ---------- buying out a contract ----------

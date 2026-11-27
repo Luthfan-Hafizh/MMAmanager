@@ -64,13 +64,18 @@ export function moveCost(f: Fighter, g: Gym): number {
   return 9000;
 }
 
+/** The career's own gym, for this fighter: the fighter's own, or the agency's for a client. */
+function ownFor(w: World, f: Fighter, g: Gym): boolean {
+  return g.owner === f.id || (g.owner === "agency" && w.career.mode === "manager" && w.career.fighters.includes(f.id));
+}
+
 export function gymOptions(w: World, f: Fighter): GymOption[] {
   const o = ovrOf(f.attrs);
   const tier = f.promo ? TIER_RANK[PROMOTIONS[f.promo].tier] : 1;
   return Object.values(w.gyms)
-    .filter((g) => g.id !== f.gym && (!g.owner || g.owner === f.id))
+    .filter((g) => g.id !== f.gym && (!g.owner || ownFor(w, f, g)))
     .map((g) => {
-      const own = g.owner === f.id;
+      const own = ownFor(w, f, g);
       const members = gymMembers(w, g.id).filter((x) => x.status === "active");
       const best = members.slice().sort((a, b) => ovrOf(b.attrs) - ovrOf(a.attrs))[0] ?? null;
       const champs = members.filter((x) => isChampion(w, x)).length;
@@ -79,7 +84,7 @@ export function gymOptions(w: World, f: Fighter): GymOption[] {
       const bar = (g.rep - 55) * 0.9;
       const pull = (o - 50) + tier * 4 + f.pop * 0.3;
       const chance = own ? 1 : g.rep < 60 ? 0.97 : clamp(0.5 + (pull - bar) / 25, 0.03, 0.97);
-      const why = own ? "Your own gym" : g.rep >= 75 ? (chance > 0.6 ? "Interested: your level fits the room" : "An elite room: they want proven fighters") : "Open to new members";
+      const why = own ? (g.owner === "agency" ? "Your agency's gym" : "Your own gym") : g.rep >= 75 ? (chance > 0.6 ? "Interested: your level fits the room" : "An elite room: they want proven fighters") : "Open to new members";
       return { g, quality: gymQuality(g), members: members.length, best, champs, ranked, known: gymStrength(g), chance, cost: moveCost(f, g), why };
     })
     .sort((a, b) => b.quality - a.quality);

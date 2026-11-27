@@ -11,6 +11,7 @@ import { addNews, fullName, touch, touchRoster } from "../world/core";
 import { vacate } from "../world/titles";
 import { goatRank, legacyText } from "../world/legacy";
 import { notify } from "./inbox";
+import { gymToAgency } from "./business";
 
 export function retirementTalk(w: World, rng: Rng): void {
   void rng;
@@ -86,6 +87,7 @@ export function becomeManager(w: World, agencyName: string): string {
   c.name = f ? fullName(f) : c.name;
   c.agency = { name: agencyName || "Management", rep: Math.round(clamp(18 + (f?.legacy ?? 0) / 4 + (f?.pop ?? 0) / 6, 15, 70)), cut: 15, staff: 1, scouting: [] };
   c.living = 4500;
+  gymToAgency(w);
   notify(w, { kind: "info", from: "Agency office", subject: `${c.agency.name} opens its doors`, body: `${c.name} starts a management company with a reputation of ${c.agency.rep}${f ? ", built on a fighting career" : ""}. Sign clients from Scouting; you take your cut of their purses and 20% of their sponsorship.` });
   touch(w);
   return "The agency is open.";

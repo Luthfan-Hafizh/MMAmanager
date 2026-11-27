@@ -71,6 +71,7 @@ for (const id of PROMO_IDS) {
     const f = w.fighters[c];
     if (!f || f.status !== "active") errors.push(`${id} ${d} champion ${c} not active`);
     else if (f.promo !== id) errors.push(`${id} ${d} champion ${f.first} ${f.surname} is in ${f.promo}`);
+    else if (f.div !== d && ps.champs[f.div] !== f.id) errors.push(`${id} ${d} champion ${f.first} ${f.surname} fights at ${f.div}`);
   }
   for (const [d, ic] of Object.entries(ps.interim)) if (ic && !ps.champs[d as keyof typeof ps.champs]) errors.push(`${id} ${d} has an interim champion and no champion`);
   for (const [d, list] of Object.entries(ps.ranks)) {

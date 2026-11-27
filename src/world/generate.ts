@@ -174,7 +174,12 @@ export function generateFighter(rng: Rng, o: GenOptions): Fighter {
 export function makeHidden(rng: Rng, age: number, ovr: number, pot?: number): Hidden {
   // Most fighters have a little room left; some young ones a lot.
   const youth = clamp((27 - age) / 8, 0, 1.2);
-  const room = Math.max(0, rng.normal(3 + youth * 9, 3 + youth * 4));
+  let room = Math.max(0, rng.normal(3 + youth * 9, 3 + youth * 4.5));
+  // Now and then a generational talent: young, already decent, and with a ceiling
+  // among the very best (growth closes about two thirds of the gap by the prime, so
+  // the ceiling sits well above where they end up). Without them the stars of the
+  // real roster retire and nobody replaces them.
+  if (pot === undefined && age <= 25 && ovr >= 50 && rng.chance(0.09)) room = Math.max(room, rng.range(90, 96) - ovr);
   const r = rng.next();
   const aging: AgingType = r < 0.25 ? "early" : r > 0.875 ? "late" : "normal";
   return {

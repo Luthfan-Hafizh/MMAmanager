@@ -318,9 +318,12 @@ export function promoteInterim(w: World, promo: PromoId, d: DivisionId): boolean
   }
   ps.champs[d] = ic.id;
   ps.reigns.push({ fighter: ic.id, promo, div: d, won: w.day, defenses: 0, how: "promoted" });
+  // The new champion sits above the list, not on it.
+  if (ps.ranks[d]?.includes(ic.id)) ps.ranks[d] = ps.ranks[d]!.filter((x) => x !== ic.id);
   const p = PROMOTIONS[promo];
   if (p.tier === "major" || p.tier === "league") ic.reigns++;
   if (promo === "ufc" || promo === "pfl") addNews(w, { kind: "title", promo, fighters: [ic.id], big: true, text: `${fullName(ic)} is promoted to undisputed ${p.short} ${DIVISIONS[d].name.toLowerCase()} champion.` });
+  refreshDivision(w, promo, d);
   return true;
 }
 

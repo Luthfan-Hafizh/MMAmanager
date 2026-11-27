@@ -11,7 +11,7 @@ import { boutRng } from "../sim/advance";
 import { fightInputFor } from "../world/results";
 
 // Bumped when the engine changes: an old tape would play back as a different fight.
-const VERSION = 2;
+const VERSION = 3;
 
 type Setup = Omit<FightInput, "a" | "b">;
 

@@ -458,6 +458,36 @@ function startReign(w: World, f: Fighter, b: Bout, how: string, interim = false)
   const ps = w.promos[b.promo];
   ps.reigns.push({ fighter: f.id, promo: b.promo, div: b.div, won: b.day, defenses: 0, how, interim });
   if (!interim && (PROMOTIONS[b.promo].tier === "major" || PROMOTIONS[b.promo].tier === "league")) f.reigns++;
+  settleAtWeight(w, f, b);
+}
+
+/**
+ * A belt won at another weight (a vacant title a division up, after a win there): the
+ * fighter now fights at that weight, where the belt is, unless a belt at the old
+ * weight is held too (a double champion keeps both until one is given up).
+ */
+function settleAtWeight(w: World, f: Fighter, b: Bout): void {
+  const from = f.div;
+  const d = b.div;
+  if (from === d) return;
+  const ps = w.promos[b.promo];
+  if (ps.champs[from] === f.id || ps.interim[from] === f.id) return;
+  f.div = d;
+  if (f.xw) f.xw = f.xw.filter((x) => x.div !== d);
+  updateRankings(w, b.promo, [from, d]);
+  if (f.ctrl) {
+    notify(w, {
+      kind: "info",
+      fighter: f.id,
+      from: `${PROMOTIONS[b.promo].short} matchmaker`,
+      subject: `Champion at ${DIVISIONS[d].name.toLowerCase()}`,
+      body: `${fullName(f)} won the belt at ${DIVISIONS[d].name.toLowerCase()} and now fights there: the defences are at ${DIVISIONS[d].limit} lb, and the rankings at ${DIVISIONS[from].name.toLowerCase()} let go. Set the walking weight on the Training page for the new limit.`,
+      facts: [
+        { k: "Now fights at", v: DIVISIONS[d].name, tone: "good" },
+        { k: "Limit", v: `${DIVISIONS[d].limit} lb` },
+      ],
+    });
+  }
 }
 
 function handleTitle(w: World, rng: Rng, b: Bout, winner: Fighter | null, loser: Fighter | null): void {
@@ -517,7 +547,7 @@ function handleTitle(w: World, rng: Rng, b: Bout, winner: Fighter | null, loser:
     const r = champId ? reignOf(champId, false) : undefined;
     if (r) r.defenses++;
     if (champId) {
-      note(w.fighters[champId], "Kept the title (draw)");
+      note(w.fighters[champId], b.res?.method === "NC" ? "Kept the title (no contest)" : "Kept the title (draw)");
       ps.contender[d] = champId === b.a ? b.b : b.a; // a draw: run it back
     }
     return;

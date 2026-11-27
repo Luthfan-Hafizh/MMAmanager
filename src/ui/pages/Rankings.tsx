@@ -111,7 +111,7 @@ function DivisionColumn({ w, promo, d }: { w: World; promo: PromoId; d: Division
           <span className="bmf-mark" aria-hidden="true">BMF</span>
         </Link>
       )}
-      <div className="rk-list div-list">
+      <div className="rk-list">
         {ids.length === 0 && <Empty title="No rankings yet" />}
         {ids.map((id, i) => {
           const f = w.fighters[id];
@@ -128,7 +128,6 @@ function DivisionColumn({ w, promo, d }: { w: World; promo: PromoId; d: Division
                 {from && <span className="rk-x" title={`Fights at ${DIVISIONS[from].name.toLowerCase()}; ranked here too after a win at ${DIVISIONS[d].name.toLowerCase()}`}>{DIVISIONS[from].short}</span>}
                 {debut && <span className="rk-x" title={`Signed, yet to fight in the ${PROMOTIONS[promo].short}: ranked on record and rating in an open place, below everyone who has fought here`}>Debut</span>}
               </span>
-              <span className="rk-rec">{f.rec.w}-{f.rec.l}{f.rec.d ? `-${f.rec.d}` : ""}</span>
               <span className={`mv ${typeof mv === "number" ? (mv > 0 ? "good" : "bad") : "dim"}`}>{mv === "new" ? "NEW" : typeof mv === "number" && mv !== 0 ? (mv > 0 ? `▲${mv}` : `▼${-mv}`) : ""}</span>
             </Link>
           );

@@ -786,8 +786,25 @@ div.field { display: flex; flex-direction: column; gap: 6px; }
 .busy div { background: var(--band); color: var(--band-ink); padding: 18px 26px; display: flex; gap: 14px; align-items: center; font-stretch: 62%; font-weight: 900; font-size: 20px; text-transform: uppercase; letter-spacing: 0.04em; }
 .spinner { width: 18px; height: 18px; border: 2px solid rgba(255, 255, 255, 0.2); border-top-color: var(--red-2); border-radius: 50%; animation: spin 0.8s linear infinite; }
 @keyframes spin { to { transform: rotate(360deg); } }
-.modal-back { position: fixed; inset: 0; background: rgba(10, 10, 10, 0.55); z-index: var(--z-pop); display: grid; place-items: center; padding: 16px; }
-.modal { width: min(640px, 100%); max-height: 90vh; overflow-y: auto; background: var(--sheet); box-shadow: var(--shadow-lift); border-top: 4px solid var(--red); }
+.modal-back { position: fixed; inset: 0; background: rgba(10, 10, 10, 0.55); z-index: var(--z-pop); display: grid; place-items: center; padding: 16px; animation: modal-fade 0.16s ease-out; }
+.modal { width: min(640px, 100%); max-height: 90vh; overflow-y: auto; background: var(--sheet); box-shadow: var(--shadow-lift); border-top: 4px solid var(--red); animation: modal-in 0.2s ease-out; }
+.modal:focus { outline: none; }
+@keyframes modal-fade { from { opacity: 0; } }
+@keyframes modal-in { from { opacity: 0; transform: translateY(10px) scale(0.985); } }
+/* Scouting: the pitch, with the chance as the headline and the reasons for and against. */
+.pitch-head { display: flex; align-items: center; justify-content: space-between; gap: 12px 18px; flex-wrap: wrap; }
+.pitch-who { display: grid; gap: 5px; min-width: 0; }
+.pitch-meta { display: inline-flex; flex-wrap: wrap; align-items: center; gap: 6px 8px; font-weight: 600; }
+.pitch-chance { display: grid; justify-items: end; text-align: right; }
+.pitch-chance b { font-stretch: 62%; font-weight: 900; font-size: 46px; line-height: 0.95; }
+.pitch-chance span { font-stretch: 75%; font-size: 11px; font-weight: 800; letter-spacing: 0.1em; text-transform: uppercase; color: var(--ink-3); }
+.pitch-chance.good b { color: var(--win); }
+.pitch-chance.fair b { color: var(--gold); }
+.pitch-chance.bad b { color: var(--red); }
+.pitch-why { list-style: none; margin: 14px 0 16px; padding: 0; display: grid; gap: 6px; font-size: 13.5px; }
+.pitch-why li { padding: 7px 10px 7px 12px; border-left: 3px solid var(--line-2); background: var(--sheet-2); border-radius: 2px; }
+.pitch-why li.good { border-left-color: var(--win); }
+.pitch-why li.bad { border-left-color: var(--red); }
 .empty { padding: 34px 18px; text-align: center; color: var(--ink-3); }
 .empty b { display: block; font-stretch: 62%; font-weight: 900; font-size: 24px; text-transform: uppercase; color: var(--ink-2); margin-bottom: 6px; }
 .notice { padding: 12px 16px; background: var(--blue-soft); border-left: 4px solid var(--blue); font-size: 14px; }

@@ -33,7 +33,8 @@ import { FightSim, simulate } from "../src/engine/sim";
 import { retirePlayer } from "../src/career/retire";
 import { becomeManager } from "../src/career/retire";
 import { careerInterest, declineFight, expireOffers, hireManager, makeContractOffer, rejectContract, signContract, startSignedDeals } from "../src/career/offers";
-import { perFight } from "../src/career/standing";
+import { perFight, waitingForTitle } from "../src/career/standing";
+import { release } from "../src/world/market";
 import { tryoutInvites } from "../src/career/tryout";
 import { moveDivision } from "../src/career/moves";
 import { rankIn } from "../src/world/core";
@@ -979,6 +980,76 @@ pages(tw, "Retired fighter turned manager");
     if (!atFw || !said) fail(`ranked at featherweight, the bantamweight got ${atFw} featherweight offers in ${evs.length}${atFw && !said ? ", and none said where they're ranked" : ""}`);
     else if (!after) fail(`moving up to featherweight lost the place won there (${moved})`);
     else console.log(`Two weights: beating the featherweight #8 ranked a bantamweight #${there} there (the beaten one now #${rankOf(w, eighth)}); ${atFw} of ${evs.length} offers came at featherweight; moving up kept #${after}`);
+  }
+}
+
+// A champion from a bigger stage goes straight to a title fight: a UFC champion with
+// twelve defences who walks out and signs with the PFL meets the PFL champion first
+// (Cris Cyborg's Bellator debut was for the belt), computer-run or the player's own.
+{
+  const fail = (what: string) => { failures++; console.log(`  FAIL ${what}`); };
+  const base = { first: "Arr", surname: "Ival", sex: "M" as const, country: "BR", div: "LW" as const, age: 24, height: 70, reach: 72, stance: "orthodox" as const, art: "bjj" as const, talent: "prospect" as const, start: "debut" as const };
+  {
+    const w = createWorld(roster, { name: "UI", seed: 21, mode: "fighter", difficulty: "normal", created: base });
+    w.day += 30;
+    const f = w.fighters[w.promos.ufc.champs.WFLY!];
+    const r = [...w.promos.ufc.reigns].reverse().find((x) => x.fighter === f.id && x.lost === undefined);
+    if (r) r.defenses = 12;
+    f.booked = null;
+    release(w, f, "", "walks out");
+    withRng(w, (rng) => signTo(w, f, "pfl", rng));
+    let first = "";
+    let regular = 0;
+    for (const id of w.upcoming) {
+      const ev = w.events[id];
+      if (ev.promo !== "pfl" || ev.status !== "planned") continue;
+      w.day = Math.max(w.day, ev.day - 56);
+      f.lastFight = Math.min(f.lastFight ?? w.day - 200, w.day - 200);
+      withRng(w, (rng) => buildCard(w, rng, ev));
+      for (const bid of ev.bouts) {
+        const b = w.bouts[bid];
+        if (b.a !== f.id && b.b !== f.id) continue;
+        if (b.kind === "title" || b.kind === "vacant") first = `${ev.name}, ${b.kind === "title" ? "for the title" : "for the vacant title"}, against ${w.fighters[b.a === f.id ? b.b : b.a].surname}`;
+        else regular++;
+      }
+      if (first || regular) break;
+    }
+    if (w.promos.pfl.contender.WFLY !== f.id && !first) fail("a UFC champion signing with the PFL wasn't named its number one contender");
+    else if (!first || regular) fail(`a UFC champion with 12 defences started in the PFL with ${regular} ordinary fight${regular === 1 ? "" : "s"}`);
+    else if (!w.news.some((n) => n.text.includes("goes straight to a title fight"))) fail("no news of the champion going straight to a title fight");
+    else console.log(`A champion from a bigger stage: ${f.first} ${f.surname} walked out on the UFC (12 defences), and her first PFL fight is ${first}`);
+  }
+  {
+    const probe = createWorld(roster, { name: "UI", seed: 22, mode: "fighter", difficulty: "normal", created: base });
+    const w = createWorld(roster, { name: "UI", seed: 22, mode: "fighter", difficulty: "normal", takeover: probe.promos.ufc.champs.WFLY! });
+    const f = w.fighters[w.career.fighters[0]];
+    w.day += 30;
+    const r = [...w.promos.ufc.reigns].reverse().find((x) => x.fighter === f.id && x.lost === undefined);
+    if (r) r.defenses = 12;
+    f.booked = null;
+    f.contract = { ...f.contract!, left: 0 };
+    withRng(w, (rng) => careerInterest(w, rng));
+    for (const o of w.career.contractOffers.filter((x) => x.status === "open")) rejectContract(w, o.id);
+    const pfl = withRng(w, (rng) => makeContractOffer(w, rng, f, "pfl", {}));
+    if (pfl) withRng(w, (rng) => signContract(w, rng, pfl.id));
+    const told = w.inbox.some((m) => m.subject === "Straight to a title fight" && m.fighter === f.id);
+    let offer = "";
+    let waited = 0;
+    for (const id of w.upcoming) {
+      const ev = w.events[id];
+      if (ev.promo !== "pfl" || ev.status !== "planned" || ev.day < w.day + 25) continue;
+      f.lastFight = ev.day - 200;
+      const fo = withRng(w, (rng) => offerFight(w, rng, ev, f));
+      if (fo) {
+        offer = fo.kind === "title" || fo.kind === "vacant" ? `${ev.name}, ${fo.kind}, against ${w.fighters[fo.opp].surname}` : `an ordinary fight against ${w.fighters[fo.opp].surname}`;
+        break;
+      }
+      waited++;
+    }
+    if (f.promo !== "pfl" || !waitingForTitle(w, f) && !offer) fail("the player's UFC champion didn't sign with the PFL as its number one contender");
+    else if (!told) fail("the player wasn't told the PFL title fight comes first");
+    else if (!offer.includes("title")) fail(`the player's UFC champion was first offered ${offer || "nothing"} in the PFL`);
+    else console.log(`The player's UFC champion turned the UFC down, signed with the PFL and was first offered ${offer}${waited ? ` (after ${waited} card${waited === 1 ? "" : "s"} waiting for the champion)` : ""}`);
   }
 }
 

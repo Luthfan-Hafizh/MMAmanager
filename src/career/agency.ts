@@ -20,35 +20,43 @@ export function clientCapacity(w: World): number {
   return MAX_CLIENTS_BASE + a.staff * 2 + Math.floor(a.rep / 25);
 }
 
-/** How likely a fighter is to sign with the agency, 0-1, with the reasons. */
-export function pitchChance(w: World, f: Fighter, cut: number): { p: number; why: string[] } {
+/** How likely a fighter is to sign with the agency, 0-1, with the reasons for and against. */
+export function pitchChance(w: World, f: Fighter, cut: number): { p: number; why: string[]; tones: ("good" | "bad")[] } {
   const a = w.career.agency!;
   const why: string[] = [];
+  const tones: ("good" | "bad")[] = [];
+  const add = (text: string, tone: "good" | "bad") => {
+    why.push(text);
+    tones.push(tone);
+  };
   const tier = f.promo ? TIER_RANK[PROMOTIONS[f.promo].tier] : 1;
   const star = clamp((ovrOf(f.attrs) - 55) / 30 + tier * 0.08 + f.pop / 150, 0, 1.4);
   let p = 0.55 + (a.rep - 30) / 100 - star * 0.45 - (cut - 15) * 0.035;
-  if (a.rep >= 50) why.push("The agency's name opens doors");
-  else why.push("A young agency without much of a name");
-  if (star > 0.8) why.push("A big name expects a big agency");
-  if (cut < 15) why.push(`A low cut (${cut}%) is attractive`);
-  if (cut > 18) why.push(`${cut}% is a lot`);
+  if (a.rep >= 50) add("The agency's name opens doors", "good");
+  else add("A young agency without much of a name", "bad");
+  if (star > 0.8) add("A big name expects a big agency", "bad");
+  if (cut < 15) add(`A low cut (${cut}%) is attractive`, "good");
+  if (cut > 18) add(`${cut}% is a lot`, "bad");
   const clients = w.career.fighters.map((id) => w.fighters[id]).filter(Boolean);
   const champs = clients.filter((c) => isChampion(w, c)).length;
   if (champs) {
     p += 0.08 * champs;
-    why.push(`${champs} champion${champs > 1 ? "s" : ""} in the stable`);
+    add(`${champs} champion${champs > 1 ? "s" : ""} in the stable`, "good");
   }
   const sameDiv = clients.filter((c) => c.div === f.div && c.promo === f.promo).length;
   if (sameDiv) {
     p -= 0.1 * sameDiv;
-    why.push("You already manage someone in the same division");
+    add("You already manage someone in the same division", "bad");
   }
   if (f.pers.loyalty > 14) {
     p -= 0.1;
-    why.push("Loyal to the current team");
+    add("Loyal to the current team", "bad");
   }
-  if (f.pers.greed > 14 && cut > 12) p -= 0.08;
-  return { p: clamp(p, 0.02, 0.95), why };
+  if (f.pers.greed > 14 && cut > 12) {
+    p -= 0.08;
+    add(`Wants more of the purse than a ${cut}% cut leaves`, "bad");
+  }
+  return { p: clamp(p, 0.02, 0.95), why, tones };
 }
 
 export function pitch(w: World, rng: Rng, f: Fighter, cut: number): string {

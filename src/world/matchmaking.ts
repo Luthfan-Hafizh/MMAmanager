@@ -23,7 +23,7 @@ import { fightOfferPay, payShowOnly } from "../career/money";
 import { boutLimit, CUT_TEXT, cutCheck, findCall, type Call } from "../career/shortnotice";
 import { fmtDate } from "../core/time";
 import { money } from "../core/util";
-import { debutBand, type DebutBand } from "../career/standing";
+import { debutBand, waitingForTitle, type DebutBand } from "../career/standing";
 import { bookTryouts, tryoutHold } from "../career/tryout";
 
 const DEFENCE_GAP: Record<string, number> = { major: 150, league: 125, regional: 105, local: 95, amateur: 80, tryout: 0 };
@@ -255,10 +255,13 @@ export function bookingPass(w: World, rng: Rng): void {
   }
 }
 
-/** Fighters free for an ordinary fight: champions and interim champions fight only for their belts. */
+/**
+ * Fighters free for an ordinary fight: champions and interim champions fight only
+ * for their belts, and a champion from a bigger stage waits for the title fight promised.
+ */
 function availableIn(w: World, ev: MMAEvent, d: DivisionId): Fighter[] {
   const ps = w.promos[ev.promo];
-  return rosterOf(w, ev.promo, d).filter((f) => !f.ctrl && f.id !== ps.champs[d] && f.id !== ps.interim[d] && readyFor(w, f, ev));
+  return rosterOf(w, ev.promo, d).filter((f) => !f.ctrl && f.id !== ps.champs[d] && f.id !== ps.interim[d] && readyFor(w, f, ev) && !waitingForTitle(w, f));
 }
 
 /** Has a belt holder waited well past the usual gap between defences? */
@@ -314,10 +317,16 @@ function titleFights(w: World, rng: Rng, ev: MMAEvent, maxTitles: number): numbe
     const champ = champId ? w.fighters[champId] : null;
     const pool = rosterOf(w, ev.promo, d).filter((f) => readyFor(w, f, ev));
     if (!champ || champ.status !== "active") {
-      // Vacant belt: the best two available (one fight for it at a time).
+      // Vacant belt: the best two available (one fight for it at a time). A champion from a
+      // bigger stage promised the title takes one place.
       if (beltBooked(w, ev.promo, d, "vacant")) continue;
       const ranked = (ps.ranks[d] ?? []).map((id) => w.fighters[id]).filter((f) => f && pool.includes(f) && !f.ctrl);
-      const cands = ranked.length >= 2 ? ranked : pool.filter((f) => !f.ctrl).sort((a, b) => b.elo - a.elo);
+      let cands = ranked.length >= 2 ? ranked : pool.filter((f) => !f.ctrl).sort((a, b) => b.elo - a.elo);
+      const named = ps.contender[d] ? w.fighters[ps.contender[d]!] : null;
+      if (named && waitingForTitle(w, named)) {
+        if (named.ctrl) continue; // the player's fighter is offered it instead
+        if (pool.includes(named)) cands = [named, ...cands.filter((x) => x.id !== named.id && !teammates(x, named))];
+      }
       if (cands.length >= 2 && !teammates(cands[0], cands[1])) {
         makeBout(w, ev, cands[0], cands[1], "vacant");
         ps.contender[d] = null;
@@ -570,13 +579,13 @@ export function offerFight(w: World, rng: Rng, ev: MMAEvent, f: Fighter, opp?: F
       if (c && !c.ctrl && !passed.has(c.id) && readyFor(w, c, ev)) {
         o = c;
         k = "title";
-      }
-    } else if (!champ && (ps.ranks[d] ?? []).slice(0, 2).includes(f.id)) {
+      } else if (waitingForTitle(w, f) && !(c && passed.has(c.id))) return null; // promised the title on arrival: nothing else meanwhile
+    } else if (!champ && ((ps.ranks[d] ?? []).slice(0, 2).includes(f.id) || (ps.contender[d] === f.id && waitingForTitle(w, f)))) {
       const other = (ps.ranks[d] ?? []).slice(0, 3).map((id) => w.fighters[id]).find((x) => x && x.id !== f.id && pool.includes(x));
       if (other) {
         o = other;
         k = "vacant";
-      }
+      } else if (waitingForTitle(w, f)) return null;
     }
     if (!o) {
       // A call-out the matchmaker likes the sound of.

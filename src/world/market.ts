@@ -18,7 +18,7 @@ import { clockShift } from "./development";
 import { signTo } from "./results";
 import { vacate } from "./titles";
 
-export function release(w: World, f: Fighter, why: string): void {
+export function release(w: World, f: Fighter, why: string, text?: string): void {
   if (f.ctrl) return;
   const p = f.promo;
   if (!p) return;
@@ -26,7 +26,8 @@ export function release(w: World, f: Fighter, why: string): void {
   if (f.booked) return; // let the booked fight happen first
   f.promo = null;
   f.contract = null;
-  if (p === "ufc" && (f.pop > 35 || f.reigns > 0)) addNews(w, { kind: "release", promo: p, fighters: [f.id], text: `${fullName(f)} has been released by the UFC (${why}).` });
+  if (text) addNews(w, { kind: "release", promo: p, fighters: [f.id], big: true, text });
+  else if (p === "ufc" && (f.pop > 35 || f.reigns > 0)) addNews(w, { kind: "release", promo: p, fighters: [f.id], text: `${fullName(f)} has been released by the UFC (${why}).` });
   touch(w);
 }
 
@@ -79,14 +80,18 @@ export function monthlyMarket(w: World, rng: Rng): void {
     const c = f.contract;
     if (c && (c.left <= 0 || w.day > c.end) && !f.booked) {
       const keep = f.streak >= -1 || isChampion(w, f) || rankOf(w, f) !== null;
-      if (keep && rng.chance(0.9)) {
+      // A champion's deal is almost always renewed: walking out as champion (Francis
+      // Ngannou in 2023) is rare, where one in ten others moves on when a deal is done.
+      const champ = isChampion(w, f);
+      if (keep && rng.chance(champ ? 0.99 : 0.9)) {
         const rank = rankOf(w, f);
         const nc = contractFor(f.promo, f, w.day, rng, { rank, fights: p.tier === "major" ? rng.int(4, 6) : rng.int(3, 4) });
         nc.show = Math.max(nc.show, Math.round(c.show * (f.streak > 0 ? 1.15 : 0.95)));
         nc.win = rank === 0 && (f.promo === "ufc" || f.promo === "pfl") ? 0 : nc.show;
         f.contract = nc;
       } else {
-        release(w, f, "contract not renewed");
+        if (champ) release(w, f, "", `${fullName(f)} walks out on the ${PROMOTIONS[f.promo].short} as champion: no new deal was agreed, and the title is vacated.`);
+        else release(w, f, "contract not renewed");
       }
       continue;
     }

@@ -21,7 +21,7 @@ import { startCamp } from "./camp";
 import { closeMessages, notify } from "./inbox";
 import { ledger } from "./money";
 import { adjustRapport, applyDecline, dealFactor, passOn, rapport, rapportFacts, type DeclineReason } from "./promoter";
-import { bestReign, longReign, marketPay, perFight, reignText } from "./standing";
+import { arrivalTitleShot, bestReign, longReign, marketPay, perFight, promiseTitle, reignText } from "./standing";
 import { tryoutInvites } from "./tryout";
 
 // ---------- fights ----------
@@ -522,6 +522,11 @@ function joinPromotion(w: World, f: Fighter, promo: PromoId, t: Terms): PromoId 
     else ledger(w, { amount: Math.round(t.signBonus * (w.career.agency!.cut / 100)), what: `Commission on ${fullName(f)}'s signing bonus`, cat: "commission", fighter: f.id });
   }
   if (promo === "ufc") f.tags = [...new Set([...(f.tags ?? []), "ufc-alum"])];
+  // A champion from a bigger stage goes straight to a title fight here.
+  if (old !== promo) {
+    const shot = arrivalTitleShot(w, f, promo);
+    if (shot) promiseTitle(w, f, promo, shot);
+  }
   return old;
 }
 

@@ -5,7 +5,7 @@ import { PROMOTIONS, TIER_NAME, type Tier } from "../../data/promotions";
 import { ovr } from "../../model/attributes";
 import type { Fighter } from "../../model/types";
 import { clientCapacity, dropClient, hireStaff, pitch, pitchChance } from "../../career/agency";
-import { fullName, recordText, withRng } from "../../world/core";
+import { fullName, rankLabel, recordText, withRng } from "../../world/core";
 import { outlookRoom, potentialText } from "../../world/development";
 import { changed, toast, useWorld } from "../../state/store";
 import { go } from "../router";
@@ -93,19 +93,36 @@ export function Scouting() {
       <div className="panel">
         <Table cols={cols} rows={rows} rowKey={(f) => f.id} onRow={setPick} initial={{ key: "o" }} limit={250} />
       </div>
-      {pick && (
-        <Modal title={`Pitch to ${fullName(pick)}`} onClose={() => setPick(null)}>
-          <p>{fullName(pick)}, {ageYears(pick.birth, w.day)}, {recordText(pick)}, {pick.promo ? PROMOTIONS[pick.promo].name : "free agent"}.</p>
-          <ul className="small muted">
-            {pitchChance(w, pick, a.cut).why.map((x, i) => <li key={i}>{x}</li>)}
-          </ul>
-          <p>Chance they sign at {a.cut}%: <b>{Math.round(pitchChance(w, pick, a.cut).p * 100)}%</b></p>
-          <div className="row">
-            <button className="btn primary" onClick={() => { toast(withRng(w, (rng) => pitch(w, rng, pick, a.cut))); setPick(null); changed(); }}>Make the pitch</button>
-            <button className="btn" onClick={() => go(`/fighter/${pick.id}`)}>Profile</button>
-          </div>
-        </Modal>
-      )}
+      {pick && (() => {
+        const pc = pitchChance(w, pick, a.cut);
+        const pct = Math.round(pc.p * 100);
+        const rank = rankLabel(w, pick);
+        return (
+          <Modal title={`Pitch to ${fullName(pick)}`} onClose={() => setPick(null)}>
+            <div className="pitch-head">
+              <div className="pitch-who">
+                <span className="pitch-meta">
+                  <PromoBadge p={pick.promo} />
+                  {rank && <span className="tag red">{rank === "C" ? "Champion" : rank}</span>}
+                  <span>{DIVISIONS[pick.div].name} · {recordText(pick)} · {ageYears(pick.birth, w.day)} years old</span>
+                </span>
+                <span className="small dim">{pick.promo ? PROMOTIONS[pick.promo].name : "Free agent"} · overall {ovr(pick.attrs)} · {potentialText(pick, w.day, 0.6).toLowerCase()}</span>
+              </div>
+              <div className={`pitch-chance ${pct >= 50 ? "good" : pct >= 25 ? "fair" : "bad"}`}>
+                <b>{pct}%</b>
+                <span>Chance they sign at {a.cut}%</span>
+              </div>
+            </div>
+            <ul className="pitch-why">
+              {pc.why.map((x, i) => <li key={i} className={pc.tones[i]}>{x}</li>)}
+            </ul>
+            <div className="row">
+              <button className="btn primary" onClick={() => { toast(withRng(w, (rng) => pitch(w, rng, pick, a.cut))); setPick(null); changed(); }}>Make the pitch</button>
+              <button className="btn" onClick={() => go(`/fighter/${pick.id}`)}>Profile</button>
+            </div>
+          </Modal>
+        );
+      })()}
     </div>
   );
 }

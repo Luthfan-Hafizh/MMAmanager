@@ -24,6 +24,7 @@ import { fightInjuryDef, hurtOnNight, makeInjury, type InjuryDef } from "../data
 import { lc, playerInjured } from "../career/injury";
 import { handleBmf, isBeltFight, refreshDivision } from "./belts";
 import { notify } from "../career/inbox";
+import { arrivalTitleShot, promiseTitle } from "../career/standing";
 
 export { ringRust } from "./core";
 
@@ -662,6 +663,9 @@ export function signTo(w: World, f: Fighter, promo: "ufc" | "pfl" | string, rng:
   f.amateur = p.tier === "amateur";
   f.joined = w.day;
   f.elo = entryElo(id, ovrOf(f.attrs), f.elo);
+  // A champion from a bigger stage goes straight to a title fight here.
+  const shot = arrivalTitleShot(w, f, id);
+  if (shot) promiseTitle(w, f, id, shot);
   const show = opts.show ?? (id === "ufc" ? 12000 : id === "pfl" ? Math.round(clamp(15000 + (ovrOf(f.attrs) - 66) * 2500, 12000, 80000)) : Math.round(p.showLow + (p.showHigh - p.showLow) * 0.15));
   f.contract = {
     promo: id,

@@ -1,6 +1,7 @@
 // Shared interface pieces.
 
 import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
+import { createPortal } from "react-dom";
 import { flagUrl, countryOf } from "../data/countries";
 import { DIVISIONS, type DivisionId } from "../data/divisions";
 import { PROMOTIONS, type PromoId } from "../data/promotions";
@@ -312,10 +313,32 @@ export function Spark({ points, w = 140, h = 36, color = "var(--accent)" }: { po
   );
 }
 
+/**
+ * A dialog over the page. It is drawn on the body, not inside the page: pages slide
+ * in with a transform, and a fixed overlay inside a transformed element is placed
+ * against that element instead of the screen, which centred the dialog on the whole
+ * page, thousands of pixels down a long list. Escape closes it, and focus goes to the
+ * dialog and back to where it was.
+ */
 export function Modal({ title, onClose, children }: { title: string; onClose: () => void; children: ReactNode }) {
-  return (
+  const box = useRef<HTMLDivElement | null>(null);
+  const close = useRef(onClose);
+  close.current = onClose;
+  useEffect(() => {
+    const before = document.activeElement as HTMLElement | null;
+    const key = (e: KeyboardEvent) => {
+      if (e.key === "Escape") close.current();
+    };
+    window.addEventListener("keydown", key);
+    box.current?.focus({ preventScroll: true });
+    return () => {
+      window.removeEventListener("keydown", key);
+      before?.focus?.({ preventScroll: true });
+    };
+  }, []);
+  const dialog = (
     <div className="modal-back" onClick={onClose}>
-      <div className="modal" onClick={(e) => e.stopPropagation()} role="dialog" aria-label={title}>
+      <div ref={box} tabIndex={-1} className="modal" onClick={(e) => e.stopPropagation()} role="dialog" aria-modal="true" aria-label={title}>
         <div className="panel-h">
           <h3>{title}</h3>
           <div className="acts">
@@ -326,6 +349,7 @@ export function Modal({ title, onClose, children }: { title: string; onClose: ()
       </div>
     </div>
   );
+  return typeof document === "undefined" ? dialog : createPortal(dialog, document.body);
 }
 
 export function OvrStars({ f }: { f: Fighter }) {

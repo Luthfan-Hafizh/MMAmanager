@@ -6,10 +6,11 @@
 // Donald Cerrone) rather than at the bottom of the roster.
 
 import { PROMOTIONS, PROMO_IDS, TIER_RANK, type PromoId } from "../data/promotions";
-import type { DivisionId } from "../data/divisions";
+import { DIVISIONS, type DivisionId } from "../data/divisions";
 import { ovrOf } from "../model/attributes";
 import type { Fighter, World } from "../model/types";
-import { stageFights } from "../world/core";
+import { addNews, fullName, stageFights } from "../world/core";
+import { notify } from "./inbox";
 
 /** A fighter's title reigns at one promotion, taken together. */
 export interface TitleRun {
@@ -125,6 +126,65 @@ export function debutBand(w: World, f: Fighter, promo: PromoId): DebutBand | nul
   }
   if (run && PROMOTIONS[run.promo].tier === "regional" && run.defences >= 2) return { lo: 5, hi: n, why: reignText(run) };
   return null;
+}
+
+/**
+ * A champion from a bigger stage arriving here goes straight to a title fight, as
+ * Cris Cyborg did in Bellator (Julia Budd, her first fight there, for the belt): a
+ * title held at a promotion above this one, now or within two years, unless it was
+ * lost without a single defence. Returns what earned it, or null.
+ */
+export function arrivalTitleShot(w: World, f: Fighter, promo: PromoId): string | null {
+  const p = PROMOTIONS[promo];
+  if (p.tier === "amateur" || p.tier === "tryout" || !p.divisions.includes(f.div)) return null;
+  const run = bestReign(w, f);
+  if (!run || run.promo === promo) return null;
+  if (TIER_RANK[PROMOTIONS[run.promo].tier] <= TIER_RANK[p.tier]) return null;
+  if (run.lostIt && run.defences < 1) return null;
+  return reignText(run);
+}
+
+/**
+ * The promise: the newcomer is named the number one contender at the weight, and
+ * the next title fight is theirs (a vacant belt is fought for against the best
+ * ranked). The news, and a word to the player.
+ */
+export function promiseTitle(w: World, f: Fighter, promo: PromoId, why: string): void {
+  const ps = w.promos[promo];
+  if (!ps || ps.champs[f.div] === f.id) return;
+  ps.contender[f.div] = f.id;
+  const p = PROMOTIONS[promo];
+  const champ = ps.champs[f.div] ? w.fighters[ps.champs[f.div]!] : null;
+  const weight = DIVISIONS[f.div].name.toLowerCase();
+  const text = champ
+    ? `${fullName(f)} (${why}) arrives in the ${p.short} and goes straight to a title fight with ${fullName(champ)}.`
+    : `${fullName(f)} (${why}) arrives in the ${p.short}, and the vacant ${weight} title is next.`;
+  if (p.tier === "major" || p.tier === "league" || f.ctrl) addNews(w, { kind: "title", promo, fighters: [f.id, ...(champ ? [champ.id] : [])], big: true, text });
+  if (f.ctrl) {
+    notify(w, {
+      kind: "info",
+      fighter: f.id,
+      from: `${p.short} matchmaker`,
+      subject: "Straight to a title fight",
+      body: `${fullName(f)} doesn't start at the bottom here. ${why.charAt(0).toUpperCase()}${why.slice(1)}: that earns the next ${p.short} ${weight} title fight${champ ? `, against ${fullName(champ)}, as soon as the champion is due to defend` : ", for the vacant belt"}. Until then there are no other fights to take.`,
+      facts: [
+        { k: "Next fight", v: champ ? `For the title, against ${fullName(champ)}` : "For the vacant title", tone: "good" },
+        { k: "Earned by", v: why },
+      ],
+    });
+  }
+}
+
+/**
+ * A newcomer promised the title fight waits for it rather than taking ordinary
+ * fights, for eight months at most (a champion out for longer doesn't freeze them).
+ */
+export function waitingForTitle(w: World, f: Fighter): boolean {
+  if (!f.promo || w.promos[f.promo]?.contender[f.div] !== f.id || w.day - f.joined >= 240) return false;
+  return !f.bouts.some((id) => {
+    const b = w.bouts[id];
+    return !!b && b.status === "done" && b.promo === f.promo && b.day >= f.joined;
+  });
 }
 
 /**

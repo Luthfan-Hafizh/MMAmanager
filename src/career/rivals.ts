@@ -135,5 +135,7 @@ export function ppvShare(w: World, f: Fighter, b: Bout): number {
   if (!champ && f.pop < 60) return 0;
   const hype = fightHype(w, b);
   if (hype <= 50) return 0;
-  return Math.round(((hype - 50) * 14000 * (champ ? 1.5 : 1) * (0.6 + f.pop / 250)) / 1000) * 1000;
+  // Points of the pay-per-view won at the table add a quarter each.
+  const points = 1 + 0.25 * (f.contract?.promo === "ufc" ? f.contract.ppv ?? 0 : 0);
+  return Math.round(((hype - 50) * 14000 * (champ ? 1.5 : 1) * (0.6 + f.pop / 250) * points) / 1000) * 1000;
 }

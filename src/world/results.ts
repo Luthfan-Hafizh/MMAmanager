@@ -581,7 +581,9 @@ function handleTitle(w: World, rng: Rng, b: Bout, winner: Fighter | null, loser:
     note(old, "Lost the title");
     const r = [...ps.reigns].reverse().find((x) => x.fighter === champId && x.div === d);
     // Close fights and long reigns earn the immediate rematch.
-    if (b.res && (b.res.verdict === "split" || b.res.verdict === "majority" || (r && r.defenses >= 2))) ps.contender[d] = champId;
+    // A rematch clause in the contract makes it certain.
+    if (b.res && (b.res.verdict === "split" || b.res.verdict === "majority" || (r && r.defenses >= 2) || old.contract?.rematch)) ps.contender[d] = champId;
+    if (old.contract?.rematch) note(old, "Lost the title: the rematch clause holds");
   }
   ps.champs[d] = winner.id;
   const wasInterim = ps.interim[d] === winner.id;

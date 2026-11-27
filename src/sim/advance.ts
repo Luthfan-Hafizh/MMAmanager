@@ -1,6 +1,7 @@
 // The day-by-day loop. Continue moves the calendar until something needs the
 // player: a decision in the inbox, a fight night, or the end of the week.
 
+import { staffWeekly } from "../career/staff";
 import { testingMonthly } from "../world/testing";
 import { storiesMonthly } from "../world/stories";
 import { awardsMonthly } from "../world/awards";
@@ -63,6 +64,7 @@ function heal(w: World): void {
 }
 
 function weekly(w: World, rng: Rng): void {
+  staffWeekly(w);
   for (const id of w.career.fighters) {
     const f = w.fighters[id];
     const fc = w.career.fc[id];

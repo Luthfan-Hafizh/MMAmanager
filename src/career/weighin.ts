@@ -6,6 +6,7 @@
 // the fight and their money, hold out for a bigger share, or refuse it and
 // collect the show money. Then the face-off, in front of the cameras.
 
+import { nutritionOf } from "./staff";
 import type { Rng } from "../core/rng";
 import { clamp, money } from "../core/util";
 import { PROMOTIONS } from "../data/promotions";
@@ -102,7 +103,7 @@ function missDecision(w: World, b: Bout, f: Fighter, opp: Fighter, side: Side): 
   const ps = w.promos[b.promo];
   const champ = (b.kind === "title" && ps.champs[b.div] === f.id) || (b.kind === "interim" && ps.interim[b.div] === f.id);
   const belt = b.kind === "title" || b.kind === "vacant" || b.kind === "interim";
-  const nut = w.career.fc[f.id]?.camp?.nutrition ?? 0;
+  const nut = nutritionOf(w, f);
   const facts: Fact[] = [
     ...weighFacts(w, b, f, opp, side),
     { k: "Over by", v: `${over.toFixed(1)} lb`, tone: over > 2 ? "bad" : "warn" },
@@ -209,7 +210,7 @@ function extraHour(w: World, rng: Rng, b: Bout, f: Fighter, opp: Fighter, side: 
   const wt = b.weighIn![side];
   const over = wt - lim - allow;
   b.extraHour = side;
-  if (rng.chance(hourChance(over, fc?.camp?.nutrition ?? 0))) {
+  if (rng.chance(hourChance(over, nutritionOf(w, f)))) {
     const nw = Math.round((lim + allow - rng.next() * 0.3) * 10) / 10;
     b.weighIn![side] = nw;
     delete b.weighIn![missKey(side)];

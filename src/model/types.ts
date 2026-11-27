@@ -71,6 +71,9 @@ export interface Contract {
   end: number;
   champClause: boolean;
   signBonus: number;
+  /** Clauses won at the table: an immediate rematch if the belt is lost, points of the pay-per-view. */
+  rematch?: boolean;
+  ppv?: number;
 }
 
 export interface Injury {
@@ -505,6 +508,8 @@ export interface SignedNext {
   champClause: boolean;
   termDays: number;
   signed: number;
+  rematch?: boolean;
+  ppv?: number;
 }
 
 export interface ContractOffer {
@@ -524,6 +529,9 @@ export interface ContractOffer {
   rounds: number;
   /** The promotion's own ceiling for this fighter (hidden from the player). */
   limit: number;
+  /** Clauses agreed at the table. */
+  rematch?: boolean;
+  ppv?: number;
   patience: number;
   note?: string;
   renewal?: boolean;
@@ -587,7 +595,14 @@ export interface Camp {
   study: number; // 0-1 how well the opponent has been studied
   cost: number;
   paid: boolean;
+  /** Where the camp is: at home, at altitude, or at a top gym (guest) for its coaches. */
+  site?: CampSite;
+  guest?: string;
 }
+
+export type CampSite = "home" | "altitude" | "topgym";
+/** A fighter's own staff (career/staff.ts): the coach's quality by role. */
+export type TeamRole = "striking" | "wrestling" | "grappling" | "sc" | "nutrition";
 
 export interface FighterCareer {
   id: string;
@@ -654,6 +669,8 @@ export interface FighterCareer {
   tryout?: { season: number; day: number; yes?: boolean; ev?: string; done?: boolean };
   /** Took a supplement nobody checked: a drug test until this day may come back positive. */
   tainted?: number;
+  /** The fighter's own coaches and nutritionist: quality by role. */
+  team?: Partial<Record<TeamRole, number>>;
 }
 
 export interface Rivalry {

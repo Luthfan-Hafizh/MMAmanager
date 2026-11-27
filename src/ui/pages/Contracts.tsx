@@ -3,7 +3,7 @@ import { fmtDate } from "../../core/time";
 import { money } from "../../core/util";
 import { PROMOTIONS } from "../../data/promotions";
 import type { ContractOffer, Fighter, World } from "../../model/types";
-import { counterOffer, exclusiveDeal, rejectContract, signContract, walksAsChampion } from "../../career/offers";
+import { counterOffer, exclusiveDeal, rejectContract, signContract, walksAsChampion, clauseLeverage } from "../../career/offers";
 import { marketPay, perFight } from "../../career/standing";
 import { adviseContract, managerNegotiate } from "../../career/advisor";
 import { AdviceCard } from "../advice";
@@ -84,10 +84,13 @@ function OfferCard({ w, o, f }: { w: World; o: ContractOffer; f: Fighter }) {
   const [show, setShow] = useState(o.show);
   const [win, setWin] = useState(o.win);
   const [fights, setFights] = useState(o.fights);
+  const [rematch, setRematch] = useState(!!o.rematch);
+  const [ppv, setPpv] = useState(o.ppv ?? 0);
   const [log, setLog] = useState<string[]>([]);
   const p = PROMOTIONS[o.promo];
+  const leverage = clauseLeverage(w, f, o.promo);
   const counter = () => {
-    const r = withRng(w, (rng) => counterOffer(w, rng, o.id, { show, win: o.win ? win : 0, fights }));
+    const r = withRng(w, (rng) => counterOffer(w, rng, o.id, { show, win: o.win ? win : 0, fights, rematch, ppv }));
     setLog((l) => [...l, r.text]);
     setShow(o.show);
     setWin(o.win);
@@ -127,7 +130,7 @@ function OfferCard({ w, o, f }: { w: World; o: ContractOffer; f: Fighter }) {
         <div className="c3"><div className="tile co-all"><div className="k">A fight, all in</div><div className="v">{money(perFight(o.show, o.win))}</div></div></div>
       </div>
       <p className="small dim" style={{ marginTop: 8 }}>
-        +{money(o.escal)} after each win{o.signBonus ? ` · ${money(o.signBonus)} to sign` : ""} · {Math.round(o.termDays / 365)} years{o.champClause ? " · champion's clause" : ""}
+        +{money(o.escal)} after each win{o.signBonus ? ` · ${money(o.signBonus)} to sign` : ""} · {Math.round(o.termDays / 365)} years{o.champClause ? " · champion's clause" : ""}{o.rematch ? " · rematch clause" : ""}{o.ppv ? ` · ${o.ppv} point${o.ppv === 1 ? "" : "s"} of the pay-per-view` : ""}
       </p>
       {notes.length > 0 && (
         <ul className="co-notes">
@@ -148,6 +151,20 @@ function OfferCard({ w, o, f }: { w: World; o: ContractOffer; f: Fighter }) {
         {o.win > 0 && <label className="field c4">Win money<input className="input" type="number" step={500} value={win} onChange={(e) => setWin(Number(e.target.value))} /></label>}
         <label className="field c4">Fights<input className="input" type="number" min={1} max={8} value={fights} onChange={(e) => setFights(Number(e.target.value))} /></label>
       </div>
+      {(o.promo === "ufc" || o.promo === "pfl") && (
+        <div className="co-clauses">
+          <label className="row tight small"><input type="checkbox" checked={rematch} disabled={!leverage || !!o.rematch} onChange={(e) => setRematch(e.target.checked)} /> Rematch clause: lose the belt, get the next title fight</label>
+          {o.promo === "ufc" && (
+            <label className="row tight small">
+              Points of the pay-per-view
+              <select className="input" value={ppv} disabled={!leverage} onChange={(e) => setPpv(Number(e.target.value))} aria-label="Points of the pay-per-view">
+                {[0, 1, 2, 3].map((n) => <option key={n} value={n}>{n === 0 ? "None" : `${n} (+${n * 25}% of the share)`}</option>)}
+              </select>
+            </label>
+          )}
+          <span className="tiny dim">{leverage ? "Clauses cost money at the table: the promotion counts a rematch clause as about 8% of the deal, each point about 6%." : "Clauses are for champions, top-five contenders and the names that sell."}</span>
+        </div>
+      )}
       {log.length > 0 && (
         <div className="stack small" style={{ marginTop: 10, gap: 4 }}>
           {log.map((l, i) => <div key={i} className="muted">› {l}</div>)}
@@ -155,7 +172,7 @@ function OfferCard({ w, o, f }: { w: World; o: ContractOffer; f: Fighter }) {
       )}
       <div className="row" style={{ marginTop: 12 }}>
         <button className="btn primary" onClick={sign}>Sign</button>
-        <button className="btn" onClick={counter} disabled={show === o.show && win === o.win && fights === o.fights}>Send counter</button>
+        <button className="btn" onClick={counter} disabled={show === o.show && win === o.win && fights === o.fights && rematch === !!o.rematch && ppv === (o.ppv ?? 0)}>Send counter</button>
         <button className="btn danger" onClick={() => { toast(rejectContract(w, o.id)); changed(); }}>{walks ? "Walk away" : "Reject"}</button>
         <div style={{ flex: 1 }} />
         <span className="tiny dim">{fullName(f)}</span>

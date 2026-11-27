@@ -5,6 +5,7 @@
 // sparring cause injuries; sparring keeps a fighter sharp. The strength
 // sessions include neck work, the one thing that builds a chin.
 
+import { coachFor } from "./staff";
 import { Rng } from "../core/rng";
 import { clamp } from "../core/util";
 import { ageAt } from "../core/time";
@@ -202,7 +203,7 @@ export function trainingWeek(w: World, f: Fighter, plan: TrainingPlan, rng: Rng,
   const neck = neckWork(f);
   for (const s of plan.week) {
     const sd = SESSIONS[s];
-    const q = 0.55 + coachQuality(gym, sd.area) / 110;
+    const q = 0.55 + coachFor(w, f, sd.area, coachQuality) / 110;
     for (const [k, v] of Object.entries(sd.attrs) as [AttrKey, number][]) {
       const top = topOf(k) / meanTop;
       const g = 0.0105 * mul * v * q * fac * INT_GROWTH[plan.intensity] * ageGrowth(age) * room * pro * fatPenalty * top * hurtTrain * (k === "chin" ? neck : 1);
@@ -226,7 +227,7 @@ export function trainingWeek(w: World, f: Fighter, plan: TrainingPlan, rng: Rng,
     if (lvl < 3 && n > 0) {
       const uses = def.uses.reduce((a, k) => a + f.attrs[k], 0) / def.uses.length;
       const talent = 0.6 + uses / 25;
-      const step = (n / 2) * talent * (0.6 + coachQuality(gym, "head") / 120) / (def.weeks * (1 + lvl * 0.6));
+      const step = (n / 2) * talent * (0.6 + coachFor(w, f, "head", coachQuality) / 120) / (def.weeks * (1 + lvl * 0.6));
       drilled = { tech: plan.drill, level: lvl, progress: step };
     }
   }
@@ -240,7 +241,7 @@ export function trainingWeek(w: World, f: Fighter, plan: TrainingPlan, rng: Rng,
       const cur = def.kind === "strike" ? st.sm : st.gm;
       const weights = styleSessions(plan.style);
       const rel = plan.week.reduce((a, s) => a + (weights[s] ?? 0), 0);
-      const coach = coachQuality(gym, def.kind === "strike" ? "striking" : def.group === "Wrestling" || def.id === "sprawl" ? "wrestling" : "grappling");
+      const coach = coachFor(w, f, def.kind === "strike" ? "striking" : def.group === "Wrestling" || def.id === "sprawl" ? "wrestling" : "grappling", coachQuality);
       const step = rel * 0.3 * (0.5 + styleFit(f.attrs, plan.style) / 100) * (0.55 + coach / 110) * (0.75 + f.attrs.fightIQ / 40) * INT_GROWTH[plan.intensity] * (1 - cur / 125) * hurtTrain * fatPenalty;
       const after = clamp(cur + step, 0, 99);
       styled = { id: plan.style, before: cur, after };

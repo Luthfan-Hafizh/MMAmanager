@@ -447,11 +447,28 @@ function lapseOthers(w: World, f: Fighter, keep: string): void {
 
 export type CounterResult = { outcome: "accepted" | "countered" | "final" | "walked"; text: string };
 
-export function counterOffer(w: World, rng: Rng, offerId: string, ask: { show: number; win: number; fights: number }): CounterResult {
+/**
+ * Clauses are for the fighters a big promotion can't do without: a champion, a top-five
+ * contender, or a draw (popularity 60+). Elsewhere the deal is the money.
+ */
+export function clauseLeverage(w: World, f: Fighter, promo: PromoId): boolean {
+  if (promo !== "ufc" && promo !== "pfl") return false;
+  const r = f.promo === promo ? rankOf(w, f) : null;
+  return (r !== null && r <= 5) || f.pop >= 60 || (f.promo !== promo && isChampion(w, f));
+}
+
+export function counterOffer(w: World, rng: Rng, offerId: string, ask: { show: number; win: number; fights: number; rematch?: boolean; ppv?: number }): CounterResult {
   const o = w.career.contractOffers.find((x) => x.id === offerId);
   if (!o || o.status !== "open") return { outcome: "walked", text: "That offer is gone." };
   o.rounds++;
-  const wantTotal = ask.show + ask.win * 0.6;
+  const f = w.fighters[o.fighter];
+  const wantsClauses = (!!ask.rematch && !o.rematch) || (ask.ppv ?? 0) > (o.ppv ?? 0);
+  if (wantsClauses && f && !clauseLeverage(w, f, o.promo)) {
+    return { outcome: "countered", text: `${PROMOTIONS[o.promo].short} won't talk about clauses: those are for champions, top-five contenders and the names that sell. The money is still on the table.` };
+  }
+  // A clause is worth money to the promotion: the rematch about 8% of the deal, each point of the pay-per-view about 6%.
+  const clauseCost = 1 + (ask.rematch && !o.rematch ? 0.08 : 0) + Math.max(0, (ask.ppv ?? 0) - (o.ppv ?? 0)) * 0.06;
+  const wantTotal = (ask.show + ask.win * 0.6) * clauseCost;
   const limitTotal = o.limit * (o.win ? 1.6 : 1);
   const curTotal = o.show + o.win * 0.6;
   // More fights on the deal is worth a little to the promotion.
@@ -460,6 +477,8 @@ export function counterOffer(w: World, rng: Rng, offerId: string, ask: { show: n
     o.show = ask.show;
     o.win = o.win ? ask.win : 0;
     o.fights = clamp(ask.fights, 1, 8);
+    if (ask.rematch) o.rematch = true;
+    if (ask.ppv) o.ppv = Math.max(o.ppv ?? 0, ask.ppv);
     return { outcome: "accepted", text: `${PROMOTIONS[o.promo].short} agrees to those terms. Sign when you're ready.` };
   }
   if (o.patience <= 0) {
@@ -481,7 +500,7 @@ export function counterOffer(w: World, rng: Rng, offerId: string, ask: { show: n
   };
 }
 
-type Terms = Pick<ContractOffer, "fights" | "show" | "win" | "escal" | "signBonus" | "champClause" | "termDays">;
+type Terms = Pick<ContractOffer, "fights" | "show" | "win" | "escal" | "signBonus" | "champClause" | "termDays" | "rematch" | "ppv">;
 
 /**
  * The fighter moves to a promotion (or starts a new deal at the same one) on
@@ -518,6 +537,8 @@ function joinPromotion(w: World, f: Fighter, promo: PromoId, t: Terms): PromoId 
     end: w.day + t.termDays,
     champClause: t.champClause,
     signBonus: t.signBonus,
+    rematch: t.rematch,
+    ppv: t.ppv,
   };
   if (t.signBonus) {
     if (w.career.mode === "fighter") ledger(w, { amount: t.signBonus, what: `${PROMOTIONS[promo].short} signing bonus`, cat: "bonus", fighter: f.id });
@@ -544,7 +565,7 @@ export function signContract(w: World, rng: Rng, offerId: string): string {
     if (!o.approach) return `The ${PROMOTIONS[from].short} deal still has ${left} fight${left === 1 ? "" : "s"} to run.`;
     o.status = "accepted";
     recordBid(w, o, "signed");
-    if (fc) fc.next = { promo: o.promo, fights: o.fights, show: o.show, win: o.win, escal: o.escal, signBonus: o.signBonus, champClause: o.champClause, termDays: o.termDays, signed: w.day };
+    if (fc) fc.next = { promo: o.promo, fights: o.fights, show: o.show, win: o.win, escal: o.escal, signBonus: o.signBonus, champClause: o.champClause, termDays: o.termDays, signed: w.day, rematch: o.rematch, ppv: o.ppv };
     lapseOthers(w, f, o.id);
     closeMessages(w, o.id, "Signed");
     adjustRapport(w, f, from, -6, `Agreed to join the ${PROMOTIONS[o.promo].short} when the deal is done`);

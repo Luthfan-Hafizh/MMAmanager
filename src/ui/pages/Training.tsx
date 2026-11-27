@@ -7,11 +7,13 @@ import { FIGHT_STYLES, masteryName, styleFit, type StyleId } from "../../data/fi
 import { fightStyle, switchStyle } from "../../world/fightstyle";
 import { Rng } from "../../core/rng";
 import { MASTERY_NAMES, TECHNIQUES, TECH_IDS, type TechId } from "../../data/techniques";
-import { changed, useWorld } from "../../state/store";
+import { changed, useWorld, toast } from "../../state/store";
 import { go } from "../router";
 import { confirmBox, Empty, FighterLink, Panel, Seg } from "../components";
 import { fullName } from "../../world/core";
 import { GymPanel, WeightPanel } from "./Moves";
+import { STAFF_ROLES, STAFF_TIERS, wageOf, hireStaff, fireStaff, coachFor } from "../../career/staff";
+import { money } from "../../core/util";
 
 export function FighterSwitch({ w, id, base }: { w: World; id: string; base: string }) {
   if (w.career.fighters.length <= 1) return null;
@@ -129,7 +131,7 @@ export function Training({ id }: { id?: string }) {
                   <tr key={s}>
                     <td><span className="row tight"><span className="promo-dot" style={{ background: d.color }} /> <b>{d.name}</b></span></td>
                     <td className="c">{counts.get(s) ?? 0}</td>
-                    <td>{d.area === "head" ? "Head coach" : d.area === "sc" ? "Strength coach" : `${d.area} coach`} <span className="dim">{coachQuality(gym, d.area)}</span></td>
+                    <td>{d.area === "head" ? "Head coach" : d.area === "sc" ? "Strength coach" : `${d.area} coach`} <span className="dim">{coachFor(w, f, d.area, coachQuality)}{coachFor(w, f, d.area, coachQuality) > coachQuality(gym, d.area) ? " (yours)" : ""}</span></td>
                     <td className="small muted">{(Object.keys(d.attrs) as AttrKey[]).map((k) => `${ATTR_INFO[k].name}${d.how?.[k] ? ` (${d.how[k]})` : ""}`).join(", ") || (s === "drilling" ? "The technique you drill" : "Recovery")}</td>
                     <td className="r">{d.load > 0 ? d.load : <span className="good">{d.load}</span>}</td>
                   </tr>
@@ -141,6 +143,7 @@ export function Training({ id }: { id?: string }) {
       </div>
       <div className="c4 stack">
         <GymPanel w={w} f={f} />
+        <StaffPanel w={w} f={f} />
         <WeightPanel w={w} f={f} />
         <Panel title="Forecast" hint="one week of this plan">
           {preview && (
@@ -266,6 +269,47 @@ function StyleCoaching({ w, f, fc }: { w: World; f: Fighter; fc: FighterCareer }
           </div>
         </div>
       )}
+    </Panel>
+  );
+}
+
+/** The fighter's own coaches and nutritionist, paid by the week. */
+export function StaffPanel({ w, f }: { w: World; f: Fighter }) {
+  const fc = w.career.fc[f.id];
+  if (!fc || w.career.mode !== "fighter") return null;
+  const team = fc.team ?? {};
+  const weekly = Object.values(team).reduce((a, q) => a + wageOf(q ?? 0), 0);
+  return (
+    <Panel title="Your own team" hint={weekly ? `${money(weekly)} a week` : "On top of the gym's coaches"}>
+      <table className="tbl compact staff">
+        <tbody>
+          {STAFF_ROLES.map((r) => {
+            const q = team[r.id];
+            const gymQ = r.id === "nutrition" ? null : coachQuality(w.gyms[f.gym], r.id);
+            return (
+              <tr key={r.id}>
+                <td>
+                  <b>{r.name}</b>
+                  <div className="tiny dim">{r.what}{gymQ !== null ? ` · the gym's: ${gymQ}` : ""}</div>
+                </td>
+                <td className="r">
+                  {q ? (
+                    <span className="row tight" style={{ justifyContent: "flex-end" }}>
+                      <span className="small">{STAFF_TIERS.find((t) => t.q === q)?.name} ({q}) · {money(wageOf(q))}/wk</span>
+                      <button className="btn sm ghost" onClick={() => { toast(fireStaff(w, f, r.id)); changed(); }}>Let go</button>
+                    </span>
+                  ) : (
+                    <select className="input" value="" aria-label={`Hire a ${r.name.toLowerCase()}`} onChange={(e) => { if (e.target.value) { toast(hireStaff(w, f, r.id, Number(e.target.value)), "good"); changed(); } }}>
+                      <option value="">Hire…</option>
+                      {STAFF_TIERS.map((t) => <option key={t.q} value={t.q}>{t.name} ({t.q}), {money(t.wage)} a week</option>)}
+                    </select>
+                  )}
+                </td>
+              </tr>
+            );
+          })}
+        </tbody>
+      </table>
     </Panel>
   );
 }

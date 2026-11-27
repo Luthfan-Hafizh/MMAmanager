@@ -2,6 +2,7 @@
 // opponent, a nutritionist for the cut, film study, and the game plan. On the
 // day before the fight, the scale.
 
+import { nutritionOf, siteCostPerWeek, sitePrep } from "./staff";
 import type { Rng } from "../core/rng";
 import { clamp } from "../core/util";
 import { DIVISIONS } from "../data/divisions";
@@ -18,11 +19,12 @@ export const SPARRING_NAMES = ["Gym partners", "Brought-in partners", "Elite par
 export const NUTRITION_NAMES = ["Do it yourself", "Nutritionist", "Full cut team"];
 export const CUT_NAMES: Record<Camp["cut"], string> = { early: "Diet down early", standard: "Standard water cut", late: "Big late cut" };
 
-export function campCost(c: Pick<Camp, "sparring" | "nutrition" | "weeks">, tier: string): number {
+export function campCost(c: Pick<Camp, "sparring" | "nutrition" | "weeks" | "site">, tier: string): number {
   const scale = tier === "major" || tier === "league" ? 1 : tier === "regional" || tier === "tryout" ? 0.55 : 0.3;
   const spar = [0, 900, 2600][c.sparring] * c.weeks * scale;
   const nut = [0, 1500, 4500][c.nutrition] * (scale < 0.5 ? 0.5 : 1);
-  return Math.round((spar + nut) / 50) * 50;
+  const away = siteCostPerWeek(c.site) * c.weeks * Math.max(0.6, scale);
+  return Math.round((spar + nut + away) / 50) * 50;
 }
 
 export function startCamp(w: World, f: Fighter, b: Bout): Camp {
@@ -41,6 +43,7 @@ export function startCamp(w: World, f: Fighter, b: Bout): Camp {
     study: 0,
     cost: 0,
     paid: false,
+    site: "home",
   };
   camp.cost = campCost(camp, tier);
   const fc = w.career.fc[f.id];
@@ -81,7 +84,7 @@ export function weighInPlayer(w: World, rng: Rng, f: Fighter, b: Bout): { weight
   const allow = title ? 0 : 1;
   const over = (f.walk - limit) / limit; // how far the walking weight is above the limit
   const weeks = camp ? (b.day - camp.start) / 7 : 2;
-  const nut = camp?.nutrition ?? 0;
+  const nut = nutritionOf(w, f);
   const style = camp?.cut ?? "standard";
   // On short notice the clock matters most: what can come off in the days there were.
   const sub = !!b.shortNotice && b.sub === f.id;
@@ -110,7 +113,7 @@ export function campPrep(w: World, f: Fighter, b: Bout): number {
   const fresh = f.fatigue > 60 ? -0.35 : f.fatigue > 45 ? -0.15 : f.fatigue < 25 ? 0.1 : 0;
   const spar = camp ? [0, 0.12, 0.22][camp.sparring] : 0;
   const study = camp ? camp.study * 0.25 : 0;
-  return clamp(-0.45 + full * 0.55 + sharp * 0.5 + fresh + spar + study, -1, 1);
+  return clamp(-0.45 + full * 0.55 + sharp * 0.5 + fresh + spar + study + sitePrep(camp), -1, 1);
 }
 
 /** Day before the fight: both fighters on the scale, the final numbers for the engine, then a decision. */

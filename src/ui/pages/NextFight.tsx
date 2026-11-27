@@ -7,7 +7,7 @@ import { heightText, money, pct } from "../../core/util";
 import { DIVISIONS } from "../../data/divisions";
 import { PROMOTIONS } from "../../data/promotions";
 import { ATTR_INFO, groupScore, ovr, styleOf, type AttrKey } from "../../model/attributes";
-import type { Bout, Camp, Fighter, World } from "../../model/types";
+import type { Bout, Camp, Fighter, World, CampSite } from "../../model/types";
 import {
   BOTTOM_TEXT, DEF_TEXT, PRESETS, SCALE_TEXT, STYLE_DESC, STYLE_NAMES, TAKEDOWN_TEXT, TARGET_DESC, TARGET_TEXT, TOP_TEXT, preset, suggestPlan,
   type BottomMode, type DefMode, type FightPlan, type PlanStyle, type Target, type TopMode,
@@ -24,6 +24,7 @@ import { NextFightCard } from "./Home";
 import { Band } from "../art";
 import { BoutPreview } from "./Events";
 import { oddsOf } from "../../world/odds";
+import { topGymFor, SITE_NAMES } from "../../career/staff";
 
 export function NextFight({ id }: { id?: string }) {
   const w = useWorld();
@@ -164,7 +165,8 @@ function Scouting({ w, opp, me }: { w: World; opp: Fighter; me: Fighter }) {
 function CampPanel({ w, f, b, camp }: { w: World; f: Fighter; b: Bout; camp: Camp }) {
   const tier = PROMOTIONS[b.promo].tier;
   const set = <K extends keyof Camp>(k: K, v: Camp[K]) => {
-    if (camp.paid && (k === "sparring" || k === "nutrition")) return;
+    if (camp.paid && (k === "sparring" || k === "nutrition" || k === "site")) return;
+    if (k === "site") camp.guest = v === "topgym" ? topGymFor(w, f)?.id : undefined;
     (camp as Camp)[k] = v;
     camp.cost = campCost(camp, tier);
     changed();
@@ -184,6 +186,11 @@ function CampPanel({ w, f, b, camp }: { w: World; f: Fighter; b: Bout; camp: Cam
           <div className="small dim" style={{ marginBottom: 4 }}>Weight cut support</div>
           <Seg value={camp.nutrition} onChange={(v) => set("nutrition", v)} options={NUTRITION_NAMES.map((n, i) => ({ v: i as 0 | 1 | 2, label: n }))} />
           <p className="tiny dim" style={{ marginTop: 4 }}>A nutritionist makes the cut safer; a full team makes a big cut possible.</p>
+        </div>
+        <div className="c12">
+          <div className="small dim" style={{ marginBottom: 4 }}>Where</div>
+          <Seg value={camp.site ?? "home"} onChange={(v) => set("site", v)} options={(["home", "altitude", "topgym"] as CampSite[]).map((k) => ({ v: k, label: k === "topgym" ? `${topGymFor(w, f)?.name ?? "A top gym"}` : SITE_NAMES[k] }))} />
+          <p className="tiny dim" style={{ marginTop: 4 }}>{camp.site === "altitude" ? "Weeks at altitude build the gas tank: better prepared on the night." : camp.site === "topgym" ? `The camp at ${w.gyms[camp.guest ?? ""]?.name ?? "a top gym"}: its coaches count where they're better than yours, and the room sharpens you.` : "The usual room, the usual coaches, no travel."}{camp.paid ? " Paid: it's set for this camp." : ""}</p>
         </div>
         <div className="c6">
           <div className="small dim" style={{ marginBottom: 4 }}>The cut</div>

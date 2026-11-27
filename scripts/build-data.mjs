@@ -83,7 +83,7 @@ function compact(f, promo) {
     dv: [f.development?.peakAge ?? 29, round(f.development?.growth ?? 1), round(f.development?.decline ?? 1)],
     pot: f.potential ?? null,
     pop: f.popularity ?? 20,
-    g: gymOf(f.gymId) || undefined,
+    g: gymOf(FIGHTER_FIX[f.id]?.gym ?? f.gymId) || undefined,
     td: f.titleDefenses ?? 0,
     tr: f.titleReigns ?? 0,
     s: st
@@ -115,12 +115,12 @@ const gyms = src.gyms.filter((g) => !GYM_FIX.merge[g.id]).map((g) => {
     n: fx.n ?? g.name,
     c: fx.c ?? (g.countryCode || "US"),
     city: fx.city ?? (g.city || undefined),
-    rep: Math.max(...group.map((x) => x.reputation)),
-    fac: Math.max(...group.map((x) => x.facilities)),
-    q,
-    hc,
+    rep: fx.rep ?? Math.max(...group.map((x) => x.reputation)),
+    fac: fx.fac ?? Math.max(...group.map((x) => x.facilities)),
+    q: fx.q ?? q,
+    hc: fx.hc ?? hc,
   };
-});
+}).filter((g) => fighters.some((f) => f.g === g.id)); // a placeholder nobody trains at any more drops out
 
 const ranks = {};
 for (const r of src.rankings) ranks[DIV[r.divisionId]] = { c: r.championId, e: r.entries };

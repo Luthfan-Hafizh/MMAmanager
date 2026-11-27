@@ -1,5 +1,5 @@
 {
-  "_": "The real gyms the source lists more than once (City Kickboxing, and 'The Fight Centre & City Kickboxing' for one fighter who names both), merged into one; and names, cities and countries cleaned of the address pasted into them. Read by scripts/build-data.mjs when the roster is built, and by world/create.ts repair() so saves made before keep the same gyms. British gyms the source codes as 'GB' are put in their home nation (England, Wales) with the real city; Team Topuria is Topuria's own gym in Madrid.",
+  "_": "The real gyms the source lists more than once (City Kickboxing, and 'The Fight Centre & City Kickboxing' for one fighter who names both), merged into one; and names, cities and countries cleaned of the address pasted into them. Read by scripts/build-data.mjs when the roster is built, and by world/create.ts repair() so saves made before keep the same gyms. British gyms the source codes as 'GB' are put in their home nation (England, Wales) with the real city; Team Topuria is Topuria's own gym in Madrid. Self-named placeholders the UFC's profiles carry for some fighters are put right from their Wikipedia and ESPN teams: Bronx's Gold Team is Chute Boxe Diego Lima in São Paulo (Charles Oliveira, and Ian Machado Garry since 2023), Team Jones is Jackson's MMA Acoma, Team Ortega is Gracie University; 'hc', 'rep', 'fac' and 'q' (head, striking, grappling, wrestling and strength coaches) set the head coach and the levels.",
   "merge": {
     "gym-real-308": "gym-real-70",
     "gym-real-278": "gym-real-2",
@@ -54,11 +54,14 @@
     "gym-real-16": { "city": "Glendale" },
     "gym-real-17": { "city": "Sacramento" },
     "gym-real-18": { "n": "Tristar Gym" },
+    "gym-real-20": { "city": "Belém" },
     "gym-real-27": { "c": "GB-ENG", "city": "Manchester" },
     "gym-real-28": { "n": "Serra-Longo Fight Team" },
     "gym-real-29": { "n": "Izzystyle Wrestling" },
     "gym-real-34": { "n": "Jackson Wink MMA Academy" },
+    "gym-real-35": { "n": "Gracie University", "c": "US", "city": "Torrance", "hc": "Rener Gracie", "rep": 68, "fac": 66, "q": [76, 62, 88, 64, 64] },
     "gym-real-39": { "c": "ES", "city": "Madrid" },
+    "gym-real-41": { "n": "Chute Boxe Diego Lima", "c": "BR", "city": "São Paulo", "hc": "Diego Lima", "rep": 76, "fac": 72, "q": [80, 80, 76, 70, 72] },
     "gym-real-42": { "n": "Hawaii Elite MMA" },
     "gym-real-43": { "n": "Next Generation MMA", "city": "Liverpool", "c": "GB-ENG" },
     "gym-real-46": { "n": "Saigon Sports Club", "city": "Ho Chi Minh City" },
@@ -137,6 +140,8 @@
     "gym-real-345": { "city": "Milwaukee" },
     "gym-real-346": { "c": "US", "city": "Houston" },
     "gym-real-347": { "n": "Subfighter MMA", "city": "Laguna Niguel" },
-    "gym-real-348": { "n": "Mjölnir", "city": "Reykjavík" }
+    "gym-real-348": { "n": "Mjölnir", "city": "Reykjavík" },
+    "gym-real-352": { "n": "Black Tiger Fight Club", "city": "Beijing", "rep": 62, "fac": 62 },
+    "gym-real-356": { "n": "Jackson's MMA Acoma", "c": "US", "city": "Albuquerque", "hc": "Greg Jackson", "rep": 78, "fac": 72, "q": [86, 74, 74, 76, 74] }
   }
 }

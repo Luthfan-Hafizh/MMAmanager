@@ -148,10 +148,14 @@ export function tidyGyms(w: World): void {
     delete w.gyms[from];
     moved = true;
   }
-  for (const [id, fx] of Object.entries(GYM_FIXES.fix as Record<string, { n?: string; c?: string; city?: string }>)) {
+  for (const [id, fx] of Object.entries(GYM_FIXES.fix as Record<string, { n?: string; c?: string; city?: string; hc?: string; rep?: number; fac?: number; q?: number[] }>)) {
     const g = w.gyms[id];
     if (!g) continue;
     if (fx.n) g.name = fx.n;
+    if (fx.hc) g.headCoach = fx.hc;
+    if (fx.rep) g.rep = fx.rep;
+    if (fx.fac) g.facilities = fx.fac;
+    if (fx.q) g.coaches = { head: fx.q[0], striking: fx.q[1], grappling: fx.q[2], wrestling: fx.q[3], sc: fx.q[4] };
     if (fx.c) g.country = fx.c;
     if (fx.city) g.city = fx.city;
     else if (fx.c) g.city = countryOf(fx.c).cities[0];
@@ -188,6 +192,15 @@ export function repair(w: World): World {
   tidyGyms(w);
   // Finished bouts used to keep "awaiting: false".
   for (const b of Object.values(w.bouts)) if (b.awaiting === false) delete b.awaiting;
+  // Real fighters the source placed in a gym named after themselves where they don't train
+  // (Ian Machado Garry has been at Chute Boxe Diego Lima since 2023): moved, if still there.
+  for (const [id, fx] of Object.entries(FIGHTER_FIXES as Record<string, { gym?: string; from?: string }>)) {
+    const f = w.fighters[id];
+    if (!f || !fx.gym || !w.gyms[fx.gym] || f.gym === fx.gym || f.ctrl || w.career.fighters.includes(id)) continue;
+    if (fx.from && f.gym !== fx.from) continue;
+    f.gym = fx.gym;
+    touchRoster(w, f);
+  }
   // Real fighters the source got wrong (Shaqueme Rock was 833 years old).
   for (const [id, fx] of Object.entries(FIGHTER_FIXES as Record<string, { born?: string }>)) {
     const f = w.fighters[id];

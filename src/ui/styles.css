@@ -1445,7 +1445,7 @@ tr.click:focus-visible, .list-row[tabindex]:focus-visible { outline: 2px solid v
 .save-bak { display: flex; justify-content: space-between; align-items: center; gap: 10px; font-size: 13px; }
 
 /* Compare two fighters */
-.cmp-pick { display: grid; grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr); gap: 14px; align-items: start; margin-bottom: 18px; }
+.cmp-pick { position: relative; z-index: 2; display: grid; grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr); gap: 14px; align-items: start; margin-bottom: 18px; }
 .cmp-vs { font-stretch: 62%; font-weight: 900; font-size: 34px; color: var(--red); align-self: center; text-transform: uppercase; }
 .cmp-picker { position: relative; background: var(--sheet); border-radius: var(--r); box-shadow: var(--shadow); padding: 12px 14px; display: grid; gap: 8px; }
 .cmp-cur { display: flex; align-items: center; gap: 6px; font-size: 15px; }

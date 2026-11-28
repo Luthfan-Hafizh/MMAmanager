@@ -11,7 +11,7 @@ import type { Bout, Fighter, World } from "../../model/types";
 import { methodText, winChance } from "../../engine/sim";
 import { FIGHT_STYLES } from "../../data/fightstyles";
 import { fightStyle } from "../../world/fightstyle";
-import { rankLabel, recordText, resultFor } from "../../world/core";
+import { rankLabel, recordText, resultFor, fullName } from "../../world/core";
 import { useWorld } from "../../state/store";
 import { go, Link } from "../router";
 import { Empty, Flag, Form, Panel } from "../components";
@@ -45,7 +45,7 @@ function Picker({ w, label, value, onPick }: { w: World; label: string; value?: 
     const t = q.trim().toLowerCase();
     if (t.length < 2) return [];
     return Object.values(w.fighters)
-      .filter((f) => `${f.first} ${f.surname}`.toLowerCase().includes(t))
+      .filter((f) => fullName(f).toLowerCase().includes(t))
       .sort((x, y) => Number(y.status === "active") - Number(x.status === "active") || y.pop - x.pop)
       .slice(0, 8);
   }, [q, w]);
@@ -59,7 +59,7 @@ function Picker({ w, label, value, onPick }: { w: World; label: string; value?: 
           {hits.map((f) => (
             <li key={f.id}>
               <button type="button" onClick={() => { onPick(f.id); setQ(""); }}>
-                <Flag code={f.country} /> {f.first} {f.surname} <span className="dim small">{recordText(f)} · {DIVISIONS[f.div].short}{f.status === "retired" ? " · retired" : f.promo ? ` · ${PROMOTIONS[f.promo].short}` : ""}</span>
+                <Flag code={f.country} /> {fullName(f)} <span className="dim small">{recordText(f)} · {DIVISIONS[f.div].short}{f.status === "retired" ? " · retired" : f.promo ? ` · ${PROMOTIONS[f.promo].short}` : ""}</span>
               </button>
             </li>
           ))}
@@ -97,9 +97,9 @@ function Head({ w, A, B }: { w: World; A: Fighter; B: Fighter }) {
             <table className="tbl cmp-tape">
               <thead>
                 <tr>
-                  <th className="r"><Link to={`/fighter/${A.id}`}>{A.first} {A.surname}</Link></th>
+                  <th className="r"><Link to={`/fighter/${A.id}`}>{fullName(A)}</Link></th>
                   <th className="c" />
-                  <th><Link to={`/fighter/${B.id}`}>{B.first} {B.surname}</Link></th>
+                  <th><Link to={`/fighter/${B.id}`}>{fullName(B)}</Link></th>
                 </tr>
               </thead>
               <tbody>

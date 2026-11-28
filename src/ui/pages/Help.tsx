@@ -76,6 +76,7 @@ const PARTS: Part[] = [
     lines: [
       "Rankings work like the UFC's rating model: who you beat counts most, a finish adds a little, activity helps, and a winner always moves above the fighter beaten. A win over a ranked fighter a division away ranks you there too.",
       "Champions only fight for their belts; a champion out long enough gets an interim title made, and one away too long is stripped. Every January the year's awards are handed out.",
+      "In the UFC the title fights go on the numbered cards. After a defence the champion names the next challenger from the cage, or, with a defence behind them or a big name, calls out the champion a weight up (or down): if the promotion makes it and the champion wins, two belts, and one has to be given up.",
       ["Lineages, records and the Hall of Fame are on ", "Legacy", "/legacy"],
     ],
   },

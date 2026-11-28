@@ -18,10 +18,11 @@ export function useRoute(): { path: string; parts: string[]; query: URLSearchPar
   return { path, parts: path.split("/").filter(Boolean), query: new URLSearchParams(q ?? "") };
 }
 
-export function go(path: string): void {
+/** Open a page. `keepScroll` for a change within the page (a tab), where jumping to the top would lose the place. */
+export function go(path: string, opts: { keepScroll?: boolean } = {}): void {
   if (current() === path) return;
   window.location.hash = path;
-  window.scrollTo({ top: 0, behavior: "auto" });
+  if (!opts.keepScroll) window.scrollTo({ top: 0, behavior: "auto" });
 }
 
 export function Link({ to, children, className, title, style }: { to: string; children: ReactNode; className?: string; title?: string; style?: CSSProperties }) {

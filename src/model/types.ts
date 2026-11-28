@@ -150,6 +150,8 @@ export interface Fighter {
   id: string;
   first: string;
   surname: string;
+  /** The name is written family name first (Song Yadong): `surname` is the family name, the full name puts it first. */
+  fam?: boolean;
   nick?: string;
   sex: Sex;
   country: string;
@@ -453,7 +455,7 @@ export interface Message {
   from: string;
   subject: string;
   body: string;
-  kind: "offer" | "contract" | "info" | "result" | "injury" | "training" | "sponsor" | "news" | "camp" | "money" | "client" | "weighin" | "ranking" | "life" | "media";
+  kind: "offer" | "contract" | "info" | "result" | "injury" | "training" | "sponsor" | "news" | "camp" | "money" | "client" | "weighin" | "ranking" | "life" | "media" | "title";
   fighter?: string;
   ref?: string;
   read: boolean;
@@ -685,6 +687,8 @@ export interface FighterCareer {
   life?: { last: number; seen: Record<string, number> };
   /** A call for the BMF title, alive until this day. */
   bmfCall?: number;
+  /** A champion's call for the champion at another weight, and the belt it would be for (career/superfight.ts). */
+  superfight?: { target: string; div: DivisionId; until: number };
   /** Invited cageside at an event (where a face-off with the champion can happen). */
   cageside?: { ev: string; champ?: string };
   /** The working relationship with each promotion's matchmaker, 0..100 (50 when missing). */

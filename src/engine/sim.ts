@@ -397,8 +397,8 @@ export class FightSim {
     const planB = input.planB ?? suggestPlan(input.b.attrs, input.a.attrs, -reachDiff);
     this.s = [this.side(input.a, 0, planA, input.condA), this.side(input.b, 1, planB, input.condB)];
     if (this.s[0].name === this.s[1].name) {
-      this.s[0].name = `${input.a.first} ${input.a.surname}`;
-      this.s[1].name = `${input.b.first} ${input.b.surname}`;
+      this.s[0].name = input.a.fam ? `${input.a.surname} ${input.a.first}` : `${input.a.first} ${input.a.surname}`;
+      this.s[1].name = input.b.fam ? `${input.b.surname} ${input.b.first}` : `${input.b.first} ${input.b.surname}`;
     }
     this.judges = [0, 1, 2].map(() => ({ lean: this.rng.normal(0, 0.14), noise: 0.85 + this.rng.next() * 0.5 }));
     this.startRoundStats();

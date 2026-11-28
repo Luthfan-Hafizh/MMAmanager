@@ -52,6 +52,7 @@ function Loading() {
   );
 }
 import type { World } from "../model/types";
+import { fullName } from "../world/core";
 
 export function App() {
   const world = useStore((s) => s.world);
@@ -95,7 +96,7 @@ function pageFor(parts: string[]): PageDef {
       return { title: "Inbox", eyebrow: "Messages and decisions", sub: "Offers, contracts, results and news from your team.", el: <Inbox id={p1} /> };
     case "fighter": {
       const f = w.fighters[p1 ?? w.career.fighters[0]];
-      return { title: f ? `${f.first} ${f.surname}`.trim() : "Fighter", el: <FighterPage id={p1 ?? w.career.fighters[0]} tab={p2} />, custom: true };
+      return { title: f ? fullName(f) : "Fighter", el: <FighterPage id={p1 ?? w.career.fighters[0]} tab={p2} />, custom: true };
     }
     case "training":
       return { title: "Training", eyebrow: "The gym", sub: "Ten sessions a week, an intensity and a technique to drill. Growth slows near the ceiling and with age.", el: <Training id={p1} /> };

@@ -7,6 +7,7 @@ import { adviseContract, adviseInjury } from "../../career/advisor";
 import { AdviceCard, FightOfferView } from "../advice";
 import { DeclinePicker } from "../decline";
 import { changed, toast, useWorld } from "../../state/store";
+import { fullName } from "../../world/core";
 import { go, Link } from "../router";
 import { Empty, Facts, Seg } from "../components";
 import { Icons } from "../icons";
@@ -27,12 +28,20 @@ const ICON: Record<Message["kind"], () => JSX.Element> = {
   ranking: Icons.trophy,
   life: Icons.bolt,
   media: Icons.mic,
+  title: Icons.trophy,
 };
 
 const KIND: Record<Message["kind"], string> = {
   offer: "Fight offer", contract: "Contract", info: "Message", result: "Result", injury: "Medical", training: "Training", sponsor: "Sponsor",
-  news: "News", camp: "Camp", money: "Money", client: "Client", weighin: "Weigh-in", ranking: "Rankings", life: "Life", media: "Media",
+  news: "News", camp: "Camp", money: "Money", client: "Client", weighin: "Weigh-in", ranking: "Rankings", life: "Life", media: "Media", title: "Title",
 };
+
+/** Within a day, the fight comes first: the result, then the belt, then decisions, then the rest as they came. */
+function inOrder(list: Message[]): Message[] {
+  const at = new Map(list.map((m, i) => [m, i]));
+  const rank = (m: Message) => (m.kind === "result" && m.ref ? 0 : m.kind === "title" ? 1 : m.needs && !m.done ? 2 : 3);
+  return [...list].sort((a, b) => b.day - a.day || rank(a) - rank(b) || at.get(a)! - at.get(b)!);
+}
 
 export function Inbox({ id }: { id?: string }) {
   const w = useWorld();
@@ -44,7 +53,7 @@ export function Inbox({ id }: { id?: string }) {
   useEffect(() => {
     if (id && bodyRef.current && window.matchMedia("(max-width: 860px)").matches) bodyRef.current.scrollIntoView({ behavior: "smooth", block: "start" });
   }, [id]);
-  const list = w.inbox.filter((m) => (filter === "decide" ? m.needs && !m.done : filter === "unread" ? !m.read : true));
+  const list = inOrder(w.inbox.filter((m) => (filter === "decide" ? m.needs && !m.done : filter === "unread" ? !m.read : true)));
   const cur = w.inbox.find((m) => m.id === id) ?? list[0];
   useEffect(() => {
     if (cur && !cur.read) {
@@ -107,7 +116,7 @@ export function Inbox({ id }: { id?: string }) {
                 {cur.fighter && w.fighters[cur.fighter] && (
                   <>
                     {" · "}
-                    <Link to={`/fighter/${cur.fighter}`}>{w.fighters[cur.fighter].first} {w.fighters[cur.fighter].surname}</Link>
+                    <Link to={`/fighter/${cur.fighter}`}>{fullName(w.fighters[cur.fighter])}</Link>
                   </>
                 )}
               </div>

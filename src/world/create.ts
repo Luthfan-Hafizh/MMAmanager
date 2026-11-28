@@ -21,9 +21,10 @@ import { entryElo, p4pOf, refitRankings, updateP4P, updateRankings } from "./ran
 import { managerPerson } from "../career/advisor";
 import { initBmf, isBeltFight } from "./belts";
 import { notify } from "../career/inbox";
+import { creditRealRecord } from "../career/achievements";
 import { refreshCard } from "./matchmaking";
 import { grantStyleTech, pickStyles, switchStyle } from "./fightstyle";
-import { dayOfIso, realSignals } from "./real";
+import { dayOfIso, familyFirst, realSignals } from "./real";
 import { styleFit, type GrappleStyle, type StrikeStyle } from "../data/fightstyles";
 import type { Build } from "../data/body";
 import GYM_FIXES from "../data/gym-fixes.json";
@@ -225,6 +226,14 @@ export function repair(w: World): World {
       }
     }
   }
+  // Names written family name first (Song Yadong) used to take the last word as the surname ("the win over Yadong").
+  for (const f of Object.values(w.fighters)) {
+    if (!f.real || f.fam || !familyFirst(f.id) || !f.first) continue;
+    const family = f.first;
+    f.first = f.surname;
+    f.surname = family;
+    f.fam = true;
+  }
   // "Ariane" was in the Brazilian men's names.
   for (const f of Object.values(w.fighters)) if (!f.real && f.sex === "M" && f.first === "Ariane") f.first = "Adriano";
   // Some signings used to leave the amateur flag on a fighter who had turned pro.
@@ -280,6 +289,8 @@ export function repair(w: World): World {
   if (w.promos.pfl && !w.promos.pfl.p4p) w.promos.pfl.p4p = p4pOf(w, "pfl", 10);
   // Rankings with open places (new signings weren't ranked before their first fight) or a new size.
   refitRankings(w);
+  // Real fighters the player took over: the milestones their record already held, without a message.
+  for (const id of w.career.fighters) if (w.fighters[id]) creditRealRecord(w, w.fighters[id]);
   // Champions and interim champions used to be booked in fights with no belt on the line.
   for (const id of w.upcoming) {
     const ev = w.events[id];
@@ -690,6 +701,8 @@ export function addControlled(w: World, f: Fighter): void {
     mediaStyle: "confident",
     shortNotice: true,
   };
+  // A real fighter's record already holds some milestones (a champion has won in the UFC).
+  creditRealRecord(w, f);
 }
 
 function setupCareer(w: World, roster: RosterFile, o: NewGameOptions): void {

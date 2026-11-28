@@ -12,10 +12,10 @@ import { blocking } from "../../career/inbox";
 import { answer } from "../../career/actions";
 import { askForFight } from "../../career/offers";
 import { upcomingOf } from "../../world/calendar";
-import { fullName, isChampion, otherRanks, rankLabel, rankNumber, recordText } from "../../world/core";
+import { fullName, isChampion, otherRanks, p4pRank, rankLabel, rankNumber, recordText, nameLines } from "../../world/core";
 import { changed, toast, useWorld } from "../../state/store";
 import { Link, go } from "../router";
-import { Bar, Empty, FighterLink, Flag, Form, Ovr, Panel, RankBadge, Spark, rowLink } from "../components";
+import { Bar, Empty, FighterLink, Flag, Form, NEWS_KIND, Ovr, Panel, RankBadge, Spark, rowLink } from "../components";
 import { Band, Mark } from "../art";
 import { goatRank, legacyText } from "../../world/legacy";
 import { prepText, campPrep } from "../../career/camp";
@@ -27,7 +27,7 @@ import { DeclinePicker } from "../decline";
 import { becomeManager, careerRecap } from "../../career/retire";
 import { moneyline } from "../../world/odds";
 import { FightOfferView, InjuryCard } from "../advice";
-import { isBeltFight, stakeLabel } from "../../world/belts";
+import { heldBelt, isBeltFight, reignLine, stakeFor, stakeLabel } from "../../world/belts";
 import { exportWorld } from "../../state/persist";
 
 export function Home() {
@@ -44,7 +44,7 @@ function AfterFighting({ w }: { w: World }) {
   const rc = careerRecap(w, f);
   return (
     <>
-      <Band word={f.surname} eyebrow="Retired" first={f.first} title={f.surname} sub={rc.lines.join(" ")} right={<Mark label="Legacy" sub={`${legacyText(rc.legacy)}${rc.goat ? ` · #${rc.goat} all-time` : ""}`}>{Math.round(rc.legacy)}</Mark>} />
+      <Band word={f.surname} eyebrow="Retired" first={nameLines(f).first} title={nameLines(f).last} sub={rc.lines.join(" ")} right={<Mark label="Legacy" sub={`${legacyText(rc.legacy)}${rc.goat ? ` · #${rc.goat} all-time` : ""}`}>{Math.round(rc.legacy)}</Mark>} />
       <div className="wrap page-body">
         <div className="grid">
           <div className="c6">
@@ -85,7 +85,7 @@ export function NextFightCard({ w, f }: { w: World; f: Fighter }) {
             <span className="rec">{f.first}</span>
           </div>
           <div className="mid">
-            <div className="rd">{stakeLabel(b) ?? `${b.rounds} rounds`}</div>
+            <div className="rd">{stakeFor(w, b, f.id) ?? `${b.rounds} rounds`}</div>
             <div className="clock">{days <= 0 ? "Tonight" : days}</div>
             <div className="pos">{days <= 0 ? `${title || b.kind === "eliminator" ? `${b.rounds} rounds` : b.order === 0 ? "Main event" : b.order === 1 ? "Co-main event" : `${DIVISIONS[b.div].name} bout`}` : days === 1 ? "day to go" : "days to go"}</div>
           </div>
@@ -191,7 +191,7 @@ export function TopStories({ w, items, title = "Top stories" }: { w: World; item
         <div key={n.id} className="story">
           <div className="no">{i + 1}</div>
           <div>
-            <div className="k">{n.promo ? PROMOTIONS[n.promo].short : "MMA"} · {n.kind} · {fmtDate(n.day, { year: false })}</div>
+            <div className="k">{n.promo ? PROMOTIONS[n.promo].short : "MMA"} · {NEWS_KIND[n.kind] ?? n.kind} · {fmtDate(n.day, { year: false })}</div>
             <div className="t">{n.ev ? <Link to={`/event/${n.ev}`}>{n.text}</Link> : n.text}</div>
           </div>
         </div>
@@ -227,17 +227,37 @@ function FighterHome({ w, f }: { w: World; f: Fighter }) {
       <Band
         eyebrow={
           <>
-            {rl === "C" ? <span className="tag gold">Champion</span> : rl ? <span className="tag red">{rl}</span> : null}
-            {others.map((x) => <span key={x.div} className="tag red">#{x.rank} {DIVISIONS[x.div].short}</span>)}
+            {rl === "C" ? <span className="tag gold">Champion</span> : rl === "IC" ? <span className="tag gold">Interim champion</span> : rl ? <span className="tag red">{rl}</span> : null}
+            {p4pRank(w, f) && <span className="tag">#{p4pRank(w, f)} P4P</span>}
             <span>{DIVISIONS[f.div].name}</span>
             <span>{f.promo ? PROMOTIONS[f.promo].name : "Free agent"}</span>
+            {others.map((x) => (
+              <span key={x.div} className="also">
+                {rl ? "Also" : "Ranked"} #{x.rank} at {DIVISIONS[x.div].name.toLowerCase()}
+              </span>
+            ))}
           </>
         }
-        first={<>{f.first}{f.nick ? <span style={{ color: "var(--band-ink-3)" }}> · "{f.nick}"</span> : null}</>}
-        title={f.surname}
+        first={<>{nameLines(f).first ?? ""}{f.nick ? <span style={{ color: "var(--band-ink-3)" }}>{nameLines(f).first ? " · " : ""}"{f.nick}"</span> : null}</>}
+        title={nameLines(f).last}
         word={f.surname}
         right={
-          <Mark gold={rl === "C"} label={rl === "C" ? `${PROMOTIONS[f.promo!].short} champion` : rl === "IC" ? "Interim champion" : rl ? `${DIVISIONS[f.div].name} rank` : alt ? `${DIVISIONS[alt.div].name} rank` : "Overall rating"} sub={rl || alt ? `Overall ${o} · ${legacyText(f.legacy ?? 0)}` : `${legacyText(f.legacy ?? 0)}${goatRank(w, f) ? ` · #${goatRank(w, f)} all-time` : ""}`}>
+          <Mark
+            gold={rl === "C"}
+            label={rl === "C" ? `${PROMOTIONS[f.promo!].short} champion` : rl === "IC" ? "Interim champion" : rl ? `${DIVISIONS[f.div].name} rank` : alt ? `${DIVISIONS[alt.div].name} rank` : "Overall rating"}
+            sub={
+              heldBelt(w, f) ? (
+                <>
+                  <div>{reignLine(heldBelt(w, f)!.reign, heldBelt(w, f)!.interim)}</div>
+                  <div>Overall {o} · {legacyText(f.legacy ?? 0)}</div>
+                </>
+              ) : rl || alt ? (
+                `Overall ${o} · ${legacyText(f.legacy ?? 0)}`
+              ) : (
+                `${legacyText(f.legacy ?? 0)}${goatRank(w, f) ? ` · #${goatRank(w, f)} all-time` : ""}`
+              )
+            }
+          >
             {rl === "C" ? "C" : rl || (alt ? `#${alt.rank}` : o)}
           </Mark>
         }
@@ -329,7 +349,7 @@ function FighterHome({ w, f }: { w: World; f: Fighter }) {
                     <div className={`rk-item${w.fighters[champ]?.ctrl ? " me" : ""}`}><span className="rank c">C</span><FighterLink w={w} id={champ} /><span className="tiny dim">{w.fighters[champ] ? recordText(w.fighters[champ]) : ""}</span></div>
                   )}
                   {ranks.slice(0, 10).map((id, i) => (
-                    <div key={id} className={`rk-item${w.fighters[id]?.ctrl ? " me" : ""}`}>{ps.interim[f.div] === id ? <span className="rank ic">IC</span> : <span className="n">{rankNumber(ranks, ps.interim[f.div] ?? null, i)}</span>}<FighterLink w={w} id={id} /><span className="tiny dim">{recordText(w.fighters[id])}</span></div>
+                    <div key={id} className={`rk-item${w.fighters[id]?.ctrl ? " me" : ""}`}>{ps.interim[f.div] === id ? <span className="rank ic">IC</span> : <span className="n">{rankNumber(ranks, ps.interim[f.div] ?? null, i)}</span>}<FighterLink w={w} id={id} /></div>
                   ))}
                 </div>
               </Panel>

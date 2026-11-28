@@ -1,5 +1,5 @@
 {
-  "_": "Real fighters the source snapshot gets wrong, by id. 'born' (YYYY-MM-DD) sets the birth date: the age and the birthday follow. 'gym' moves the fighter to the gym they really train at; a save made before moves them only if they're still at a 'from' gym (one id or a list), or wherever the world put them when 'from' is left out (the source gave them no gym). Read by scripts/build-data.mjs and world/create.ts repair() for saves made before.",
+  "_": "Real fighters the source snapshot gets wrong, by id. 'born' (YYYY-MM-DD) sets the birth date: the age and the birthday follow. 'gym' moves the fighter to the gym they really train at; a save made before moves them only if they're still at a 'from' gym (one id or a list), or wherever the world put them when 'from' is left out (the source gave them no gym). Read by scripts/build-data.mjs and world/create.ts repair() for saves made before. 'fam': true means the name is written family name first, as the UFC writes its Chinese fighters (Song Yadong, Zhang Weili): the full name keeps that order and the short name is the family name (Song, Zhang); world/real.ts and repair() read it.",
   "pfl-shaqueme-rock": {
     "born": "1993-11-05"
   },
@@ -13,7 +13,8 @@
   },
   "ufc-zhang-weili": {
     "gym": "gym-real-352",
-    "from": "gym-real-93"
+    "from": "gym-real-93",
+    "fam": true
   },
   "ufc-amanda-nunes": {
     "gym": "gym-real-145",
@@ -48,5 +49,38 @@
   "ufc-rose-namajunas": {
     "gym": "gym-real-223",
     "from": "gym-real-105"
+  },
+  "ufc-song-yadong": {
+    "fam": true
+  },
+  "ufc-xiaonan-yan": {
+    "fam": true
+  },
+  "ufc-wang-cong": {
+    "fam": true
+  },
+  "ufc-ding-meng": {
+    "fam": true
+  },
+  "ufc-xiong-jingnan": {
+    "fam": true
+  },
+  "ufc-shiyao-ron": {
+    "fam": true
+  },
+  "ufc-liu-ce": {
+    "fam": true
+  },
+  "ufc-zhu-kangjie": {
+    "fam": true
+  },
+  "ufc-guram-kutateladze-1": {
+    "fam": true
+  },
+  "ufc-ming-shi": {
+    "fam": true
+  },
+  "ufc-song-kenan": {
+    "fam": true
   }
 }

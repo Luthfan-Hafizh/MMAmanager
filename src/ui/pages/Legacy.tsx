@@ -6,7 +6,7 @@ import { AWARD_NAME } from "../../world/awards";
 import { go } from "../router";
 import { goatList, legacyText, records } from "../../world/legacy";
 import { careerRecap } from "../../career/retire";
-import { recordText } from "../../world/core";
+import { recordText, fullName } from "../../world/core";
 import { useWorld } from "../../state/store";
 import { Link } from "../router";
 import { Empty, Flag, ScrollRow, Tabs } from "../components";
@@ -50,7 +50,7 @@ function Goat({ w }: { w: World }) {
               {list.map((f, i) => (
                 <tr key={f.id} className={f.ctrl || f.id === w.career.retiredFighter ? "me" : ""}>
                   <td className="c"><span className={`rank${i === 0 ? " c" : ""}`}>{i + 1}</span></td>
-                  <td><Link to={`/fighter/${f.id}`} className="flink"><Flag code={f.country} /><span className="nm">{f.first} {f.surname}</span></Link></td>
+                  <td><Link to={`/fighter/${f.id}`} className="flink"><Flag code={f.country} /><span className="nm">{fullName(f)}</span></Link></td>
                   <td>{DIVISIONS[f.div].name}</td>
                   <td className="r">{recordText(f)}</td>
                   <td className="small">{f.status === "retired" ? "Retired" : f.promo ? PROMOTIONS[f.promo].short : "Free agent"}{w.hof.some((h) => h.fighter === f.id) ? " · Hall of Fame" : ""}</td>
@@ -91,7 +91,7 @@ function Hof({ w }: { w: World }) {
                 <div key={h.fighter} className="c4 panel">
                   <div className="panel-b">
                     <div className="label">{DIVISIONS[f.div].name}</div>
-                    <Link to={`/fighter/${f.id}`} className="dx" style={{ fontSize: 34, display: "block", margin: "6px 0" }}>{f.first} {f.surname}</Link>
+                    <Link to={`/fighter/${f.id}`} className="dx" style={{ fontSize: 34, display: "block", margin: "6px 0" }}>{fullName(f)}</Link>
                     <div className="small dim">{recordText(f)} · {f.reigns} title reign{f.reigns === 1 ? "" : "s"} · legacy {Math.round(f.legacy ?? 0)}</div>
                   </div>
                 </div>

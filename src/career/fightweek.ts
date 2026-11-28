@@ -13,6 +13,7 @@ import { notify, closeMessages } from "./inbox";
 import { ledger } from "./money";
 import { addHeat, addMoment, heatOf } from "./rivals";
 import { bmfEligible, callOut } from "./social";
+import { callSuperfight, canCallSuperfight, superfightTarget } from "./superfight";
 
 export type Tone = "respect" | "confident" | "trash" | "skip";
 
@@ -147,7 +148,11 @@ export function calloutTargets(w: World, f: Fighter): Fighter[] {
     const x = w.fighters[id];
     if (x && x.status === "active" && x.promo === f.promo && !out.includes(x) && x.gym !== f.gym) out.push(x);
   };
-  if (r !== null && r > 0) {
+  if (r === 0) {
+    // A champion's next challenger: the one the promotion has named, then the top of the rankings.
+    add(ps.contender[f.div]);
+    for (const id of ranks.slice(0, 4)) add(id);
+  } else if (r !== null && r > 0) {
     for (let k = Math.max(0, r - 4); k < r - 1; k++) add(ranks[k]);
   } else if (r === null) {
     for (const id of ranks.slice(-4)) add(id);
@@ -163,25 +168,34 @@ export function calloutTargets(w: World, f: Fighter): Fighter[] {
 
 export function offerMicrophone(w: World, f: Fighter, b: Bout): void {
   if (!f.promo || PROMOTIONS[f.promo].tier === "amateur") return;
-  const targets = calloutTargets(w, f);
+  // Not the one just beaten: the rankings haven't moved yet, so they can still be listed above.
+  const beaten = b.a === f.id ? b.b : b.a;
+  const targets = calloutTargets(w, f).filter((t) => t.id !== beaten);
   const r = rankOf(w, f);
   const ps = w.promos[f.promo];
   const champ = ps.champs[f.div];
   const canAskTitle = !!champ && champ !== f.id && r !== null && r > 0 && r <= 5 && f.streak >= 2;
-  if (!targets.length && !canAskTitle) return;
-  const actions: { id: string; label: string; primary?: boolean }[] = targets.map((t) => ({ id: `callout:${t.id}`, label: `Call out ${t.surname}` }));
+  const sf = canCallSuperfight(w, f) ? superfightTarget(w, f) : null;
+  if (!targets.length && !canAskTitle && !sf) return;
+  const actions: { id: string; label: string; primary?: boolean }[] = targets.map((t, i) => ({ id: `callout:${t.id}`, label: r === 0 && i === 0 ? `Next: ${t.surname}${rankOf(w, t) ? ` (#${rankOf(w, t)})` : ""}` : `Call out ${t.surname}` }));
   if (canAskTitle) actions.unshift({ id: "titleshot", label: "Ask for the title shot", primary: true });
+  if (sf) actions.push({ id: "superfight", label: `Champion vs champion: ${sf.t.surname} at ${DIVISIONS[sf.div].name.toLowerCase()}` });
   const holder = w.promos.ufc?.bmf?.holder;
   const finish = b.res && isFinish(b.res.method);
   if (bmfEligible(w, f) && holder !== f.id && (finish || f.pop >= 55)) actions.push({ id: "bmfcall", label: holder ? `Call for the BMF title (${w.fighters[holder]?.surname ?? "the holder"})` : "Call for the vacant BMF title" });
   actions.push({ id: "callout:none", label: "Thank the fans" });
+  const ask = canAskTitle
+    ? `At #${r} on a ${f.streak}-fight run, the belt is a fair ask. `
+    : r === 0
+      ? `The champion speaks first: name the next challenger${sf ? `, or go after ${fullName(sf.t)}, the ${DIVISIONS[sf.div].name.toLowerCase()} champion, for a second belt` : ""}. `
+      : "";
   notify(w, {
-    kind: "result",
+    kind: "media",
     fighter: f.id,
     ref: b.id,
     from: "Post-fight interview",
     subject: `The microphone is yours, ${f.surname}`,
-    body: `${f.surname} gets the post-fight interview inside the cage. ${canAskTitle ? `At #${r} on a ${f.streak}-fight run, the belt is a fair ask. ` : ""}Who's next?`,
+    body: `${f.surname} gets the post-fight interview inside the cage. ${ask}Who's next?`,
     actions,
   });
 }
@@ -190,6 +204,7 @@ export function answerMicrophone(w: World, f: Fighter, action: string): string {
   const fc = w.career.fc[f.id];
   if (!fc || !f.promo) return "";
   const ps = w.promos[f.promo];
+  if (action === "superfight") return callSuperfight(w, f) || `${f.surname} thanks the fans and the team.`;
   if (action === "bmfcall") {
     const holder = w.promos.ufc?.bmf?.holder ? w.fighters[w.promos.ufc.bmf.holder] : null;
     if (holder && holder.id !== f.id) {

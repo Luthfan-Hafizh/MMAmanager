@@ -12,8 +12,8 @@ import type { AnswerTone, Bout, Fighter, MediaSession, World } from "../../model
 import { compact, fightHype, followers, heatOf, hypeLabel, rivalsOf } from "../../career/rivals";
 import { bmfEligible, CALL_TONES, calloutCheck, calloutChoices, callOut, makePeace, TALK_TONES, talkableFights, talkFight, type CallTone, type TalkTone } from "../../career/social";
 import { answerQuestion, bigFight, finishSession, KIND_NAME, sessionById, sessionComplete, TONE_NAME } from "../../career/media";
-import { bmfRace, stakeLabel } from "../../world/belts";
-import { fullName, rankLabel, recordText, withRng } from "../../world/core";
+import { bmfRace, stakeFor, stakeLabel } from "../../world/belts";
+import { fullName, rankLabel, recordText, withRng, nameLines } from "../../world/core";
 import { changed, toast, useWorld } from "../../state/store";
 import { Link } from "../router";
 import { Empty, FighterLink, Panel, Seg } from "../components";
@@ -41,13 +41,13 @@ export function Media({ id }: { id?: string }) {
             {f.promo && <span className="tag">{PROMOTIONS[f.promo].short}</span>}
           </>
         }
-        first={f.first}
-        title={f.surname}
+        first={nameLines(f).first}
+        title={nameLines(f).last}
         word={f.surname}
         right={<Mark label="Followers" sub={`Popularity ${Math.round(f.pop)} of 100`}>{compact(followers(f.pop))}</Mark>}
       >
         <div className="factgrid">
-          <div><div className="k">Next fight</div><div className="v">{opp ? `${opp.first} ${opp.surname}` : "Not booked"}</div></div>
+          <div><div className="k">Next fight</div><div className="v">{opp ? fullName(opp) : "Not booked"}</div></div>
           <div><div className="k">Fight hype</div><div className="v">{hype !== null ? `${hype} · ${hypeLabel(hype)}` : "–"}</div></div>
           <div><div className="k">Hottest rivalry</div><div className="v">{top ? `${top.f.surname} · heat ${Math.round(top.r.heat)}` : "None yet"}</div></div>
         </div>
@@ -92,7 +92,7 @@ function Schedule({ w, f, b, opp }: { w: World; f: Fighter; b: Bout; opp: Fighte
   rows.push({ day: b.day - 1, what: "Weigh-ins and the face-off", note: b.weighIn ? `${b.weighIn[b.a === f.id ? "a" : "b"].toFixed(1)} lb` : "The scale, then the cameras", el: b.weighIn ? <span className="badge">Done</span> : <span className="badge soft">{inDays(b.day - 1 - w.day)}</span> });
   rows.push({ day: b.day, what: "Fight night", note: ev ? `${ev.name}, ${ev.city}` : "", el: <span className="badge soft">{b.day - w.day <= 0 ? "Tonight" : inDays(b.day - w.day)}</span> });
   return (
-    <Panel title="The road to the fight" hint={`${f.surname} vs ${opp.surname}${stakeLabel(b) ? ` · ${stakeLabel(b)}` : ""}`}>
+    <Panel title="The road to the fight" hint={`${f.surname} vs ${opp.surname}${stakeFor(w, b, f.id) ? ` · ${stakeFor(w, b, f.id)}` : ""}`}>
       <div className="hype">
         <div className="hype-n">
           <b>{hype}</b>

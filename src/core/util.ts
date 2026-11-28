@@ -46,6 +46,13 @@ export function ordinal(n: number): string {
   return n + (s[(v - 20) % 10] || s[v] || s[0]);
 }
 
+const NTH = ["first", "second", "third", "fourth", "fifth", "sixth", "seventh", "eighth", "ninth", "tenth"];
+
+/** "second", "tenth", then "11th": an ordinal in words while it reads well. */
+export function nth(n: number): string {
+  return NTH[n - 1] ?? ordinal(n);
+}
+
 export function heightText(inches: number): string {
   const i = Math.round(inches);
   return `${Math.floor(i / 12)}'${i % 12}"`;

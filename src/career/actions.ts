@@ -12,6 +12,7 @@ import { answerLife } from "./life";
 import type { DeclineReason } from "./promoter";
 import { answerTryout } from "./tryout";
 import { answerRtu } from "../world/roadtoufc";
+import { answerTwoBelts } from "./superfight";
 
 export function answer(w: World, msgId: string, action: string): string {
   const m = w.inbox.find((x) => x.id === msgId);
@@ -47,8 +48,10 @@ export function answer(w: World, msgId: string, action: string): string {
     text = answerScale(w, m, action);
   } else if (action.startsWith("life:")) {
     text = answerLife(w, m, action.slice(5));
-  } else if ((action.startsWith("callout:") || action === "titleshot" || action === "bmfcall") && m.fighter) {
+  } else if ((action.startsWith("callout:") || action === "titleshot" || action === "bmfcall" || action === "superfight") && m.fighter) {
     text = answerMicrophone(w, w.fighters[m.fighter], action);
+  } else if (action.startsWith("belts:keep:")) {
+    text = answerTwoBelts(w, m, action);
   } else if (m.kind === "injury" && m.fighter && m.actions?.length) {
     const f = w.fighters[m.fighter];
     text = withRng(w, (rng) => answerInjury(w, rng, f, action, m.ref));

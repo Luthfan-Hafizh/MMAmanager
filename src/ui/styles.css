@@ -212,6 +212,12 @@ p { margin: 0 0 10px; text-wrap: pretty; }
 .band .tag { font-stretch: 75%; font-weight: 700; font-size: 11px; letter-spacing: 0.1em; text-transform: uppercase; padding: 4px 8px; border: 1px solid var(--band-line); color: var(--band-ink-2); border-radius: 2px; }
 .band .tag.red { background: var(--red); border-color: var(--red); color: #fff; }
 .band .tag.gold { background: var(--gold); border-color: var(--gold); color: #17110a; }
+/* The hero's standing line: a rank held at another weight reads quietly after the division, and the player's own fighter is marked apart. */
+.band .eyebrow .also { color: var(--band-ink-2); }
+.band .eyebrow .mine { display: inline-flex; align-items: center; gap: 7px; color: var(--band-ink); padding-left: 12px; border-left: 1px solid var(--band-line); }
+.band .eyebrow .mine::before { content: ""; width: 7px; height: 7px; border-radius: 50%; background: var(--red); flex: none; }
+@media (max-width: 640px) { .band .eyebrow .mine { border-left: 0; padding-left: 0; } }
+.mark-sub > div + div { margin-top: 2px; color: var(--band-ink-3); }
 .band-grid { display: grid; grid-template-columns: minmax(0, 1.25fr) minmax(0, 1fr); gap: 32px; align-items: end; }
 .band .btn { background: transparent; color: var(--band-ink); border-color: var(--band-line); }
 .band .btn:hover { border-color: var(--band-ink-2); background: var(--band-3); }
@@ -917,6 +923,24 @@ div.field { display: flex; flex-direction: column; gap: 6px; }
 .badge.bmf { background: #0f0f0f; color: var(--gold); border-color: #0f0f0f; letter-spacing: 0.1em; }
 .wc.bmf-t { color: var(--gold); }
 .rk-interim { display: flex; flex-wrap: wrap; align-items: baseline; gap: 6px 10px; padding: 8px 16px; background: var(--gold-soft); border-bottom: 1px solid var(--line); font-size: 13.5px; }
+/* One division on its own: the list wide with a big champion header, the title picture beside it. */
+.rk-solo { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 380px); gap: 22px; align-items: start; }
+.rk-col.wide .rk-champ { min-height: 200px; padding: 26px 26px 22px; }
+.rk-col.wide .rk-champ::before { background: radial-gradient(420px 260px at 85% 30%, rgba(210, 32, 31, 0.3), transparent 70%); }
+.rk-col.wide .rk-champ .div { font-size: 12.5px; }
+.rk-col.wide .rk-champ .cn { font-size: clamp(36px, 4.2vw, 58px); margin: 10px 0 8px; }
+.rk-col.wide .rk-champ .cr { font-size: 13.5px; color: var(--band-ink-2); display: flex; align-items: center; gap: 6px; flex-wrap: wrap; }
+.rk-col.wide .rk-champ .rk-next { font-size: 13px; margin-top: 12px; }
+.rk-col.wide .rk-champ .belt { font-size: 156px; -webkit-text-stroke-width: 2px; }
+.rk-col.wide .rk-list { padding: 6px 0; }
+.rk-col.wide .rk-list a { grid-template-columns: 40px 1fr auto; padding: 10px 26px; font-size: 15px; border-bottom: 1px solid var(--line); }
+.rk-col.wide .rk-list a:last-child { border-bottom: 0; }
+.rk-col.wide .rk-list .n { font-size: 20px; }
+.rk-col.wide .rk-list .mv { font-size: 12px; }
+.rk-col.wide > .rk-hist { padding: 12px 26px; }
+.rk-tf { display: grid; grid-template-columns: 74px minmax(0, 1fr); gap: 10px; align-items: baseline; }
+.rk-tf .num { font-stretch: 62%; font-weight: 900; font-size: 18px; color: var(--ink-3); }
+@media (max-width: 960px) { .rk-solo { grid-template-columns: 1fr; } }
 .rk-col > .rk-hist { display: block; padding: 10px 16px; border-top: 1px solid var(--line); font-stretch: 75%; font-weight: 700; font-size: 11.5px; letter-spacing: 0.1em; text-transform: uppercase; color: var(--red); }
 .rk-col > .rk-hist:hover { background: var(--sheet-2); }
 .bmf-card { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 12px 16px; background: #0f0f0f; color: #f3efe6; border-bottom: 1px solid var(--line); text-decoration: none; position: relative; overflow: hidden; }

@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { AWARD_NAME, awardsOf } from "../../world/awards";
-import { ageYears, fmtDate, clock } from "../../core/time";
+import { ageYears, fmtDate, clock, yearOf } from "../../core/time";
 import { cmOf, heightText } from "../../core/util";
 import { countryOf } from "../../data/countries";
 import { DIVISIONS } from "../../data/divisions";
@@ -11,8 +11,8 @@ import { MASTERY_NAMES, TECHNIQUES, TECH_IDS, type TechId } from "../../data/tec
 import { ATTR_INFO, groupScore, ovr, ovrBand, styleOf } from "../../model/attributes";
 import type { Bout, Fighter, World } from "../../model/types";
 import { methodText } from "../../engine/sim";
-import { beltNote, isBeltFight, stakeLabel } from "../../world/belts";
-import { boutsOf, isChampion, otherRanks, rankLabel, recordText, resultFor, amRecordText } from "../../world/core";
+import { beltNote, heldBelt, isBeltFight, reignLine, stakeLabel } from "../../world/belts";
+import { boutsOf, isChampion, otherRanks, p4pRank, rankLabel, recordText, resultFor, amRecordText, fullName, nameLines } from "../../world/core";
 import { potentialText, primeText } from "../../world/development";
 import { changed, toast, useWorld } from "../../state/store";
 import { retirePlayer } from "../../career/retire";
@@ -29,11 +29,15 @@ import { CallOutPanel } from "./Media";
 import { compact, followers, heatOf } from "../../career/rivals";
 
 type Tab = "overview" | "fights" | "stats" | "techniques";
+const TABS: Tab[] = ["overview", "fights", "stats", "techniques"];
 
 export function FighterPage({ id, tab }: { id: string; tab?: string }) {
   const w = useWorld();
   const f = w.fighters[id];
-  const [t, setT] = useState<Tab>((tab as Tab) ?? "overview");
+  // The tab is part of the address (#/fighter/<id>/stats): a link to a tab opens it, and
+  // another fighter's page opens on the overview.
+  const t: Tab = TABS.includes(tab as Tab) ? (tab as Tab) : "overview";
+  const setT = (x: Tab) => go(`/fighter/${id}${x === "overview" ? "" : `/${x}`}`, { keepScroll: true });
   if (!f) return <div className="wrap page-body"><Empty title="Fighter not found" /></div>;
   return (
     <>
@@ -67,25 +71,46 @@ function Hero({ w, f, tabs }: { w: World; f: Fighter; tabs: React.ReactNode }) {
   // Ranked at another weight too, after a win there; the big number shows it when there's no rank at home.
   const others = otherRanks(w, f);
   const alt = !rank ? others[0] : undefined;
+  const p4p = p4pRank(w, f);
+  const belt = heldBelt(w, f);
+  const where = f.status === "retired" ? "Retired" : f.promo ? PROMOTIONS[f.promo].short : "Free agent";
+  const legacy = `Legacy ${Math.round(f.legacy ?? 0)}${goatRank(w, f) ? ` · #${goatRank(w, f)} all-time` : ""}`;
   return (
     <Band
       eyebrow={
+        // As UFC.com lays it out: the standing first (the belt, the rank, pound for pound),
+        // then the division and the promotion in plain type, and the player's own marked apart.
         <>
-          {rank === "C" ? <span className="tag gold">Champion</span> : rank === "IC" ? <span className="tag gold">Interim champion</span> : rank ? <span className="tag red">{rank} {div.short}</span> : null}
-          {others.map((x) => <span key={x.div} className="tag red" title={`Ranked at ${DIVISIONS[x.div].name.toLowerCase()} too, after a win there`}>#{x.rank} {DIVISIONS[x.div].short}</span>)}
-          <span className="tag">{div.name}</span>
-          <span className="tag">{f.status === "retired" ? "Retired" : f.promo ? PROMOTIONS[f.promo].short : "Free agent"}</span>
+          {rank === "C" ? <span className="tag gold">Champion</span> : rank === "IC" ? <span className="tag gold">Interim champion</span> : rank ? <span className="tag red">{rank}</span> : null}
+          {p4p && <span className="tag" title={`Number ${p4p} on the ${f.promo === "pfl" ? "PFL" : "UFC"} pound-for-pound list`}>#{p4p} P4P</span>}
           {w.promos.ufc?.bmf?.holder === f.id && <span className="tag bmf">BMF</span>}
-          {f.ctrl && <span className="tag red">Your fighter</span>}
-          {f.tags?.includes("dwcs") && <span className="tag">Contender Series</span>}
-          {f.tags?.includes("rtu") && <span className="tag">Road to UFC winner</span>}
+          <span>{div.name} division · {where}</span>
+          {others.map((x) => (
+            <span key={x.div} className="also" title="After a win at that weight">
+              {rank ? "Also" : "Ranked"} #{x.rank} at {DIVISIONS[x.div].name.toLowerCase()}
+            </span>
+          ))}
+          {f.ctrl && <span className="mine">Your fighter</span>}
         </>
       }
-      first={<>{f.nick ? `"${f.nick}"` : f.first}</>}
-      title={f.nick ? `${f.first} ${f.surname}` : f.surname}
+      first={f.nick ? `"${f.nick}"` : nameLines(f).first}
+      title={f.nick || f.fam ? fullName(f) : f.surname}
       word={f.surname}
       right={
-        <Mark gold={champ} label={rank === "C" ? "Champion" : rank === "IC" ? "Interim champion" : rank ? `${div.name} rank` : alt ? `${DIVISIONS[alt.div].name} rank` : "Overall rating"} sub={`${rank || alt ? `Overall ${o} · ` : ""}Legacy ${Math.round(f.legacy ?? 0)}${goatRank(w, f) ? ` · #${goatRank(w, f)} all-time` : ""}`}>
+        <Mark
+          gold={champ}
+          label={rank === "C" ? `${PROMOTIONS[f.promo!].short} ${div.name.toLowerCase()} champion` : rank === "IC" ? "Interim champion" : rank ? `${div.name} rank` : alt ? `${DIVISIONS[alt.div].name} rank` : "Overall rating"}
+          sub={
+            belt ? (
+              <>
+                <div>{reignLine(belt.reign, belt.interim)}</div>
+                <div>Overall {o} · {legacy}</div>
+              </>
+            ) : (
+              `${rank || alt ? `Overall ${o} · ` : ""}${legacy}`
+            )
+          }
+        >
           {rank === "C" ? "C" : rank || (alt ? `#${alt.rank}` : o)}
         </Mark>
       }
@@ -113,6 +138,17 @@ function Hero({ w, f, tabs }: { w: World; f: Fighter; tabs: React.ReactNode }) {
       </div>
     </Band>
   );
+}
+
+/** How the fighter reached the big show (the Contender Series, Road to UFC), for the bio rather than the hero. */
+function cameThrough(w: World, f: Fighter): string | null {
+  const year = (promo: string) => {
+    const b = boutsOf(w, f).find((x) => x.promo === promo && x.status === "done");
+    return b ? `, ${yearOf(b.day)}` : "";
+  };
+  if (f.tags?.includes("rtu")) return `Road to UFC winner${year("rtu")}`;
+  if (f.tags?.includes("dwcs")) return `Dana White's Contender Series${year("dwcs")}`;
+  return null;
 }
 
 function Overview({ w, f }: { w: World; f: Fighter }) {
@@ -155,6 +191,7 @@ function Overview({ w, f }: { w: World; f: Fighter }) {
             <dt>Striking</dt><dd>{FIGHT_STYLES[fightStyle(f).s].name}</dd>
             <dt>Grappling</dt><dd>{FIGHT_STYLES[fightStyle(f).g].name}</dd>
             <dt>Team</dt><dd>{w.gyms[f.gym]?.name ?? "–"}</dd>
+            {cameThrough(w, f) && <><dt>Came through</dt><dd>{cameThrough(w, f)}</dd></>}
             <dt>Walks around</dt><dd>{Math.round(f.walk)} lb · fights at {DIVISIONS[f.div].limit} lb</dd>
           </dl>
         </Panel>
@@ -201,7 +238,7 @@ function Overview({ w, f }: { w: World; f: Fighter }) {
         {f.ctrl && w.career.mode === "fighter" && f.status === "active" && (
           <Panel title="The end">
             <p className="small muted">Retire whenever you choose. The team will say when they think it's time; nobody makes you stop.</p>
-            <button className="btn danger sm" onClick={() => { void confirmBox({ title: "Retire from MMA?", body: `This ends ${f.first} ${f.surname}'s fighting career. It can't be undone.`, ok: "Retire", danger: true }).then((yes) => { if (yes) { toast(retirePlayer(w, f)); changed(); go("/home"); } }); }}>Retire from MMA</button>
+            <button className="btn danger sm" onClick={() => { void confirmBox({ title: "Retire from MMA?", body: `This ends ${fullName(f)}'s fighting career. It can't be undone.`, ok: "Retire", danger: true }).then((yes) => { if (yes) { toast(retirePlayer(w, f)); changed(); go("/home"); } }); }}>Retire from MMA</button>
           </Panel>
         )}
         {nextB && nextB.status === "booked" && !nextB.pending && (
@@ -406,7 +443,7 @@ function RealHistory({ w, f, hist }: { w: World; f: Fighter; hist: FighterHistor
     return (
       <section className="sec">
         <div className="sec-h"><h2>Before this world</h2><span className="hint">Real record {f.rec.w + f.rec.l + f.rec.d > 0 ? `${recordBefore(w, f)}` : ""}</span></div>
-        <div className="panel"><div className="panel-b small muted">The fight-by-fight record isn't available for {f.first} {f.surname}. The totals above are the real ones as of 1 October 2026.</div></div>
+        <div className="panel"><div className="panel-b small muted">The fight-by-fight record isn't available for {fullName(f)}. The totals above are the real ones as of 1 October 2026.</div></div>
       </section>
     );
   }
@@ -600,7 +637,7 @@ function StyleSection({ f }: { f: Fighter }) {
   const known = Object.entries(st.known ?? {}) as [StyleId, number][];
   return (
     <section className="sec">
-      <div className="sec-h"><h2>Fighting style</h2><span className="hint">How {f.first} {f.surname} strikes and grapples. Mastery grows with fights, years in the gym and style coaching.</span></div>
+      <div className="sec-h"><h2>Fighting style</h2><span className="hint">How {fullName(f)} strikes and grapples. Mastery grows with fights, years in the gym and style coaching.</span></div>
       <div className="grid">
         <div className="c6"><StyleCard f={f} id={st.s} m={st.sm} kind="Striking" /></div>
         <div className="c6"><StyleCard f={f} id={st.g} m={st.gm} kind="Grappling" /></div>

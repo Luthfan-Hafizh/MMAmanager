@@ -5,7 +5,7 @@ import { DIVISIONS, DIVISION_IDS, type DivisionId } from "../../data/divisions";
 import { PROMOTIONS, PROMO_IDS, type PromoId } from "../../data/promotions";
 import { ovr, styleOf } from "../../model/attributes";
 import type { Fighter } from "../../model/types";
-import { recordText } from "../../world/core";
+import { recordText, fullName } from "../../world/core";
 import { useWorld } from "../../state/store";
 import { go } from "../router";
 import { FighterLink, Ovr, PromoBadge, Table, type Col } from "../components";
@@ -26,7 +26,7 @@ export function Fighters() {
         (promo === "all" ? true : promo === "free" ? !f.promo : f.promo === promo) &&
         (region === "all" || countryOf(f.country).region === region) &&
         ageYears(f.birth, w.day) <= maxAge &&
-        (!s || `${f.first} ${f.surname} ${f.nick ?? ""}`.toLowerCase().includes(s)),
+        (!s || `${fullName(f)} ${f.nick ?? ""}`.toLowerCase().includes(s)),
     );
   }, [w, q, div, promo, region, maxAge, w.stamp]);
   const cols: Col<Fighter>[] = [

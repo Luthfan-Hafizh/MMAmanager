@@ -15,7 +15,7 @@ import { go, Link } from "../router";
 import { Bar, Empty, FighterLink, Panel, Seg } from "../components";
 import { Band } from "../art";
 import { PlanEditor } from "./NextFight";
-import { stakeLabel } from "../../world/belts";
+import { stakeFor, stakeLabel } from "../../world/belts";
 import { FightReport, StatTable } from "../report";
 import { roundSummary, totals } from "../../world/report";
 
@@ -102,8 +102,9 @@ export function FightNight() {
           const a = w.fighters[b.a];
           const c = w.fighters[b.b];
           const going = underWay(w, b);
+          const stake = stakeFor(w, b, a.ctrl ? a.id : c.id, true);
           return (
-            <Panel key={b.id} title={stakeLabel(b) && stakeLabel(b) !== "Title eliminator" ? stakeLabel(b)! : "Your fight"} className="accent">
+            <Panel key={b.id} title={stake && stake !== "Title eliminator" ? stake : "Your fight"} className="accent">
               <div className="vs-card">
                 <div><div className="who">{a.surname}</div><div className="small dim">{recordText(a)}</div></div>
                 <div className="vs">VS</div>

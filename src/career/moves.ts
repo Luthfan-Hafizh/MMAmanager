@@ -142,6 +142,21 @@ export function moveDivision(w: World, f: Fighter, to: DivisionId): string {
   const up = DIVISIONS[to].order > DIVISIONS[from].order;
   if (chk.vacates) vacate(w, f, "moved");
   for (const o of w.career.fightOffers) if (o.fighter === f.id && o.status === "open") declineFight(w, o.id, true, "moved");
+  shiftWeight(w, f, to);
+  const r = rankOf(w, f);
+  notify(w, { kind: "info", fighter: f.id, from: "Head coach", subject: `${up ? "Up" : "Down"} to ${DIVISIONS[to].name.toLowerCase()}`, body: `${fullName(f)} now fights at ${DIVISIONS[to].name.toLowerCase()} (${DIVISIONS[to].limit} lb).${chk.vacates ? " The belt at the old weight is vacated." : ""} ${r ? `The win here already counts: #${r} in the rankings.` : "The rankings start again: win here to climb."}` });
+  if (f.pop > 25 || chk.vacates) addNews(w, { kind: "other", promo: f.promo ?? undefined, fighters: [f.id], text: `${fullName(f)} moves ${up ? "up" : "down"} to ${DIVISIONS[to].name.toLowerCase()}.` });
+  return `Moved to ${DIVISIONS[to].name}.`;
+}
+
+/**
+ * The fighter fights at another weight from now on: the body adjusts, the rankings
+ * follow, and a place earned there with a win is kept. Belts are the caller's
+ * business (a move vacates them; a double champion keeps the one at the new weight).
+ */
+export function shiftWeight(w: World, f: Fighter, to: DivisionId): void {
+  const from = f.div;
+  const up = DIVISIONS[to].order > DIVISIONS[from].order;
   f.div = to;
   touchRoster(w, f);
   // Results at the new weight were kept as a second place there; now it is the fighter's own,
@@ -165,10 +180,6 @@ export function moveDivision(w: World, f: Fighter, to: DivisionId): string {
   if (earned?.score !== undefined) f.elo = Math.max(f.elo, Math.round(earned.score - activityScore(w, f)));
   touch(w);
   if (f.promo && PROMOTIONS[f.promo].rankSize) updateRankings(w, f.promo, [from, to]);
-  const r = rankOf(w, f);
-  notify(w, { kind: "info", fighter: f.id, from: "Head coach", subject: `${up ? "Up" : "Down"} to ${DIVISIONS[to].name.toLowerCase()}`, body: `${fullName(f)} now fights at ${DIVISIONS[to].name.toLowerCase()} (${DIVISIONS[to].limit} lb).${chk.vacates ? " The belt at the old weight is vacated." : ""} ${r ? `The win here already counts: #${r} in the rankings.` : "The rankings start again: win here to climb."}` });
-  if (f.pop > 25 || chk.vacates) addNews(w, { kind: "other", promo: f.promo ?? undefined, fighters: [f.id], text: `${fullName(f)} moves ${up ? "up" : "down"} to ${DIVISIONS[to].name.toLowerCase()}.` });
-  return `Moved to ${DIVISIONS[to].name}.`;
 }
 
 /** The walking weight drifts toward the target: about 1.5 lb a month up, 2.5 down. */

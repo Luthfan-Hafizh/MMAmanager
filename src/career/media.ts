@@ -22,6 +22,7 @@ import { ledger } from "./money";
 import { addHeat, addMoment, addPop, fightHype, heatOf, hypeLabel, stageMul } from "./rivals";
 import { calloutTargets } from "./fightweek";
 import { bmfEligible, callOut } from "./social";
+import { callSuperfight, canCallSuperfight, superfightTarget } from "./superfight";
 import { boutLimit } from "./shortnotice";
 
 export const TONE_NAME: Record<AnswerTone, string> = { respect: "Respectful", confident: "Confident", trash: "Trash talk", funny: "Funny", deflect: "Deflect" };
@@ -326,7 +327,10 @@ function postQuestions(w: World, f: Fighter, b: Bout, opp: Fighter): Q[] {
     const champ = champId && champId !== f.id ? w.fighters[champId] : null;
     const rank = rankOf(w, f);
     if (champ && rank !== null && rank <= 5) answers.push({ tone: "confident", text: `${champ.surname}. Give me the belt.`, callout: champ.id });
-    for (const t of calloutTargets(w, f).slice(0, 2)) if (t.id !== champ?.id) answers.push({ tone: "trash", text: `${t.surname}. I want ${t.sex === "F" ? "her" : "him"} next.`, callout: t.id });
+    for (const t of calloutTargets(w, f).filter((x) => x.id !== opp.id).slice(0, 2)) if (t.id !== champ?.id) answers.push({ tone: "trash", text: rank === 0 ? `${t.surname}. Get in line and I'll see you there.` : `${t.surname}. I want ${t.sex === "F" ? "her" : "him"} next.`, callout: t.id });
+    // A champion can go after the champion at the next weight.
+    const sf = canCallSuperfight(w, f) ? superfightTarget(w, f) : null;
+    if (sf) answers.unshift({ tone: "confident", text: `${sf.t.surname}. Champion against champion, at ${DIVISIONS[sf.div].name.toLowerCase()}. Two belts.`, callout: `super:${sf.t.id}` });
     const holder = w.promos.ufc?.bmf?.holder;
     if (bmfEligible(w, f) && holder && holder !== f.id) answers.push({ tone: "confident", text: `The BMF title. ${w.fighters[holder]?.surname ?? "The holder"}, let's go.`, callout: `bmf:${holder}` });
     answers.push({ tone: "respect", text: "Whoever the promotion wants. I'll be ready." });
@@ -582,6 +586,11 @@ export function finishSession(w: World, s: MediaSession): string {
       for (const q of s.questions) {
         const a = q.picked !== undefined ? q.answers[q.picked] : undefined;
         if (!a?.callout) continue;
+        if (a.callout.startsWith("super:")) {
+          const r = callSuperfight(w, f);
+          if (r) parts.push(r);
+          continue;
+        }
         const bmf = a.callout.startsWith("bmf:");
         const t = w.fighters[bmf ? a.callout.slice(4) : a.callout];
         if (t && t.id !== f.id) {

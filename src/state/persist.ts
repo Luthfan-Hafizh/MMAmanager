@@ -7,6 +7,7 @@ import { migrate, repair, OLDEST_SAVE, SAVE_VERSION } from "../world/create";
 import { loadRoster } from "./roster";
 import { ymd } from "../core/time";
 import { dropWorldTapes } from "./live";
+import { fullName } from "../world/core";
 
 export interface SaveMeta {
   id: string;
@@ -66,7 +67,7 @@ export function metaOf(w: World, size = 0): SaveMeta {
     id: w.id,
     name: w.name,
     mode: w.career.mode,
-    who: w.career.mode === "manager" ? w.career.agency?.name ?? w.career.name : first ? `${first.first} ${first.surname}` : w.career.name,
+    who: w.career.mode === "manager" ? w.career.agency?.name ?? w.career.name : first ? fullName(first) : w.career.name,
     day: w.day,
     savedAt: Date.now(),
     version: w.v,

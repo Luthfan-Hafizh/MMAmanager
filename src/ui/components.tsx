@@ -6,10 +6,25 @@ import { flagUrl, countryOf } from "../data/countries";
 import { DIVISIONS, type DivisionId } from "../data/divisions";
 import { PROMOTIONS, type PromoId } from "../data/promotions";
 import { ATTR_GROUPS, ATTR_INFO, GROUP_NAMES, attrBand, ovr, stars as starsOf, type AttrGroup, type AttrKey } from "../model/attributes";
-import type { Fact, Fighter, World } from "../model/types";
-import { formOf, isInterim, rankOf, recordText } from "../world/core";
+import type { Fact, Fighter, NewsKind, World } from "../model/types";
+import { formOf, isInterim, rankOf, recordText, fullName } from "../world/core";
 import { Link } from "./router";
 import { money } from "../core/util";
+
+/** What kind of story a news item is, in words (the News page filters use the plurals). */
+export const NEWS_KIND: Record<NewsKind, string> = {
+  result: "Result",
+  title: "Title",
+  signing: "Signing",
+  release: "Release",
+  retire: "Retirement",
+  injury: "Injury",
+  ranking: "Rankings",
+  upset: "Upset",
+  bonus: "Bonus",
+  booking: "Booking",
+  other: "News",
+};
 
 export function Flag({ code, lg }: { code: string; lg?: boolean }) {
   const [bad, setBad] = useState(false);
@@ -32,7 +47,7 @@ export function FighterLink({ w, id, rank, flag = true, short, record }: { w: Wo
     <Link to={`/fighter/${f.id}`} className={`flink${f.ctrl ? " me" : ""}`}>
       {flag && <Flag code={f.country} />}
       {rank && <RankBadge w={w} f={f} />}
-      <span className="nm">{short ? f.surname : `${f.first} ${f.surname}`.trim()}</span>
+      <span className="nm">{short ? f.surname : fullName(f)}</span>
       {record && <span className="dim small nowrap">{recordText(f)}</span>}
     </Link>
   );

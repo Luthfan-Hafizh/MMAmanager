@@ -5,7 +5,7 @@ import { DIVISIONS, neighbourDivisions } from "../../data/divisions";
 import type { Fighter, World } from "../../model/types";
 import { canMove, gymFee, gymOptions, gymQuality, joinGym, moveDivision, trainingPartners, walkRange } from "../../career/moves";
 import { PROMOTIONS } from "../../data/promotions";
-import { rankLabel } from "../../world/core";
+import { rankLabel, fullName } from "../../world/core";
 import { changed, toast } from "../../state/store";
 import { Link } from "../router";
 import { confirmBox, Flag, Modal, Panel, Seg } from "../components";
@@ -38,7 +38,7 @@ export function GymPanel({ w, f }: { w: World; f: Fighter }) {
                   const r = rankLabel(w, x);
                   return (
                     <li key={x.id}>
-                      <Link to={`/fighter/${x.id}`}>{x.first} {x.surname}</Link>
+                      <Link to={`/fighter/${x.id}`}>{fullName(x)}</Link>
                       <span className="dim">{r ? <b className={r === "C" ? "gold-t" : ""}> {r === "C" ? "Champion" : r}</b> : null} · {DIVISIONS[x.div].short}{x.promo ? ` · ${PROMOTIONS[x.promo].short}` : ""}</span>
                     </li>
                   );

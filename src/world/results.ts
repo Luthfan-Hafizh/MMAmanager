@@ -3,7 +3,7 @@
 
 import { storyAfterBout } from "./stories";
 import type { Rng } from "../core/rng";
-import { clamp } from "../core/util";
+import { clamp, nth } from "../core/util";
 import { fmtDate } from "../core/time";
 import { DIVISIONS } from "../data/divisions";
 import { PROMOTIONS } from "../data/promotions";
@@ -418,9 +418,10 @@ export function applyResult(w: World, rng: Rng, b: Bout, o: FightOutcome): void 
 
   // Belts, and what the result does for a legacy.
   const champBefore = w.promos[b.promo].champs[b.div] ?? null;
-  handleTitle(w, rng, b, winner, loser);
+  // A belt fight is told once, as a title story (world/belts.ts for the BMF).
+  let told = handleTitle(w, rng, b, winner, loser);
   storyAfterBout(w, rng, b);
-  if (b.kind === "bmf") handleBmf(w, b, winner, loser);
+  if (b.kind === "bmf") told = handleBmf(w, b, winner, loser) || told;
   // Fights already booked in the division are for whatever the belts are now.
   if (isBeltFight(b)) refreshDivision(w, b.promo, b.div);
   const champAfter = w.promos[b.promo].champs[b.div] ?? null;
@@ -442,7 +443,7 @@ export function applyResult(w: World, rng: Rng, b: Bout, o: FightOutcome): void 
   // News for the fights people talk about.
   const ev = w.events[b.ev];
   const big = PROMOTIONS[b.promo].tier === "major" || PROMOTIONS[b.promo].tier === "league" || title;
-  if (ev && winner && loser && (title || (big && b.order === 0) || keep)) {
+  if (!told && ev && winner && loser && (title || (big && b.order === 0) || keep)) {
     const how = methodPhrase(m, o.detail);
     const where = m === "DEC" ? "" : ` in round ${o.round}`;
     addNews(w, {
@@ -508,15 +509,32 @@ function settleAtWeight(w: World, f: Fighter, b: Bout): void {
   }
 }
 
-function handleTitle(w: World, rng: Rng, b: Bout, winner: Fighter | null, loser: Fighter | null): void {
-  if (b.kind !== "title" && b.kind !== "vacant" && b.kind !== "interim") return;
+/** How a fight ended, for a news story: "by TKO (punches) in round 4", "by unanimous decision". */
+function endedBy(b: Bout): string {
+  const r = b.res;
+  if (!r) return "";
+  const how = methodPhrase(r.method, r.detail);
+  return r.method === "DEC" ? `by ${how}` : `by ${how} in round ${r.round}`;
+}
+
+/**
+ * The belts after a title fight, and one story for it in the news: a defence reads
+ * as a defence (with the count), a new champion as a new champion. Returns true
+ * when the story was written, so the plain result isn't told a second time.
+ */
+function handleTitle(w: World, rng: Rng, b: Bout, winner: Fighter | null, loser: Fighter | null): boolean {
+  if (b.kind !== "title" && b.kind !== "vacant" && b.kind !== "interim") return false;
   const ps = w.promos[b.promo];
   const d = b.div;
   const p = PROMOTIONS[b.promo];
   const champId = ps.champs[d] ?? null;
   const missed = (f: Fighter) => (b.weighIn?.missA && f.id === b.a) || (b.weighIn?.missB && f.id === b.b);
   const ev = w.events[b.ev];
+  const at = ev ? ` at ${ev.name}` : "";
+  const by = endedBy(b);
   const belt = `${p.short} ${DIVISIONS[d].name.toLowerCase()} title`;
+  const big = bigStage(b.promo);
+  const story = (text: string, fighters: string[]) => addNews(w, { kind: "title", promo: b.promo, ev: b.ev, fighters, big, text });
   // What the fight did to each side's belts, for the records.
   const note = (f: Fighter, text: string) => {
     if (b.res) b.res.belt = { ...(b.res.belt ?? {}), [b.a === f.id ? "a" : "b"]: text };
@@ -525,29 +543,35 @@ function handleTitle(w: World, rng: Rng, b: Bout, winner: Fighter | null, loser:
   if (b.kind === "interim") {
     const holder = ps.interim[d] ?? null;
     // With an interim champion who isn't in this fight, it can't be for the interim belt.
-    if (holder && b.a !== holder && b.b !== holder) return;
+    if (holder && b.a !== holder && b.b !== holder) return false;
     if (winner && loser && holder === winner.id) {
       // An interim champion defending the interim belt.
       const r = reignOf(winner.id, true);
       if (r) r.defenses++;
       note(winner, "Defended the interim title");
-      addNews(w, { kind: "title", promo: b.promo, ev: b.ev, fighters: [winner.id, loser.id], text: `${fullName(winner)} defends the interim ${belt}${ev ? ` at ${ev.name}` : ""}.` });
-      return;
+      story(`${fullName(winner)} defends the interim ${belt}, beating ${fullName(loser)} ${by}${at}.`, [winner.id, loser.id]);
+      return true;
     }
-    if (winner && !missed(winner)) {
-      if (holder && loser && holder === loser.id) {
+    if (winner && loser && !missed(winner)) {
+      if (holder && holder === loser.id) {
         endReign(w, loser, b, "lost");
         note(loser, "Lost the interim title");
       }
       ps.interim[d] = winner.id;
       startReign(w, winner, b, "interim", true);
       note(winner, "Won the interim title");
-      addNews(w, { kind: "title", promo: b.promo, ev: b.ev, fighters: [winner.id], big: bigStage(b.promo), text: `${fullName(winner)} is the interim ${belt.replace("title", "champion")}.` });
-    } else if (winner) note(winner, "Missed weight: not eligible for the belt");
-    return;
+      story(`${fullName(winner)} beats ${fullName(loser)} ${by} for the interim ${belt}${at}.`, [winner.id, loser.id]);
+      return true;
+    }
+    if (winner && loser) {
+      note(winner, "Missed weight: not eligible for the belt");
+      story(`${fullName(winner)} beats ${fullName(loser)} ${by}${at}, but missed weight: the interim ${belt} can't be won over the limit.`, [winner.id, loser.id]);
+      return true;
+    }
+    return false;
   }
   if (b.kind === "vacant") {
-    if (winner && !missed(winner)) {
+    if (winner && loser && !missed(winner)) {
       ps.champs[d] = winner.id;
       if (ps.interim[d] === winner.id) {
         ps.interim[d] = null;
@@ -555,20 +579,26 @@ function handleTitle(w: World, rng: Rng, b: Bout, winner: Fighter | null, loser:
       }
       startReign(w, winner, b, "vacant");
       note(winner, "Won the vacant title");
-      addNews(w, { kind: "title", promo: b.promo, ev: b.ev, fighters: [winner.id], big: bigStage(b.promo), text: `${fullName(winner)} wins the vacant ${belt}${ev ? ` at ${ev.name}` : ""}.` });
-    } else if (winner) note(winner, "Missed weight: not eligible for the belt");
+      story(`NEW CHAMPION: ${fullName(winner)} wins the vacant ${belt}, beating ${fullName(loser)} ${by}${at}.`, [winner.id, loser.id]);
+    } else if (winner && loser) {
+      note(winner, "Missed weight: not eligible for the belt");
+      story(`${fullName(winner)} beats ${fullName(loser)} ${by}${at}, but missed weight: the ${belt} stays vacant.`, [winner.id, loser.id]);
+    }
     updateRankings(w, b.promo, [d]);
-    return;
+    return !!(winner && loser);
   }
   // A title defence (or a unification).
   if (!winner || !loser) {
     const r = champId ? reignOf(champId, false) : undefined;
     if (r) r.defenses++;
     if (champId) {
+      const other = w.fighters[champId === b.a ? b.b : b.a];
       note(w.fighters[champId], b.res?.method === "NC" ? "Kept the title (no contest)" : "Kept the title (draw)");
-      ps.contender[d] = champId === b.a ? b.b : b.a; // a draw: run it back
+      ps.contender[d] = other?.id ?? null; // a draw: run it back
+      if (other) story(`${fullName(w.fighters[champId])} keeps the ${belt}: ${b.res ? methodPhrase(b.res.method, b.res.detail) : "no result"} with ${fullName(other)}${at}.`, [champId, other.id]);
+      return !!other;
     }
-    return;
+    return false;
   }
   if (winner.id === champId) {
     const r = reignOf(champId, false);
@@ -578,16 +608,20 @@ function handleTitle(w: World, rng: Rng, b: Bout, winner: Fighter | null, loser:
       endReign(w, loser, b, "unified");
       note(winner, "Unified the titles");
       note(loser, "Lost the interim title");
+      story(`${fullName(winner)} unifies the ${belt}, beating the interim champion ${fullName(loser)} ${by}${at}.`, [winner.id, loser.id]);
     } else {
       note(winner, `Defended the title${r && r.defenses > 1 ? ` (${r.defenses})` : ""}`);
       note(loser, "Lost the title shot");
+      const n = r?.defenses ?? 0;
+      story(`${fullName(winner)} defends the ${belt}, beating ${fullName(loser)} ${by}${at}${n ? ` (${nth(n)} defence)` : ""}.`, [winner.id, loser.id]);
     }
     if (rng.chance(0.25) && b.res?.verdict === "split") ps.contender[d] = loser.id;
-    return;
+    return true;
   }
   if (missed(winner)) {
     note(winner, "Missed weight: not eligible for the belt");
-    return; // cannot win the belt on the scale
+    story(`${fullName(winner)} beats the champion ${fullName(loser)} ${by}${at}, but missed weight: ${loser.surname} keeps the ${belt}.`, [winner.id, loser.id]);
+    return true; // cannot win the belt on the scale
   }
   if (champId) {
     const old = w.fighters[champId];
@@ -607,7 +641,13 @@ function handleTitle(w: World, rng: Rng, b: Bout, winner: Fighter | null, loser:
   }
   startReign(w, winner, b, "won");
   note(winner, wasInterim ? "Unified the titles" : "Won the title");
-  addNews(w, { kind: "title", promo: b.promo, ev: b.ev, fighters: [winner.id, loser.id], big: bigStage(b.promo), text: `NEW CHAMPION: ${fullName(winner)} beats ${fullName(loser)} for the ${belt}${ev ? ` at ${ev.name}` : ""}.` });
+  story(
+    wasInterim
+      ? `NEW CHAMPION: ${fullName(winner)}, the interim champion, beats ${fullName(loser)} ${by} to unify the ${belt}${at}.`
+      : `NEW CHAMPION: ${fullName(winner)} beats ${fullName(loser)} ${by} for the ${belt}${at}.`,
+    [winner.id, loser.id],
+  );
+  return true;
 }
 
 /** The end of a card: bonuses, rankings, contenders, the pound-for-pound list. */

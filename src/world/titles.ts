@@ -22,32 +22,35 @@ export function dropInterim(w: World, promo: PromoId, d: DivisionId, ended: NonN
 
 export function vacate(w: World, f: Fighter, why: "vacated" | "retired" | "moved" | "injury"): void {
   if (!f.promo) return;
-  const promo = f.promo;
+  for (const d of Object.keys(w.promos[f.promo].champs) as DivisionId[]) vacateOne(w, f, f.promo, d, why);
+}
+
+/** Give up the belts held at one weight (a double champion keeping the other). */
+export function vacateOne(w: World, f: Fighter, promo: PromoId, d: DivisionId, why: "vacated" | "retired" | "moved" | "injury"): void {
   const ps = w.promos[promo];
-  for (const d of Object.keys(ps.champs) as DivisionId[]) {
-    const held = ps.champs[d] === f.id || ps.interim[d] === f.id;
-    if (ps.champs[d] === f.id) {
-      ps.champs[d] = null;
-      const r = [...ps.reigns].reverse().find((x) => x.fighter === f.id && x.div === d && x.lost === undefined);
-      if (r) {
-        r.lost = w.day;
-        r.ended = why;
-      }
-      if (ps.interim[d]) {
-        const nc = w.fighters[ps.interim[d]!];
-        ps.champs[d] = nc.id;
-        ps.interim[d] = null;
-        const ir = [...ps.reigns].reverse().find((x) => x.fighter === nc.id && x.interim && x.lost === undefined);
-        if (ir) {
-          ir.lost = w.day;
-          ir.ended = "unified";
-        }
-        ps.reigns.push({ fighter: nc.id, promo, div: d, won: w.day, defenses: 0, how: "promoted" });
-        if (promo === "ufc" || promo === "pfl") addNews(w, { kind: "title", promo, fighters: [nc.id], big: true, text: `${fullName(nc)} is promoted to undisputed ${PROMOTIONS[promo].short} ${DIVISIONS[d].name.toLowerCase()} champion.` });
-      }
+  if (!ps) return;
+  const held = ps.champs[d] === f.id || ps.interim[d] === f.id;
+  if (ps.champs[d] === f.id) {
+    ps.champs[d] = null;
+    const r = [...ps.reigns].reverse().find((x) => x.fighter === f.id && x.div === d && x.lost === undefined);
+    if (r) {
+      r.lost = w.day;
+      r.ended = why;
     }
-    if (ps.interim[d] === f.id) dropInterim(w, promo, d, why);
-    if (ps.contender[d] === f.id) ps.contender[d] = null;
-    if (held) refreshDivision(w, promo, d);
+    if (ps.interim[d]) {
+      const nc = w.fighters[ps.interim[d]!];
+      ps.champs[d] = nc.id;
+      ps.interim[d] = null;
+      const ir = [...ps.reigns].reverse().find((x) => x.fighter === nc.id && x.interim && x.lost === undefined);
+      if (ir) {
+        ir.lost = w.day;
+        ir.ended = "unified";
+      }
+      ps.reigns.push({ fighter: nc.id, promo, div: d, won: w.day, defenses: 0, how: "promoted" });
+      if (promo === "ufc" || promo === "pfl") addNews(w, { kind: "title", promo, fighters: [nc.id], big: true, text: `${fullName(nc)} is promoted to undisputed ${PROMOTIONS[promo].short} ${DIVISIONS[d].name.toLowerCase()} champion.` });
+    }
   }
+  if (ps.interim[d] === f.id) dropInterim(w, promo, d, why);
+  if (ps.contender[d] === f.id) ps.contender[d] = null;
+  if (held) refreshDivision(w, promo, d);
 }

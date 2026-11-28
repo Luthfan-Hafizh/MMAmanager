@@ -29,7 +29,16 @@ export function ageOf(w: World, f: Fighter): number {
 }
 
 export function fullName(f: Fighter): string {
-  return f.first ? `${f.first} ${f.surname}` : f.surname;
+  if (!f.first) return f.surname;
+  return f.fam ? `${f.surname} ${f.first}` : `${f.first} ${f.surname}`;
+}
+
+/**
+ * A name over two lines in a hero: the first name small above the surname, or, for a
+ * name written family name first, the whole name on one line in its own order.
+ */
+export function nameLines(f: Fighter): { first?: string; last: string } {
+  return f.fam ? { last: fullName(f) } : { first: f.first || undefined, last: f.surname };
 }
 
 export function tierOf(f: Fighter): Tier | null {
@@ -228,6 +237,14 @@ export function rankNumber(list: string[], interim: string | null, i: number): n
   return interim && list[0] === interim ? Math.max(1, i) : i + 1;
 }
 
+/** Place on the pound-for-pound list of the fighter's promotion (the UFC's or the PFL's), or null. */
+export function p4pRank(w: World, f: Fighter): number | null {
+  if (f.status !== "active") return null;
+  const list = f.promo === "ufc" ? w.p4p : f.promo === "pfl" ? w.promos.pfl?.p4p : undefined;
+  const i = list ? list.indexOf(f.id) : -1;
+  return i >= 0 ? i + 1 : null;
+}
+
 export function isChampion(w: World, f: Fighter): boolean {
   return !!f.promo && w.promos[f.promo]?.champs[f.div] === f.id;
 }
@@ -245,7 +262,38 @@ export function rankLabel(w: World, f: Fighter): string {
 
 export function addNews(w: World, n: Omit<News, "id" | "day"> & { day?: number }): void {
   w.news.unshift({ id: nextId(w, "n"), day: n.day ?? w.day, ...n });
-  if (w.news.length > 600) w.news.length = 600;
+  if (w.news.length > NEWS_RECENT + 50) trimNews(w);
+}
+
+/** Every story is kept for the latest 600; older ones only if they last (see `lasting`). */
+const NEWS_RECENT = 600;
+/** A ceiling for very long careers: about 15 years of lasting stories. */
+const NEWS_MAX = 2400;
+
+/**
+ * The stories a career looks back on: anything about the player's own fighters, and
+ * a title changing hands or defended in the UFC or the PFL. The rest of the world's
+ * results go after a few months, as they did before.
+ */
+function lasting(w: World, n: News): boolean {
+  if (n.fighters?.some((id) => w.career.fighters.includes(id))) return true;
+  if (n.kind !== "title" || !n.promo) return false;
+  const tier = PROMOTIONS[n.promo]?.tier;
+  return tier === "major" || tier === "league";
+}
+
+function trimNews(w: World): void {
+  let kept = 0;
+  const out: News[] = [];
+  for (let i = 0; i < w.news.length; i++) {
+    const n = w.news[i];
+    if (i < NEWS_RECENT || (kept < NEWS_MAX - NEWS_RECENT && lasting(w, n))) {
+      if (i >= NEWS_RECENT) kept++;
+      out.push(n);
+    }
+  }
+  w.news.length = 0;
+  w.news.push(...out);
 }
 
 export function eventOf(w: World, b: Bout): MMAEvent | undefined {

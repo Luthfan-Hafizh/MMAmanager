@@ -18,12 +18,13 @@ import { setOdds } from "./odds";
 import { calloutFor } from "../career/fightweek";
 import { grudgeBonus, heatOf, rivalsOf } from "../career/rivals";
 import { makeInjury, trainingInjury } from "../data/injuries";
-import { beltBooked, beltKindFor, bmfPairing, isBeltFight, refreshBelt, stakeLabel, stakeOf } from "./belts";
+import { beltBooked, beltKindFor, bmfPairing, currentReign, isBeltFight, refreshBelt, stakeFor, stakeOf } from "./belts";
+import { superfightOpp } from "../career/superfight";
 import { notify } from "../career/inbox";
 import { fightOfferPay, payShowOnly } from "../career/money";
 import { boutLimit, CUT_TEXT, cutCheck, findCall, type Call } from "../career/shortnotice";
 import { fmtDate } from "../core/time";
-import { money } from "../core/util";
+import { money, nth } from "../core/util";
 import { debutBand, waitingForTitle, type DebutBand } from "../career/standing";
 import { bookTryouts, tryoutHold } from "../career/tryout";
 import { heldByRtu, rtuReplacement } from "./roadtoufc";
@@ -433,8 +434,10 @@ export function buildCard(w: World, rng: Rng, ev: MMAEvent): void {
     else makeBout(w, ev, x, y, "bmf");
   }
   // Champions fight only for their belts, so the shows below the UFC put two title
-  // fights on most cards (Cage Warriors and KSW often three); the UFC two on a numbered card.
-  const maxTitles = ev.kind === "numbered" ? 2 : ev.kind === "fightnight" ? (rng.chance(0.2) ? 1 : 0) : p.tier === "amateur" ? 1 : rng.chance(0.2) ? 1 : rng.chance(0.75) ? 2 : 3;
+  // fights on most cards (Cage Warriors and KSW often three). The UFC keeps its title
+  // fights for the numbered cards, two as a rule and now and then three (UFC 300,
+  // UFC 217); a Fight Night headlined by a title fight is rare (about one a year).
+  const maxTitles = ev.kind === "numbered" ? (rng.chance(0.2) ? 3 : 2) : ev.kind === "fightnight" ? (rng.chance(0.035) ? 1 : 0) : p.tier === "amateur" ? 1 : rng.chance(0.2) ? 1 : rng.chance(0.75) ? 2 : 3;
   titleFights(w, rng, ev, maxTitles);
   fillCard(w, rng, ev, size);
   orderCard(w, ev);
@@ -572,11 +575,25 @@ export function offerFight(w: World, rng: Rng, ev: MMAEvent, f: Fighter, opp?: F
     const champ = ps.champs[d];
     // Belt holders aren't ordinary opponents: they fight for their belts.
     const free = pool.filter((x) => x.id !== champ && x.id !== ps.interim[d]);
+    // The UFC puts its title fights on the numbered cards: a champion, an interim
+    // champion or the named contender waits for one.
+    if (ev.promo === "ufc" && ev.kind !== "numbered" && (champ === f.id || ps.interim[d] === f.id || (!!champ && ps.contender[d] === f.id))) return null;
     if (champ === f.id) {
-      // A champion's defence.
+      // A champion's defence: against the challenger the champion named in the cage, if the
+      // matchmaker agrees, else the top contender; or, called for and agreed, the champion
+      // at the next weight with that belt on the line.
       const due = daysSinceFight(w, f) + (ev.day - w.day) >= DEFENCE_GAP[p.tier] - 20;
       if (!due) return null;
-      o = contenderFor(w, ev, d, f, pool);
+      const sf = superfightOpp(w, rng, f, ev);
+      if (sf) {
+        o = sf.t;
+        bd = sf.div;
+      } else {
+        const named = calloutFor(w, f);
+        const t = named ? w.fighters[named] : null;
+        const r = t ? rankOf(w, t) : null;
+        o = t && pool.includes(t) && !teammates(f, t) && r !== null && r > 0 && r <= 5 && !ps.contender[d] && rng.chance(0.7) ? t : contenderFor(w, ev, d, f, pool);
+      }
       k = "title";
     } else if (champ && ps.interim[d] === f.id) {
       // The interim champion fights only for the belts: the unification when the
@@ -773,7 +790,17 @@ export function offerFight(w: World, rng: Rng, ev: MMAEvent, f: Fighter, opp?: F
     });
     return offer;
   }
-  const kindText = bout.kind === "bmf" ? (bout.stake === "bmf-defence" ? "a BMF title defence" : "a fight for the BMF title, five rounds") : bout.kind === "title" ? (bout.stake === "unify" ? "a title unification" : "a title fight") : bout.kind === "vacant" ? "a fight for the vacant title" : bout.kind === "interim" ? (bout.stake === "interim-defence" ? "an interim title defence" : "an interim title fight") : bout.kind === "tryout" ? "a Contender Series fight" : "a fight";
+  const bdName = DIVISIONS[bd].name.toLowerCase();
+  const defenceNo = (currentReign(w, ev.promo, bd, f.id)?.defenses ?? 0) + 1;
+  const titleText =
+    bout.stake === "unify"
+      ? "a title unification"
+      : bd !== f.div && ps.champs[bd] === o.id && ps.champs[f.div] === f.id
+        ? `a champion-versus-champion fight for the ${bdName} title`
+        : ps.champs[bd] === f.id
+          ? `the ${nth(defenceNo)} defence of the ${bdName} title`
+          : `a shot at the ${bdName} title`;
+  const kindText = bout.kind === "bmf" ? (bout.stake === "bmf-defence" ? "a BMF title defence" : "a fight for the BMF title, five rounds") : bout.kind === "title" ? titleText : bout.kind === "vacant" ? "a fight for the vacant title" : bout.kind === "interim" ? (bout.stake === "interim-defence" ? "an interim title defence" : "an interim title fight") : bout.kind === "tryout" ? "a Contender Series fight" : "a fight";
   // A first fight against the ranked, or a fight at the other weight where the fighter is ranked too.
   const facts: Fact[] = [];
   let extraText = "";
@@ -793,7 +820,7 @@ export function offerFight(w: World, rng: Rng, ev: MMAEvent, f: Fighter, opp?: F
     fighter: f.id,
     ref: offer.id,
     from: `${p.short} matchmaker`,
-    subject: `${p.short} offer: ${fullName(o)}${stakeLabel(bout) ? ` (${stakeLabel(bout)!.toLowerCase()})` : rankedDebut ? " (ranked debut)" : bd !== f.div ? ` (at ${DIVISIONS[bd].name.toLowerCase()})` : ""}`,
+    subject: `${p.short} offer: ${fullName(o)}${stakeFor(w, bout, f.id) ? ` (${stakeFor(w, bout, f.id)!.toLowerCase()})` : rankedDebut ? " (ranked debut)" : bd !== f.div ? ` (at ${DIVISIONS[bd].name.toLowerCase()})` : ""}`,
     body: `${p.name} offers ${you} ${kindText} against ${fullName(o)} (${rec}) at ${ev.name} on ${fmtDate(ev.day)} in ${ev.city}. ${bout.rounds} rounds. ${purse}${grudge ? ` The bad blood sells: ${money(grudge)} of that is for the grudge.` : ""}${extraText}`,
     needs: true,
     actions: [

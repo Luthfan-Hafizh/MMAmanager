@@ -75,6 +75,10 @@ import { repair } from "../src/world/create";
 import { declineChoices, rapport, rapportLabel } from "../src/career/promoter";
 import { DeclinePicker } from "../src/ui/decline";
 import { FIGHT_STYLES, GRAPPLE_GROUPS, STRIKE_GROUPS } from "../src/data/fightstyles";
+import { callSuperfight, canCallSuperfight, superfightOpp, superfightTarget } from "../src/career/superfight";
+import { addNews, fullName } from "../src/world/core";
+import { stakeLabel } from "../src/world/belts";
+import type { Fighter } from "../src/model/types";
 
 const g = globalThis as unknown as Record<string, unknown>;
 g.window = { location: { hash: "" }, addEventListener() {}, removeEventListener() {} };
@@ -510,7 +514,8 @@ pages(tw, "Retired fighter turned manager");
       f.injury = null;
       f.susp = 0;
     }
-    const ev = iw.upcoming.map((id) => iw.events[id]).find((e) => e.promo === "ufc" && e.day - iw.day > 40)!;
+    // Belt fights in the UFC go on the numbered cards.
+    const ev = iw.upcoming.map((id) => iw.events[id]).find((e) => e.promo === "ufc" && e.kind === "numbered" && e.day - iw.day > 40)!;
     return { iw, me, ps, champ, ev };
   };
   {
@@ -773,7 +778,7 @@ pages(tw, "Retired fighter turned manager");
       const news = dw.news.length;
       const r0 = rapport(dw, me.id, promo);
       answer(dw, msgOf(o2.id)!.id, "decline:bigger");
-      const ducked = dw.news.slice(0, dw.news.length - news + 1).some((n) => n.text.includes(`turned down a fight with ${opp.first} ${opp.surname}`));
+      const ducked = dw.news.slice(0, dw.news.length - news + 1).some((n) => n.text.includes(`turned down a fight with ${fullName(opp)}`));
       if (rapport(dw, me.id, promo) !== r0 - 9 || !ducked || heatOf(dw, me.id, opp.id) < 8) fail(`turning down a better name for "a bigger name" should cost 9, make the news and start bad blood (${r0} -> ${rapport(dw, me.id, promo)}, news ${ducked}, heat ${heatOf(dw, me.id, opp.id)})`);
       // The money: a fighter the promotion values hears back once with more.
       free();
@@ -987,7 +992,7 @@ pages(tw, "Retired fighter turned manager");
   if (out.winner !== "a") fail("the check's bantamweight lost the fight at featherweight");
   else if (!there || there > 9 || (rankOf(w, eighth) ?? 99) <= there) fail(`beating the featherweight #8 ranked a bantamweight ${there ? `#${there}` : "nowhere"} at featherweight (the beaten one #${rankOf(w, eighth)})`);
   else if (!w.inbox.some((m) => m.subject.startsWith("Ranked at featherweight")) || !w.news.some((n) => n.text.includes("is ranked at featherweight too"))) fail("no news or word to the player of the place at the second weight");
-  else if (!page.includes('class="rk-x"') || !home.includes(`#${there} FW`)) fail("the Rankings page or Home doesn't show the place at the second weight");
+  else if (!page.includes('class="rk-x"') || !home.includes(`#${there} at featherweight`)) fail("the Rankings page or Home doesn't show the place at the second weight");
   else {
     let atFw = 0;
     let said = false;
@@ -1304,6 +1309,124 @@ pages(tw, "Retired fighter turned manager");
   else if (!rec.includes("Fastest finishes") || !rec.includes("Most title-fight wins") || !all.includes("Whole careers")) fail("the records page misses a list or the whole-career view");
   else if (fastest?.rows.some((x) => x.v <= 0)) fail("a finish is timed at 0:00");
   else console.log(`Awards: ${first} for 2027 (UFC: ${ufc.map((a) => AWARD_NAME[a.kind]).join(", ")}; Fighter of the Year ${w.fighters[foy.fighters[0]].surname}, ${foy.why}), made once, on the Legacy page and the winner's page; records at ${PROMO_IDS.filter((x) => PROMOTIONS[x].rankSize).length} promotions, fastest finish ${fastest?.rows[0]?.text ?? "none"}`);
+}
+
+// Belts told right: a defence reads as a defence (the count, one title story, no new-champion
+// message), a lost belt and a belt won back say so, the hero groups the standing, a champion
+// who beats the champion a weight up keeps one of the two belts, family-name-first names, the
+// news a career keeps, the inbox's order after a fight, one division's rankings page, and the
+// profile's tab in the address.
+{
+  const fail = (what: string) => { failures++; console.log(`  FAIL ${what}`); };
+  const tw = createWorld(roster, { name: "UI", seed: 91, mode: "fighter", difficulty: "normal", takeover: "ufc-petr-yan" });
+  setWorld(tw);
+  const me = tw.fighters[tw.career.fighters[0]];
+  const ps = tw.promos.ufc;
+  const d = me.div;
+  const ach = new Set(tw.career.achievements.filter((a) => a.fighter === me.id).map((a) => a.id));
+  if (!ach.has("first-win") || !ach.has("ufc-champ") || !ach.has("ufc-debut") || tw.inbox.some((m) => m.from === "Milestone")) fail("a taken-over champion's record didn't count for the milestones, or they came as messages");
+  const evs = tw.upcoming.map((id) => tw.events[id]).filter((e) => e.promo === "ufc" && e.kind === "numbered" && e.day - tw.day > 20);
+  const free = (f: Fighter) => {
+    if (f.booked && tw.bouts[f.booked]) cancelBout(tw, tw.bouts[f.booked], "test");
+    f.injury = null;
+    f.susp = 0;
+  };
+  // Fight one: the champion wins, and the stories and messages count it as a defence.
+  const fight = (ev: MMAEvent, a: Fighter, o: Fighter, win: Fighter, opts: { div?: DivisionId } = {}) => {
+    free(a);
+    free(o);
+    const b = makeBout(tw, ev, a, o, "regular", { div: opts.div });
+    const out = quickSim(tw, b);
+    out.winner = b.a === win.id ? "a" : "b";
+    out.method = "KO";
+    out.detail = "punches";
+    out.round = 2;
+    out.time = 95;
+    const inbox0 = tw.inbox.length;
+    const news0 = tw.news.length;
+    withRng(tw, (rng) => applyResult(tw, rng, b, out));
+    return { b, msgs: tw.inbox.slice(0, tw.inbox.length - inbox0), stories: tw.news.slice(0, tw.news.length - news0).filter((n) => n.ev === b.ev && (n.fighters ?? []).includes(a.id)) };
+  };
+  const contender = tw.fighters[(ps.ranks[d] ?? []).find((id) => tw.fighters[id].gym !== me.gym)!];
+  const f1 = fight(evs[0], me, contender, me);
+  const r1 = f1.msgs.find((m) => m.kind === "result" && m.ref === f1.b.id);
+  if (f1.b.kind !== "title") fail(`the champion's fight was made as a ${f1.b.kind} fight, not for the belt`);
+  else if (!r1?.subject.startsWith("First title defence") || !r1.facts?.some((x) => x.k === "Belt" && x.v.includes("1st defence"))) fail(`a defence's result message reads "${r1?.subject}"`);
+  else if (f1.msgs.some((m) => /yours to defend|is the new/.test(m.body) || m.kind === "title")) fail("a defence still sends the new-champion message");
+  else if (f1.stories.length !== 1 || f1.stories[0].kind !== "title" || !/defends the UFC .* \(first defence\)/.test(f1.stories[0].text)) fail(`a defence's news is ${JSON.stringify(f1.stories.map((n) => `${n.kind}: ${n.text}`))}`);
+  // The inbox puts the fight first on the day.
+  const inboxHtml = renderToString(<Inbox />).replace(/<!-- -->/g, "");
+  const firstSubject = /<div class="s">([^<]*)</.exec(inboxHtml)?.[1] ?? "";
+  if (!firstSubject.startsWith("First title defence")) fail(`the inbox opens on "${firstSubject}", not the fight's result`);
+  // Fight two: the belt is lost.
+  const f2 = fight(evs[1], me, contender, contender);
+  const r2 = f2.msgs.find((m) => m.kind === "result" && m.ref === f2.b.id);
+  if (!r2?.subject.startsWith("Lost the title to") || !/The reign lasted/.test(r2.body)) fail(`losing the belt reads "${r2?.subject}"`);
+  else if (f2.stories.length !== 1 || !f2.stories[0].text.startsWith("NEW CHAMPION:")) fail(`a new champion's news is ${JSON.stringify(f2.stories.map((n) => n.text))}, not one story`);
+  // Fight three: won back, and the promotion has its word for the new champion.
+  const f3 = fight(evs[2], me, contender, me);
+  const r3 = f3.msgs.find((m) => m.kind === "result" && m.ref === f3.b.id);
+  const word = f3.msgs.find((m) => m.kind === "title");
+  if (!r3?.subject.startsWith("Won the title") || !word || !/is the new UFC bantamweight champion/.test(word.body)) fail(`a belt won back reads "${r3?.subject}", promotion's word: ${word?.subject ?? "none"}`);
+  else console.log(`Belt messages: "${r1!.subject}", "${r2!.subject}", "${r3!.subject}" (+ "${word.subject}"); news: "${f1.stories[0].text}"`);
+  // The hero: the standing first, the other weight's place in words, the Contender Series in the bio.
+  me.tags = [...(me.tags ?? []), "dwcs"];
+  const fwList = (ps.ranks.FW ??= []);
+  if (!fwList.includes(me.id)) fwList.splice(3, 0, me.id);
+  me.xw = [{ promo: "ufc", div: "FW", beat: [fwList[4]], lost: 0, last: tw.day, score: 1 }];
+  const hero = renderToString(<FighterPage id={me.id} />).replace(/<!-- -->/g, "");
+  if (!hero.includes("Also #4 at featherweight") || hero.includes('class="tag">Contender Series') || !hero.includes("Came through") || !hero.includes("Your fighter") || !/UFC bantamweight champion/.test(hero) || !/Since \d/.test(hero)) fail("the fighter hero still shows the old pill row (other weight, Contender Series) or the champion's reign is missing");
+  else console.log("Hero: Champion, P4P, division and promotion, 'Also #4 at featherweight', 'Your fighter' apart; the Contender Series in the bio; the reign under the C");
+  const tabs = renderToString(<FighterPage id={me.id} tab="fights" />).replace(/<!-- -->/g, "");
+  if (!tabs.includes('class="on">Fight history<')) fail("the profile doesn't open the tab in the address");
+  // Champion against champion: the call, the fight at the other weight, two belts, one kept.
+  me.pop = Math.max(me.pop, 70);
+  me.lastFight = tw.day - 200;
+  const target = superfightTarget(tw, me);
+  if (!target || !canCallSuperfight(tw, me)) fail("a champion with a name has no champion-versus-champion call");
+  else {
+    free(target.t);
+    target.t.lastFight = tw.day - 200;
+    callSuperfight(tw, me);
+    let sf: ReturnType<typeof superfightOpp> = null;
+    for (let k = 0; k < 40 && !sf; k++) sf = withRng(tw, (rng) => superfightOpp(tw, rng, me, evs[3]));
+    if (!sf) fail("the promotion never made the champion-versus-champion fight");
+    else {
+      const f4 = fight(evs[3], me, sf.t, me, { div: sf.div });
+      const twoBelts = tw.inbox.find((m) => m.data?.kind === "twobelts" && m.needs && !m.done);
+      const stake = stakeLabel(f4.b);
+      if (f4.b.kind !== "title" || f4.b.div !== sf.div || ps.champs[sf.div] !== me.id || ps.champs[d] !== me.id || !twoBelts) fail(`the champion-versus-champion fight (${f4.b.kind} at ${f4.b.div}, ${stake}) didn't leave two belts and a choice`);
+      else {
+        answer(tw, twoBelts.id, `belts:keep:${sf.div}`);
+        if (me.div !== sf.div || ps.champs[sf.div] !== me.id || ps.champs[d] === me.id) fail("keeping the new belt didn't move the fighter or give the old one up");
+        else console.log(`Champion vs champion: ${me.surname} beat ${sf.t.surname} for the ${sf.div} belt, kept it and gave up ${d} (now ${ps.champs[d] ? tw.fighters[ps.champs[d]!].surname : "vacant"})`);
+      }
+    }
+  }
+  // Names written family name first.
+  const sy = tw.fighters["ufc-song-yadong"];
+  if (!sy || fullName(sy) !== "Song Yadong" || sy.surname !== "Song" || !sy.fam) fail(`Song Yadong is "${sy ? fullName(sy) : "missing"}", short name "${sy?.surname}"`);
+  else {
+    // A save from before: the given name was taken for the surname.
+    sy.first = "Song";
+    sy.surname = "Yadong";
+    delete sy.fam;
+    repair(tw);
+    if (fullName(sy) !== "Song Yadong" || sy.surname !== "Song") fail("loading an old save didn't put Song Yadong's family name back as the short name");
+    else console.log(`Names: ${fullName(sy)} (short: ${sy.surname}), ${fullName(tw.fighters["ufc-zhang-weili"])} (short: ${tw.fighters["ufc-zhang-weili"].surname}), fixed on load too`);
+  }
+  // The news a career keeps: the player's stories outlast the world's.
+  addNews(tw, { kind: "other", fighters: [me.id], text: "A story about the player's fighter." });
+  addNews(tw, { kind: "result", promo: "lfa", text: "An old regional result." });
+  for (let k = 0; k < 760; k++) addNews(tw, { kind: "result", promo: "lfa", text: `Filler ${k}` });
+  const keptMine = tw.news.some((n) => n.text === "A story about the player's fighter.");
+  const droppedOld = !tw.news.some((n) => n.text === "An old regional result.");
+  if (!keptMine || !droppedOld || tw.news.length > 700) fail(`the news kept the player's story: ${keptMine}, dropped an old regional result: ${droppedOld}, holds ${tw.news.length}`);
+  // One division's rankings page; the Top stories labels.
+  const solo = renderToString(<Rankings promo="ufc" div="FW" />).replace(/<!-- -->/g, "");
+  if (!solo.includes("The title picture") || !solo.includes("Recent title fights") || !solo.includes("rk-col wide")) fail("one division's rankings page has no title picture");
+  const home = renderToString(<Home />).replace(/<!-- -->/g, "");
+  if (/ · (result|title|signing|booking) · /.test(home)) fail("Home's top stories show the raw kind");
 }
 
 const mw = createWorld(roster, { name: "UI", seed: 79, mode: "manager", difficulty: "normal", agency: "Check Management" });

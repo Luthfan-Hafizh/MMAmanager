@@ -9,7 +9,7 @@ import type { FightOffer, Fighter, World } from "../model/types";
 import { adviseFight, boutOfOffer, type Advice } from "../career/advisor";
 import { boutLimit, CUT_TEXT, cutCheck } from "../career/shortnotice";
 import { moneyline } from "../world/odds";
-import { rankIn, rankLabel, recordText } from "../world/core";
+import { rankIn, rankLabel, recordText, fullName } from "../world/core";
 import { defOf, SEVERITY_TEXT } from "../data/injuries";
 import { Link } from "./router";
 import { RapportLine } from "./decline";
@@ -102,7 +102,7 @@ export function FightOfferView({ w, o, f, compact }: { w: World; o: FightOffer; 
       <div className="offer-grid">
         <div>
           <div className="label">Opponent</div>
-          <div className="dx" style={{ fontSize: 24 }}><Link to={`/fighter/${opp.id}`}>{opp.first} {opp.surname}</Link></div>
+          <div className="dx" style={{ fontSize: 24 }}><Link to={`/fighter/${opp.id}`}>{fullName(opp)}</Link></div>
           <div className="small dim">{recordText(opp)} · {rankLabel(w, opp) || "Unranked"}{p !== null ? <> · you're <b>{moneyline(p)}</b></> : null}</div>
         </div>
         <div>

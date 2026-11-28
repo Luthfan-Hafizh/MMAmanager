@@ -6,7 +6,7 @@ import { clamp } from "../core/util";
 import { ageAt } from "../core/time";
 import { groupScore, ovrOf, ATTR_INFO, type AttrKey } from "../model/attributes";
 import type { Bout, Fighter, World } from "../model/types";
-import { ringRust } from "./core";
+import { ringRust, fullName } from "./core";
 
 /** Probability that A beats B. */
 export function winProb(w: World, a: Fighter, b: Fighter, day = w.day): number {
@@ -84,7 +84,7 @@ export function preview(w: World, b: Bout): Preview {
   const fav = Math.abs(p - 0.5) < 0.04 ? null : p > 0.5 ? "a" : "b";
   const pf = fav === "a" ? A : fav === "b" ? B : null;
   const summary = pf
-    ? `${pf.first} ${pf.surname} is the ${Math.abs(p - 0.5) > 0.25 ? "heavy" : Math.abs(p - 0.5) > 0.12 ? "clear" : "slight"} favourite (${moneyline(fav === "a" ? p : 1 - p)}).`
+    ? `${fullName(pf)} is the ${Math.abs(p - 0.5) > 0.25 ? "heavy" : Math.abs(p - 0.5) > 0.12 ? "clear" : "slight"} favourite (${moneyline(fav === "a" ? p : 1 - p)}).`
     : "The books can't separate them: a pick'em fight.";
   return { favourite: fav, keys, summary };
 }

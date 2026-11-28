@@ -21,12 +21,13 @@
 // when the champion is back. Lose one and the belt goes with it.
 
 import type { Rng } from "../core/rng";
-import { clamp } from "../core/util";
+import { clamp, nth } from "../core/util";
 import { ageAt, dayOf, fmtDate } from "../core/time";
 import { DIVISIONS, type DivisionId } from "../data/divisions";
 import { PROMOTIONS, PROMO_IDS, roundsFor, type PromoId } from "../data/promotions";
-import type { Bout, BoutKind, BmfState, Fighter, MMAEvent, World } from "../model/types";
+import type { Bout, BoutKind, BmfState, Fighter, MMAEvent, Reign, World } from "../model/types";
 import { addNews, fullName, rankOf, rosterOf } from "./core";
+import { methodPhrase } from "../engine/sim";
 import { notify } from "../career/inbox";
 import { rtuLabel } from "./roadtoufc";
 
@@ -43,6 +44,55 @@ export function stakeLabel(b: Pick<Bout, "kind" | "stake" | "div" | "rtu">, long
   if (b.kind === "vacant") return long ? `Vacant ${div.toLowerCase()}title` : "Vacant title";
   if (b.kind === "eliminator") return "Title eliminator";
   return null;
+}
+
+/**
+ * What is at stake for one fighter in a booked fight: the champion's title fight is a
+ * defence ("Third title defence"), and a champion meeting the champion from another
+ * weight is "Champion vs champion". Otherwise the bout's own label.
+ */
+export function stakeFor(w: World, b: Bout, id: string, long = false): string | null {
+  const base = stakeLabel(b, long);
+  if (b.kind !== "title" || b.stake === "unify" || b.status === "done" || !b.a || !b.b) return base;
+  const ps = w.promos[b.promo];
+  if (!ps) return base;
+  const elsewhere = (fid: string) => {
+    const f = w.fighters[fid];
+    return !!f && f.div !== b.div && ps.champs[f.div] === f.id;
+  };
+  if (elsewhere(b.a) || elsewhere(b.b)) return long ? `${DIVISIONS[b.div].name} title: champion vs champion` : "Champion vs champion";
+  if (ps.champs[b.div] === id) {
+    const n = (currentReign(w, b.promo, b.div, id)?.defenses ?? 0) + 1;
+    return long ? `${nth(n).charAt(0).toUpperCase()}${nth(n).slice(1)} title defence` : "Title defence";
+  }
+  return base;
+}
+
+/** The reign a fighter is on now at a weight (the full belt, or the interim one). */
+export function currentReign(w: World, promo: PromoId, div: DivisionId, id: string, interim = false): Reign | undefined {
+  const ps = w.promos[promo];
+  if (!ps) return undefined;
+  for (let k = ps.reigns.length - 1; k >= 0; k--) {
+    const r = ps.reigns[k];
+    if (r.fighter === id && r.div === div && r.lost === undefined && !!r.interim === interim) return r;
+  }
+  return undefined;
+}
+
+/** The fighter's belt right now, wherever it is held: the full title first, then an interim one. */
+export function heldBelt(w: World, f: Fighter): { promo: PromoId; div: DivisionId; interim: boolean; reign?: Reign } | null {
+  if (!f.promo) return null;
+  const ps = w.promos[f.promo];
+  if (!ps) return null;
+  if (ps.champs[f.div] === f.id) return { promo: f.promo, div: f.div, interim: false, reign: currentReign(w, f.promo, f.div, f.id) };
+  if (ps.interim[f.div] === f.id) return { promo: f.promo, div: f.div, interim: true, reign: currentReign(w, f.promo, f.div, f.id, true) };
+  return null;
+}
+
+/** "Champion since 6 Dec 2025 · 2 defences": a reign in a line. */
+export function reignLine(r: Reign | undefined, interim = false): string {
+  if (!r) return interim ? "Interim champion" : "Champion";
+  return `Since ${fmtDate(r.won)}${r.defenses ? ` · ${r.defenses} defence${r.defenses === 1 ? "" : "s"}` : interim ? "" : " · no defences yet"}`;
 }
 
 /** What the fight did to this fighter's belts. */
@@ -164,10 +214,10 @@ export function bmfPairing(w: World, rng: Rng, ev: MMAEvent, ready: (f: Fighter)
   return two.length === 2 ? [two[0], two[1]] : null;
 }
 
-/** After a BMF fight: the belt, the notes, the hype. */
-export function handleBmf(w: World, b: Bout, winner: Fighter | null, loser: Fighter | null): void {
+/** After a BMF fight: the belt, the notes, the hype. True when the news has the story. */
+export function handleBmf(w: World, b: Bout, winner: Fighter | null, loser: Fighter | null): boolean {
   const bmf = w.promos.ufc?.bmf;
-  if (!bmf || b.kind !== "bmf") return;
+  if (!bmf || b.kind !== "bmf") return false;
   bmf.last = b.day;
   const note = (f: Fighter, text: string) => {
     b.res!.belt = { ...(b.res!.belt ?? {}), [b.a === f.id ? "a" : "b"]: text };
@@ -176,14 +226,17 @@ export function handleBmf(w: World, b: Bout, winner: Fighter | null, loser: Figh
   if (!winner || !loser) {
     const holder = bmf.holder ? w.fighters[bmf.holder] : null;
     if (holder) note(holder, "Kept the BMF title (draw)");
-    return;
+    return false;
   }
+  const r = b.res!;
+  const how = methodPhrase(r.method, r.detail);
+  const by = r.method === "DEC" ? `by ${how}` : `by ${how} in round ${r.round}`;
   const cur = bmf.reigns[bmf.reigns.length - 1];
   if (bmf.holder === winner.id) {
     if (cur) cur.defenses++;
     note(winner, "Defended the BMF title");
     winner.legacy = Math.round(((winner.legacy ?? 0) + 1.5) * 10) / 10;
-    addNews(w, { kind: "title", promo: "ufc", ev: b.ev, fighters: [winner.id, loser.id], big: true, text: `${fullName(winner)} is still the BMF: ${fullName(loser)} beaten${ev ? ` at ${ev.name}` : ""}.` });
+    addNews(w, { kind: "title", promo: "ufc", ev: b.ev, fighters: [winner.id, loser.id], big: true, text: `${fullName(winner)} is still the BMF, beating ${fullName(loser)} ${by}${ev ? ` at ${ev.name}` : ""}.` });
   } else {
     if (bmf.holder && cur && cur.lost === undefined) {
       cur.lost = b.day;
@@ -194,9 +247,10 @@ export function handleBmf(w: World, b: Bout, winner: Fighter | null, loser: Figh
     bmf.reigns.push({ fighter: winner.id, name: fullName(winner), won: b.day, defenses: 0, at: ev?.name });
     note(winner, "Won the BMF title");
     winner.legacy = Math.round(((winner.legacy ?? 0) + 3) * 10) / 10;
-    addNews(w, { kind: "title", promo: "ufc", ev: b.ev, fighters: [winner.id, loser.id], big: true, text: `NEW BMF: ${fullName(winner)} takes the BMF title from ${fullName(loser)}${ev ? ` at ${ev.name}` : ""}.` });
+    addNews(w, { kind: "title", promo: "ufc", ev: b.ev, fighters: [winner.id, loser.id], big: true, text: `NEW BMF: ${fullName(winner)} beats ${fullName(loser)} ${by} for the BMF title${ev ? ` at ${ev.name}` : ""}.` });
   }
   winner.pop = clamp(winner.pop + 6, 0, 100);
+  return true;
 }
 
 /** Monthly: a BMF holder who retires, leaves or moves on gives it up; so does one out for eighteen months. */

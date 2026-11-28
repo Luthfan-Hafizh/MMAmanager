@@ -15,6 +15,14 @@ import type { AgingType, Attrs, Fighter, Gym, Stance } from "../model/types";
 import { blankRecord, blankTotals, makeTechniques } from "./generate";
 import { KNOWN_TITLES, startingLegacy } from "./legacy";
 import { grantStyleTech, pickStyles, type RealSignals } from "./fightstyle";
+import FIGHTER_FIXES from "../data/fighter-fixes.json";
+
+const FAMILY_FIRST = new Set(Object.entries(FIGHTER_FIXES as Record<string, { fam?: boolean }>).filter(([, x]) => x?.fam).map(([id]) => id));
+
+/** A real fighter whose name is written family name first (src/data/fighter-fixes.json "fam"). */
+export function familyFirst(id: string): boolean {
+  return FAMILY_FIRST.has(id);
+}
 
 export interface RealFighter {
   id: string;
@@ -325,8 +333,10 @@ export function realFighter(rf: RealFighter, ctx: RealContext, seed: number): Fi
   const cur = ovrOf(a);
 
   const parts = rf.n.trim().split(/\s+/);
-  const first = parts.length > 1 ? parts[0] : "";
-  const surname = parts.length > 1 ? parts.slice(1).join(" ") : parts[0];
+  // Written family name first (Song Yadong, as the UFC writes its Chinese fighters): the family name is the first word.
+  const fam = parts.length > 1 && familyFirst(rf.id);
+  const first = parts.length > 1 ? (fam ? parts.slice(1).join(" ") : parts[0]) : "";
+  const surname = parts.length > 1 ? (fam ? parts[0] : parts.slice(1).join(" ")) : parts[0];
   const def0 = DIVISIONS[rf.d];
   const stance: Stance = SOUTHPAWS.has(rf.id) ? "southpaw" : SWITCH.has(rf.id) ? "switch" : rng.chance(0.06) ? "switch" : rng.chance(0.21) ? "southpaw" : "orthodox";
   const decline = rf.dv[2];
@@ -347,6 +357,7 @@ export function realFighter(rf: RealFighter, ctx: RealContext, seed: number): Fi
     id: rf.id,
     first,
     surname,
+    ...(fam ? { fam: true } : {}),
     nick: rf.k,
     sex: def0.sex,
     country: rf.c,

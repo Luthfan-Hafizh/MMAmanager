@@ -1,4 +1,4 @@
-import { isBeltFight, stakeLabel } from "../../world/belts";
+import { isBeltFight, stakeFor, stakeLabel } from "../../world/belts";
 import { traitsOf, fightStyle } from "../../world/fightstyle";
 import { FIGHT_STYLES } from "../../data/fightstyles";
 import { useState } from "react";
@@ -78,7 +78,7 @@ function FightHeader({ w, b, f, opp }: { w: World; b: Bout; f: Fighter; opp: Fig
   const myP = b.odds === undefined ? 0.5 : mine === "a" ? b.odds : 1 - b.odds;
   return (
     <Band
-      eyebrow={<>{title && <span className={`tag ${b.kind === "bmf" ? "bmf" : "gold"}`}>{stakeLabel(b)}</span>}<span>{ev?.name}</span><span className="dim">·</span><span>{fmtDate(b.day, { dow: true })}</span></>}
+      eyebrow={<>{title && <span className={`tag ${b.kind === "bmf" ? "bmf" : "gold"}`}>{stakeFor(w, b, f.id, true)}</span>}<span>{ev?.name}</span><span className="dim">·</span><span>{fmtDate(b.day, { dow: true })}</span></>}
       first={`${f.surname} vs`}
       title={opp.surname}
       sub={`${ev?.venue}, ${ev?.city} · ${b.rounds} × ${b.roundSec / 60} min · ${b.limit ? `${b.limit} lb catchweight` : `${DIVISIONS[b.div].name} (${DIVISIONS[b.div].limit} lb)`}${b.shortNotice && b.sub === f.id ? ` · stepped in on ${b.notice ?? "short"} days' notice` : b.shortNotice ? " · new opponent on short notice" : ""}`}

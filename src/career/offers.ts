@@ -655,8 +655,44 @@ function ufcInterest(w: World, f: Fighter): { chance: number; note: string } | n
     if (t === "regional" && longReign(run) && o >= 70) return { chance: 0.5, note: `${reignText(run)}: a reign like that doesn't need the Contender Series.` };
   }
   if (f.promo && PROMOTIONS[f.promo].tier === "league" && o >= 76 && f.streak >= 2) return { chance: 0.35, note: `A run like that in the ${PROMOTIONS[f.promo].short} gets noticed in Las Vegas.` };
+  // The PFL's top five are wanted off a loss too, when they're good enough for the UFC's fifteen:
+  // a #6 at 82 overall used to wait out deal after deal for a two-fight streak at the right moment.
+  const rk = f.promo ? rankOf(w, f) : null;
+  if (f.promo && PROMOTIONS[f.promo].tier === "league" && rk !== null && rk > 0 && rk <= 5 && o >= 78) return { chance: 0.3, note: `#${rk} in the ${PROMOTIONS[f.promo].short}: the UFC wants the best of it.` };
   if (!f.promo && o >= 76) return { chance: 0.4, note: "The UFC has seen enough." };
   return null;
+}
+
+/**
+ * What the UFC looks for, from where the fighter stands, for the Contracts page: the
+ * rules careerInterest, ufcInterest and the Contender Series (career/tryout.ts) go by.
+ */
+export function ufcRoad(w: World, f: Fighter): string[] | null {
+  if (f.promo === "ufc" || f.status !== "active") return null;
+  const age = (w.day - f.birth) / 365.25;
+  if (age > 36) return ["The UFC doesn't sign fighters over 36."];
+  const o = Math.round(ovrOf(f.attrs));
+  const tier = f.promo ? PROMOTIONS[f.promo].tier : null;
+  const streak = f.streak > 0 ? `won ${f.streak} in a row` : f.streak < 0 ? `lost ${-f.streak} in a row` : "no streak";
+  const rk = f.promo ? rankOf(w, f) : null;
+  const where = rk === 0 ? `, ${PROMOTIONS[f.promo!].short} champion` : rk ? `, #${rk} in the ${PROMOTIONS[f.promo!].short}` : "";
+  const lines: string[] = [];
+  const said = w.career.fc[f.id]?.bids?.ufc;
+  if (said && said.how === "rejected" && w.day - said.day < 150) lines.push(`You turned the UFC down on ${fmtDate(said.day)}: it waits about five months before asking again.`);
+  if (tier === "league") {
+    lines.push(`The UFC talks to a ${PROMOTIONS[f.promo!].short} fighter in the last fight or the last four months of a deal${f.contract?.outClause ? " (your UFC out clause opens it at any time)" : ""}, and when a deal is done.`);
+    lines.push(`It wants a champion, a 76 overall on a two-fight win streak, or a 78 in the top five.`);
+  } else if (tier === "regional" || tier === "local") {
+    lines.push("Most fighters get there through the Contender Series: invitations go out each summer to fighters of 33 or younger with five wins and a 62 overall, who hold the title, have won three in a row, or have a winning record and the last win.");
+    if (tier === "regional") lines.push("A long reign skips it: four title defences (or three across two reigns) at 70 overall, and the UFC signs the champion.");
+    else lines.push("First the regional promotion: a run of wins at 55 overall brings its call.");
+  } else if (!f.promo) {
+    lines.push("A free agent at 76 overall or better hears from the UFC; below that, offers come from the level the record deserves.");
+  } else {
+    lines.push("Turn pro first: four amateur wins, twice as many as the losses, and the local show calls.");
+  }
+  lines.push(`Now: ${o} overall, ${f.rec.w}-${f.rec.l}${f.rec.d ? `-${f.rec.d}` : ""}, ${streak}${where}.`);
+  return lines;
 }
 
 /** The current promotion answers a rival's offer: an extension that matches it if it can, or its best. */

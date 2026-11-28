@@ -191,7 +191,8 @@ console.log(news.join("\n"));
         if (seen.has(id)) inTwo.add(id);
         seen.add(id);
       }
-      if (t.done && t.winner && w.fighters[t.winner]?.promo !== "ufc" && w.fighters[t.winner]?.status === "active" && !w.fighters[t.winner]?.ctrl) errors.push(`Road to UFC ${t.id}: the winner ${w.fighters[t.winner].surname} isn't in the UFC`);
+      // Signed when the bracket is won; a winner who goes 1-2 and is let go (Ryo Ishii, 2027) is the UFC's call, not a bug.
+      if (t.done && t.winner && w.fighters[t.winner]?.promo !== "ufc" && !w.fighters[t.winner]?.tags?.includes("ufc-alum") && w.fighters[t.winner]?.status === "active" && !w.fighters[t.winner]?.ctrl) errors.push(`Road to UFC ${t.id}: the winner ${w.fighters[t.winner].surname} isn't in the UFC`);
       if (t.slots.length >= 3 && t.made[2] && t.evs[2] && w.events[t.evs[2]]?.promo !== "ufc") errors.push(`Road to UFC ${t.id}: the final isn't on a UFC card`);
     }
   }

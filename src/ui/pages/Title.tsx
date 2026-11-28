@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import { fmtDate } from "../../core/time";
 import { compatible, deleteSave, exportWorld, importFile, listBackups, listSaves, loadBackup, loadWorld, type SaveMeta } from "../../state/persist";
-import { save, setBusy, setWorld, toast } from "../../state/store";
+import { forgetCareer, lastCareer, save, setBusy, setWorld, toast } from "../../state/store";
 import { Logo } from "../icons";
 import { go } from "../router";
 import { confirmBox } from "../components";
@@ -34,15 +34,27 @@ export function Title() {
     }
   };
   useEffect(() => {
+    document.title = "MMA Manager";
     void refresh();
+    // A reload on one of the game's pages (#/fighter/..., #/fightnight) picks the career it
+    // belongs to up again, on that page; the bare address and #/ still open the title screen.
+    const at = window.location.hash.replace(/^#/, "");
+    const last = lastCareer();
+    if (last && at && at !== "/" && !at.startsWith("/new")) void load(last, null);
   }, []);
-  const load = async (id: string) => {
+  const load = async (id: string, to: string | null = "/home") => {
     setBusy("Loading the career…");
     try {
       const w = await loadWorld(id);
-      if (!w) throw new Error("Save not found.");
+      if (!w) {
+        if (to === null) {
+          forgetCareer(id);
+          return;
+        }
+        throw new Error("Save not found.");
+      }
       setWorld(w);
-      go("/home");
+      if (to) go(to);
     } catch (e) {
       toast(String((e as Error).message), "bad");
     } finally {
@@ -111,7 +123,7 @@ export function Title() {
                   )}
                   <button className="btn sm" onClick={() => void showBackups(s.id)} aria-expanded={bakFor === s.id}>Backups</button>
                   <button className="btn sm" onClick={async () => { const w = await loadWorld(s.id); if (w) exportWorld(w); }}>Export</button>
-                  <button className="btn sm danger" onClick={async () => { if (!(await confirmBox({ title: "Delete this career?", body: `The career of ${s.who} is deleted for good. Export it first to keep a copy.`, ok: "Delete", danger: true }))) return; await deleteSave(s.id); void refresh(); }}>Delete</button>
+                  <button className="btn sm danger" onClick={async () => { if (!(await confirmBox({ title: "Delete this career?", body: `The career of ${s.who} is deleted for good. Export it first to keep a copy.`, ok: "Delete", danger: true }))) return; await deleteSave(s.id); forgetCareer(s.id); void refresh(); }}>Delete</button>
                   {bakFor === s.id && (
                     <div className="save-baks">
                       {baks.length === 0 ? (

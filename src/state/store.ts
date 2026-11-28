@@ -57,7 +57,33 @@ export function changed(): void {
   saveSoon();
 }
 
+const LAST = "mma4.lastCareer";
+
+/** The career last open in this browser, so a reload on one of its pages picks it up again. */
+export function lastCareer(): string | null {
+  try {
+    return localStorage.getItem(LAST);
+  } catch {
+    return null;
+  }
+}
+
+export function forgetCareer(id: string): void {
+  try {
+    if (localStorage.getItem(LAST) === id) localStorage.removeItem(LAST);
+  } catch {
+    /* storage unavailable: nothing to forget */
+  }
+}
+
 export function setWorld(w: World | null): void {
+  if (w) {
+    try {
+      localStorage.setItem(LAST, w.id);
+    } catch {
+      /* storage unavailable: a reload goes to the title screen */
+    }
+  }
   state.world = w;
   state.lastStop = null;
   emit();

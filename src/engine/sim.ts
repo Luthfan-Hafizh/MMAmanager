@@ -553,7 +553,13 @@ export class FightSim {
     else dt = this.ground();
     if (this.over) {
       // The finishing exchange takes its time too: a knockout in the first exchange isn't at 0:00.
-      if (this.endTime === this.t) this.endTime = Math.min(this.roundSec, this.t + Math.max(1, dt));
+      // One that would have run past the horn ends somewhere in the time that was left, not on
+      // the bell itself: capped at the round's end, one submission in eighteen came at 5:00.
+      if (this.endTime === this.t) {
+        const left = this.roundSec - this.t;
+        const took = dt < left ? Math.max(1, dt) : left * (0.3 + 0.65 * this.crng.next());
+        this.endTime = Math.min(this.roundSec, this.t + took);
+      }
       return dt;
     }
     const left = this.roundSec - this.t;

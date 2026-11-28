@@ -3,7 +3,7 @@ import { fmtDate } from "../../core/time";
 import { money } from "../../core/util";
 import { PROMOTIONS } from "../../data/promotions";
 import type { ContractOffer, Fighter, World } from "../../model/types";
-import { counterOffer, exclusiveDeal, rejectContract, signContract, walksAsChampion, clauseLeverage } from "../../career/offers";
+import { counterOffer, exclusiveDeal, rejectContract, signContract, walksAsChampion, clauseLeverage, ufcRoad } from "../../career/offers";
 import { marketPay, perFight } from "../../career/standing";
 import { adviseContract, managerNegotiate } from "../../career/advisor";
 import { AdviceCard } from "../advice";
@@ -72,6 +72,7 @@ export function Contracts({ id }: { id?: string }) {
             </div>
           )}
         </Panel>
+        {fc && <UfcRoad w={w} f={f} />}
         {fc && <MatchmakerPanel w={w} f={f} />}
         {fc && <TeamPanel w={w} f={f} />}
       </div>
@@ -80,6 +81,19 @@ export function Contracts({ id }: { id?: string }) {
         {offers.map((o) => <OfferCard key={o.id} w={w} o={o} f={f} />)}
       </div>
     </div>
+  );
+}
+
+/** What the UFC looks for and where the fighter stands: nothing hidden about how to get there. */
+function UfcRoad({ w, f }: { w: World; f: Fighter }) {
+  const road = ufcRoad(w, f);
+  if (!road) return null;
+  return (
+    <Panel title="Road to the UFC" hint="What it looks for">
+      {road.map((line, i) => (
+        <p key={i} className={i === road.length - 1 ? "small" : "small dim"} style={{ margin: i === road.length - 1 ? 0 : "0 0 8px" }}>{line}</p>
+      ))}
+    </Panel>
   );
 }
 

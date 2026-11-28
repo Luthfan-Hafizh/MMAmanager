@@ -223,8 +223,10 @@ export function* runEventSteps(w: World, rng: Rng, ev: MMAEvent): Steps<{ awaiti
   refreshCard(w, ev);
   weighIns(w, rng, ev);
   const awaiting: Bout[] = [];
-  // Early prelims first, main event last.
+  // Early prelims first, main event last. The card stops at the player's fight: what comes after
+  // it (the co-main, the main event) is fought after it, not in the results while it waits.
   const order = [...ev.bouts].reverse();
+  let held = false;
   for (const id of order) {
     const b = w.bouts[id];
     if (b.status !== "booked") continue;
@@ -238,8 +240,10 @@ export function* runEventSteps(w: World, rng: Rng, ev: MMAEvent): Steps<{ awaiti
     if (isControlled(w, b.a) || isControlled(w, b.b)) {
       b.awaiting = true;
       awaiting.push(b);
+      held = true;
       continue;
     }
+    if (held) continue;
     const seed = rng.int(1, 2 ** 31 - 1);
     const out = simulate(fightInputFor(w, b, rng, seed, false));
     applyResult(w, rng, b, out);

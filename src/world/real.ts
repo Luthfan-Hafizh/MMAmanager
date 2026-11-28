@@ -306,7 +306,9 @@ export function realFighter(rf: RealFighter, ctx: RealContext, seed: number): Fi
   if (rf.p === "ufc") {
     if (rank === 0) target = 88.5 + (p4p !== null ? Math.max(0, (10 - p4p) * 0.25) : 0);
     else if (rank !== null) target = 86.5 - (rank - 1) * 0.5 + (p4p !== null ? 0.8 : 0);
-    else target = clamp(derived, 66, 79);
+    // The unranked where the snapshot puts them; below 66 squeezed toward it rather than cut
+    // at it, which stood four in ten of the roster on the same 66.0.
+    else target = derived >= 66 ? Math.min(derived, 79) : clamp(66 - (66 - derived) * 0.5, 62, 66);
     if (rank !== null) target = 0.3 * clamp(derived, target - 6, target + 6) + 0.7 * target;
   } else {
     const main = rf.lg !== "africa" && rf.lg !== "mena";

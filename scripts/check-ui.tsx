@@ -1208,14 +1208,16 @@ pages(tw, "Retired fighter turned manager");
         const again = resolvePlayerBout(lw, b, quickSim(lw, b));
         const kept = b.res ? `${b.res.method} R${b.res.round} ${b.res.time}` : "none";
         tidyLive(lw);
-        const tapeKept = disk.size > 0;
+        // Only the tapes: the last career's id sits in storage too, for a reload.
+        const tapes = () => [...disk.keys()].filter((k) => k.startsWith("mma.live.")).length;
+        const tapeKept = tapes() > 0;
         dropLive(lw, b);
         // Back from the menu: the card is in the books with the fight that was watched.
         forgetLiveFights();
         const back = renderToString(<FightNight />).replace(/<!-- -->/g, "").replace(/&#x27;/g, "'").replace(/&amp;/g, "&");
         if (!first || again) fail(`the fight went in the books ${first ? (again ? "twice" : "once") : "never"}`);
         else if (kept !== `${ob.method} R${ob.round} ${ob.time}`) fail(`the result changed after it was in the books: ${kept} instead of ${ob.method} R${ob.round} ${ob.time}`);
-        else if (!tapeKept || disk.size) fail(`the tape ${tapeKept ? "outlived its save" : "went before the save"}`);
+        else if (!tapeKept || tapes()) fail(`the tape ${tapeKept ? "outlived its save" : "went before the save"}`);
         else if (fightNight(lw) || !back.includes("In the books") || !back.includes(methodText(ob.method, ob.detail))) fail("back on the fight-night page, the card isn't in the books with the watched result");
         else console.log(`Live fight: left in round 2 and rebuilt from a ${tapeKb} KB tape at the same exchange (${B.steps} exchanges, ${B.log.length} lines); finished the same either way (${res(ob)}), in the books once, a second simulation refused`);
       }

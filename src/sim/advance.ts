@@ -17,7 +17,7 @@ import { fullName, touch, withRng } from "../world/core";
 import { monthlyDevelopmentSteps } from "../world/development";
 import { comebacks, monthlyMarket } from "../world/market";
 import { bookingPass, campInjuries, fillGaps, withdraw } from "../world/matchmaking";
-import { applyResult, finishEvent, fightInputFor, runEvent, runEventSteps } from "../world/results";
+import { applyResult, fightInputFor, runEvent, runEventSteps } from "../world/results";
 import { updateP4P, updateRankings } from "../world/rankings";
 import { simulate, type FightOutcome } from "../engine/sim";
 import { campWeek, fightEve } from "../career/camp";
@@ -192,7 +192,9 @@ export function resolvePlayerBout(w: World, b: Bout, out: FightOutcome): boolean
   if (ev && !b.awaiting) openFightNight(w, ev);
   withRng(w, (rng) => {
     applyResult(w, rng, b, out);
-    if (ev && !ev.bouts.some((id) => w.bouts[id].awaiting)) finishEvent(w, rng, ev);
+    // The rest of the card goes on after it, up to the next of the player's fights; the night
+    // is in the books when none is left.
+    if (ev) runEvent(w, rng, ev);
   });
   touch(w);
   return true;
